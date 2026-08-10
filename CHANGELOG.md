@@ -4,6 +4,14 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Maintainer-Verifikation & Audit-Fix (2026-08-10)
+- 86 Pytest-Tests, Smoke-Checks 4/4, Ruff, `compileall` und die Writer-/Mover-
+  CLI-Hilfen lokal verifiziert. Der read-only Ticket-Audit meldete danach keine
+  Befunde mehr: versionierte `.gitkeep`-Platzhalter in leeren Lebenszyklus-
+  Ordnern gelten nicht als Ticket-Clutter.
+- Die Audit-Ausnahme ist durch einen Regressionstest abgesichert; Tickets,
+  Statusordner und Remote-Zustände wurden nicht verändert.
+
 ### Added
 
 - **Fail-closed ticket move + collision audit (T-20260808-03).** No code path

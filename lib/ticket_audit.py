@@ -92,6 +92,10 @@ def audit(base: Path | str) -> dict:
         for entry in directory.iterdir():
             if not entry.is_file():
                 continue
+            # Lifecycle folders are kept in the repository by .gitkeep when
+            # empty; this structural placeholder is not ticket clutter.
+            if entry.name == ".gitkeep":
+                continue
             if _LOOKS_LIKE_TICKET_RE.match(entry.name):
                 continue
             non_ticket_files.append(str(entry))

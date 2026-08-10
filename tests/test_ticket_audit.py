@@ -85,6 +85,14 @@ class TestClaimedInRoot(unittest.TestCase):
 
 
 class TestNonTicketFiles(unittest.TestCase):
+    def test_gitkeep_placeholder_is_not_flagged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _write(base / "QUEUED" / ".gitkeep")
+            _write(base / "T-20260808-09.txt")
+            report = ticket_audit.audit(base)
+            self.assertEqual(report["non_ticket_files"], [])
+
     def test_stray_file_is_flagged(self):
         """Nachbau: COMIC-REPORT_2026-07-31.txt lag lose in der Wurzel."""
         with tempfile.TemporaryDirectory() as tmp:
