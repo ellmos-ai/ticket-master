@@ -225,14 +225,6 @@
       Praxis übernommen (`T-20260801-18.ASUS-GEI.txt`), das ist aber
       Konvention aus Beobachtung, nicht aus dem Prompt selbst — sollte
       im TICKET-AUSGABEFORMAT-Abschnitt präzisiert werden.
-- [ ] **`lib/ticket_writer.py` existiert nicht**, obwohl `README.md` es
-      als bevorzugten Anlegeweg nennt ("bevorzugt über
-      `lib/ticket_writer.py`"). Der Fail-Safe-Pfad ("Ticket manuell nach
-      Template schreiben") war im Testlauf der einzige gangbare Weg —
-      macht den "bevorzugten Weg" faktisch zum Ausnahmefall. Kein
-      SIG-TU-spezifisches Problem, aber wirkt sich auf jeden SIG-TU-Lauf
-      aus, solange `lib/` fehlt.
-
 ## TASKWRITER-Recheck 2026-08-02
 
 Live-Baseline des kanonischen Clones: `main`, HEAD/origin
