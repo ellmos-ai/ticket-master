@@ -15,16 +15,24 @@ filename-based claim convention (atomic NTFS rename, no lock files).
 
 Canonical repository: https://github.com/ellmos-ai/ticket-master
 
+## Release and verification status
+
+- Status: `Unreleased`
+- Version: `1.9.0` (`VERSION` and `pyproject.toml`)
+- Local verification on 2026-08-10: `95 passed` via `python -m pytest -q`;
+  shell syntax and Python compile checks also passed.
+- The current clone has no Git tag; no tag, release publication, or external
+  communication is implied by this readback.
+
 ## Useful Entry Points
 
 - `README.md`: user-facing overview, quickstart, starter matrix, routing explanation.
 - `README_de.md`: German documentation.
 - `SKILL.md`: Claude Code skill manifest — enters the triage-console workflow
   (reads the prompt, loads config, goes to Position 0).
-- `prompts/TICKET-MASTER.en.md` / `prompts/TICKET-MASTER.de.md`: the anonymised agent
-  prompt (English/German) — defines the full routing protocol (lean router principle,
-  companion pattern, decision ladder, score formula, processing chain A/B/C,
-  position 0).
+- `prompts_dir/TICKET-MASTER.en.md` / `prompts_dir/TICKET-MASTER.de.md`: the
+  anonymised agent prompt (English/German) — the default directory is `prompts/`,
+  and the shared resolver enforces the repository boundary and `en` fallback.
 - `config/ticket-master.config.example.json`: all configuration fields documented,
   including optional `router_command` (external model router) and `task_db_command`
   (later-urgency sink).
@@ -36,6 +44,10 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 - `tickets/_logs/INTAKE-TRIAGE-LOG.txt`: DEPRECATED shared intake log (pre-1.5.0); the audit trail lives per ticket.
 - `bin/ticket-master.sh` / `bin/ticket-master.bat` / `bin/ticket-master.ps1`:
   cross-platform starters.
+- `bin/ticket_master.py`: shared prompt resolver plus auditable `--list` and
+  exclusive `--intake` CLI modes.
+- `TM_CONFIG` optionally selects the local JSON config; `TM_LANG` selects a
+  prompt language with controlled `en` fallback.
 - `tests/test_smoke.py`: structure, JSON validity, and anonymisation checks.
 
 ## Run

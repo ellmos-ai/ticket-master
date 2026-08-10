@@ -16,7 +16,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-86%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-95%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -27,6 +27,10 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 > [!NOTE]
 > KI-Agenten und RAG-Indexer finden maschinenlesbare Kontextinformationen, Suchbegriffe und Einstiegspunkte in [llms.txt](llms.txt).
+
+**Release-Status:** `Unreleased` — `VERSION` und `pyproject.toml` melden beide
+`1.9.0`; der aktuelle Clone enthält keinen Git-Tag und es wird keine
+Release-Veröffentlichung behauptet.
 
 ---
 
@@ -127,7 +131,8 @@ cp config/ticket-master.config.example.json config/ticket-master.config.json
 ```
 
 Das startet deinen gewählten CLI-Provider mit dem TICKET-MASTER-Prompt der
-gewählten Sprache (`prompts/TICKET-MASTER.<lang>.md`, Standard Englisch). Der Agent
+gewählten Sprache aus `prompts_dir` (Standard:
+`prompts/TICKET-MASTER.<lang>.md`, Englisch). Der Agent
 liest den Prompt, orientiert sich an deinen Projekten und geht auf **Position 0** —
 wartet still auf dein erstes Ticket.
 
@@ -173,7 +178,8 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 | Variable | Standard | Wirkung |
 |----------|----------|---------|
 | `TM_PROVIDER` | `claude` | Provider ohne Flag überschreiben |
-| `TM_LANG` | `en` | Prompt-Sprache; lädt `prompts/TICKET-MASTER.${TM_LANG}.md` (Fallback `en`) |
+| `TM_LANG` | `en` | Prompt-Sprache; lädt `prompts_dir/TICKET-MASTER.${TM_LANG}.md` (Fallback `en`) |
+| `TM_CONFIG` | `config/ticket-master.config.json` | Optionaler Pfad zur lokalen JSON-Config für den gemeinsamen Resolver |
 | `TM_SKIP_PERMISSIONS` | `0` | Auf `1` setzen, um `--dangerously-skip-permissions` an Claude zu übergeben |
 
 ---
@@ -189,7 +195,7 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 | Feld | Beschreibung |
 |------|--------------|
 | `tickets_dir` | Wo Ticket-Dateien liegen (Standard: `./tickets`) |
-| `prompts_dir` | Reserviert. Die Starter unter `bin/` lösen Prompts derzeit aus dem repo-eigenen Ordner `prompts/` auf; eine Änderung dieses Feldes hat noch keine Wirkung |
+| `prompts_dir` | Repository-lokaler Ordner mit `TICKET-MASTER.<lang>.md`; alle drei Starter lösen ihn über `bin/ticket_master.py` auf und lehnen Pfade außerhalb des Repositorys ab |
 | `default_language` | Dokumentierte Standard-Promptsprache (`en`/`de`); Laufzeit-Override via `TM_LANG` |
 | `project_roots[]` | **Deine Projekte** — Name, Pfad und Pipeline für jeden Eintrag |
 | `providers.claude` | Claude-CLI-Konfiguration (`command`, `default_model`, `args`) |
@@ -223,6 +229,26 @@ der Agent, der dem TICKET-MASTER-Prompt folgt, löst diese vor jedem
 Datei-Zugriff auf den tatsächlichen Wert des aktuellen Hosts auf. Dieselbe
 Konvention wie in `config/ticket-writer.config.example.json`. Beispiel in
 `config/ticket-master.config.example.json`.
+
+### Auditierbare CLI (`--list` / `--intake`)
+
+Der gemeinsame Python-Einstiegspunkt hält Ticketübersicht und Intake unter
+Windows, macOS und Linux gleich:
+
+```bash
+python bin/ticket_master.py --list
+python bin/ticket_master.py --list --json
+python bin/ticket_master.py --intake "Neue Aufgabe beschreiben" --project my-app
+```
+
+`--list` gibt deterministische Metadaten `STATUS / ID / TITEL / PFAD` für
+offene Tickets in allen v1-Clustern und lesbaren Legacy-Aliasordnern aus; der
+Tickettext wird nicht ausgegeben. `--intake` validiert und normalisiert die
+Beschreibung, legt exklusiv genau eine Datei unter `QUEUED/` an und schreibt
+nicht in das veraltete gemeinsame Intake-Log. Für eine lokale Queue kann
+`--tickets-dir`, für eine JSON-Konfiguration `--config` verwendet werden.
+Eine fehlende Standard-Config nutzt sichere Repository-Defaults; eine explizit
+fehlende oder fehlerhafte Config endet mit einem kontrollierten Fehler.
 
 ---
 

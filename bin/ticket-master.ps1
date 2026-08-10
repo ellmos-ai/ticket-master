@@ -6,52 +6,5 @@ param(
 
 $ScriptDir  = $PSScriptRoot
 $RepoRoot   = Resolve-Path (Join-Path $ScriptDir "..")
-
-# Language selection: TM_LANG (default "en"). Falls back to "en" if the file is missing.
-$Lang = if ($env:TM_LANG) { $env:TM_LANG } else { "en" }
-$PromptFile = Join-Path $RepoRoot "prompts\TICKET-MASTER.$Lang.md"
-if (-not (Test-Path $PromptFile)) {
-    [Console]::Error.WriteLine("WARNING: prompt file for language '$Lang' not found; falling back to 'en'.")
-    $Lang = "en"
-    $PromptFile = Join-Path $RepoRoot "prompts\TICKET-MASTER.en.md"
-}
-
-$Bootstrap  = "Read and follow the instructions in $PromptFile - start at step (a) and work down to Position 0."
-
-Write-Host "[ticket-master] Starting provider: $Provider"
-Write-Host "[ticket-master] Language: $Lang"
-Write-Host "[ticket-master] Repo root: $RepoRoot"
-
-Set-Location $RepoRoot
-
-switch ($Provider) {
-    "claude" {
-        if (-not (Get-Command claude -ErrorAction SilentlyContinue)) {
-            Write-Error "ERROR: 'claude' not found in PATH. Install the Claude CLI first."
-            exit 1
-        }
-        if ($env:TM_SKIP_PERMISSIONS -eq "1") {
-            & claude --dangerously-skip-permissions $Bootstrap
-        } else {
-            & claude $Bootstrap
-        }
-    }
-    "codex" {
-        if (-not (Get-Command codex -ErrorAction SilentlyContinue)) {
-            Write-Error "ERROR: 'codex' not found in PATH. Install the Codex CLI first."
-            exit 1
-        }
-        & codex $Bootstrap
-    }
-    "agy" {
-        if (-not (Get-Command agy -ErrorAction SilentlyContinue)) {
-            Write-Error "ERROR: 'agy' not found in PATH. Install the Gemini CLI first."
-            exit 1
-        }
-        & agy $Bootstrap
-    }
-    default {
-        Write-Error "ERROR: Unknown provider '$Provider'. Use: claude | codex | agy"
-        exit 1
-    }
-}
+& python (Join-Path $ScriptDir "ticket_master.py") --provider $Provider
+exit $LASTEXITCODE

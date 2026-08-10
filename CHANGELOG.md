@@ -5,12 +5,19 @@ All notable changes to ticket-master are documented here.
 ## [Unreleased]
 
 ### Maintainer-Verifikation & Audit-Fix (2026-08-10)
-- 86 Pytest-Tests, Smoke-Checks 4/4, Ruff, `compileall` und die Writer-/Mover-
-  CLI-Hilfen lokal verifiziert. Der read-only Ticket-Audit meldete danach keine
+- 95 Pytest-Tests, Smoke-Checks 4/4, Ruff, `compileall`, den gemeinsamen
+  Prompt-Resolver sowie `--list`/`--intake` lokal verifiziert. Der read-only
+  Ticket-Audit meldete danach keine
   Befunde mehr: versionierte `.gitkeep`-Platzhalter in leeren Lebenszyklus-
   Ordnern gelten nicht als Ticket-Clutter.
 - Die Audit-Ausnahme ist durch einen Regressionstest abgesichert; Tickets,
-  Statusordner und Remote-Zustände wurden nicht verändert.
+  Statusordner und Remote-Zustände wurden nicht verändert. `VERSION` und
+  `pyproject.toml` bleiben bei 1.9.0; der Clone hat keinen Tag und bleibt
+  `Unreleased` ohne Tag-/Release-Aktion.
+- `prompts_dir` is now a repository-bounded runtime setting shared by the
+  PowerShell, CMD, and Unix starters. `--list` and `--intake` expose
+  deterministic, collision-safe CLI operations without the deprecated shared
+  intake log.
 
 ### Added
 

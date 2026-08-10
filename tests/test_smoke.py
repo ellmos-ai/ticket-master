@@ -34,6 +34,7 @@ REQUIRED_PATHS = [
     "bin/ticket-master.sh",
     "bin/ticket-master.bat",
     "bin/ticket-master.ps1",
+    "bin/ticket_master.py",
     "bin/start-claude.sh",
     "bin/start-claude.bat",
     "bin/start-codex.sh",

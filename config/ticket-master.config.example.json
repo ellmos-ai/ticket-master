@@ -3,7 +3,8 @@
   "_comment_placeholders": "Optional: if this config lives in a folder synced across several machines (e.g. a cloud-synced parent directory), 'tickets_dir' and any project_roots[].path may use the placeholders <HOME> (current user's home directory) and <USER> (OS user name) instead of a literal, host-specific path -- same convention as config/ticket-writer.config.example.json. The agent following the TICKET-MASTER prompt resolves these to the current host's actual values before any file access; a literal path is still fine for a single-machine setup.",
   "tickets_dir": "./tickets",
   "prompts_dir": "./prompts",
-  "_comment_language": "Prompt language. The bin/ starters load prompts/TICKET-MASTER.<lang>.md. Override at runtime with the TM_LANG environment variable. Falls back to 'en' if the requested file is missing.",
+  "_comment_prompts_dir": "Repository-local directory containing TICKET-MASTER.<lang>.md. All three starters resolve this field through bin/ticket_master.py; paths escaping the repository root are rejected.",
+  "_comment_language": "Prompt language. Override at runtime with TM_LANG; invalid or missing language files fall back to 'en' with a warning.",
   "default_language": "en",
   "project_roots": [
     {

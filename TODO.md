@@ -19,8 +19,9 @@
       `python tests/test_smoke.py` real fehl).
 - [x] **(mittel/niedrig)** `prompts_dir` als reserved dokumentiert;
       SECURITY-Versionsmatrix, Badges, `.gitignore` (`_logs/`-Pfade, LOCK*.txt).
-- [ ] **(Folge)** `prompts_dir` in den `bin/`-Launchern tatsächlich auswerten
-      (oder Feld aus dem Config-Beispiel entfernen).
+- [x] **(Folge, 2026-08-10)** `prompts_dir` in den `bin/`-Launchern tatsächlich
+      auswerten: alle Starter delegieren an den gemeinsamen, repo-beschränkten
+      Resolver `bin/ticket_master.py`.
 - [x] **(Folge, Design — entschieden [U 2026-07-04 „immer verbesserungen
       rückangleichen"], umgesetzt in v1.5.0)** Angleichung an die private
       `_TICKETS`-Instanz: Sammel-Logdatei deprecated, Audit-Trail PRO Ticket
@@ -144,12 +145,13 @@
 
 ## Near-term
 
-- [ ] Python helper script (`bin/ticket_master.py`) as a thin wrapper that reads
+- [x] Python helper script (`bin/ticket_master.py`) as a thin wrapper that reads
       `config/ticket-master.config.json` and dispatches to the correct provider
       without shell-specific scripts — easier cross-platform maintenance.
-- [ ] `--list` mode: print open tickets from `tickets/` to stdout.
-- [ ] `--intake "description"` flag: pre-create a ticket file from the command line
-      before launching the agent session.
+- [x] `--list` mode: print deterministic, non-secret open-ticket metadata from
+      `tickets/` to stdout (including v1 clusters and legacy aliases).
+- [x] `--intake "description"` flag: validate and exclusively pre-create a
+      `QUEUED/` ticket file from the command line without the shared intake log.
 - [ ] Config validation on startup: warn if `project_roots` is empty or provider
       commands are not found in PATH.
 
@@ -234,14 +236,21 @@ dem Lauf keine Aufgaben für diesen Projektpfad.
 
 Persistierte TASKPLAN-Aufgaben:
 
-- `1914` — `prompts_dir` in allen Startern wirksam machen oder konsistent entfernen (high/medium/local).
+- `1914` — `prompts_dir` in allen Startern wirksam machen oder konsistent entfernen (high/medium/local) — erledigt 2026-08-10.
 - `1915` — Usecase-Level-Matching im Domains-Generator ergänzen (high/large/local).
 - `1916` — Plattformneutrale CLI-Schicht mit Konfigurationsvalidierung bauen (high/large/local).
-- `1917` — `--list` und `--intake` als auditable CLI-Funktionen ergänzen (medium/medium/local).
+- `1917` — `--list` und `--intake` als auditable CLI-Funktionen ergänzen (medium/medium/local) — erledigt 2026-08-10.
 - `1918` — Prompt- und Dokumentationssprache über DE/EN hinaus erweitern (low/large/local).
-- `1919` — `llms.txt`, Testbadge und Release-/Unreleased-Nachweis synchronisieren (high/medium/local).
+- `1919` — `llms.txt`, Testbadge und Release-/Unreleased-Nachweis synchronisieren (high/medium/local) — erledigt 2026-08-10.
 
 Die vollständigen Quellen, Soll/Ist-Ableitungen, Definition-of-Done, Prüfwege
-und Blocker liegen im TASKPLAN-Register. Keine dieser Aufgaben wurde in diesem
-TASKWRITER-Lauf ausgeführt; insbesondere kein Test, Build, CLI-Start, Ticket-
-Write, Commit oder Push.
+und Blocker liegen im TASKPLAN-Register. Zum damaligen TASKWRITER-Lauf wurde
+keine dieser Aufgaben ausgeführt; insbesondere kein Test, Build, CLI-Start,
+Ticket-Write, Commit oder Push.
+
+## TASKSOLVER-Readback 2026-08-10
+
+Die Aufgaben 1914, 1917 und 1919 wurden im kanonischen Clone bearbeitet. Der
+Der aktuelle Lauf hatte 95 Pytest-Erfolge; Prompt-Resolver, CLI-Ausgabe und
+Intake-Kollisionen wurden gezielt geprüft. Release- und Tag-Aktionen blieben
+unverändert ausstehend.

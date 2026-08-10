@@ -15,7 +15,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-86%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-95%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -26,6 +26,9 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
+
+**Release status:** `Unreleased` — `VERSION` and `pyproject.toml` both report
+`1.9.0`; the current clone has no Git tag and no release publication is claimed.
 
 ---
 
@@ -124,7 +127,8 @@ cp config/ticket-master.config.example.json config/ticket-master.config.json
 ```
 
 This launches your chosen CLI provider with the TICKET-MASTER prompt for the
-selected language (`prompts/TICKET-MASTER.<lang>.md`, default English). The agent
+selected language from configured `prompts_dir` (default:
+`prompts/TICKET-MASTER.<lang>.md`, English). The agent
 reads the prompt, orients itself on your projects, and goes to **Position 0** —
 waiting silently for your first ticket.
 
@@ -170,7 +174,8 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 | Variable | Default | Effect |
 |----------|---------|--------|
 | `TM_PROVIDER` | `claude` | Override provider without a flag |
-| `TM_LANG` | `en` | Prompt language; loads `prompts/TICKET-MASTER.${TM_LANG}.md` (falls back to `en`) |
+| `TM_LANG` | `en` | Prompt language; loads `prompts_dir/TICKET-MASTER.${TM_LANG}.md` (falls back to `en`) |
+| `TM_CONFIG` | `config/ticket-master.config.json` | Optional path to the local JSON config used by the shared resolver |
 | `TM_SKIP_PERMISSIONS` | `0` | Set to `1` to pass `--dangerously-skip-permissions` to Claude |
 
 ---
@@ -185,7 +190,7 @@ Copy `config/ticket-master.config.example.json` to
 | Field | Description |
 |-------|-------------|
 | `tickets_dir` | Where ticket files live (default: `./tickets`) |
-| `prompts_dir` | Reserved. The `bin/` launchers currently resolve prompts from the repo's own `prompts/` folder; changing this field has no effect yet |
+| `prompts_dir` | Repository-local directory containing `TICKET-MASTER.<lang>.md`; all three starters resolve it through `bin/ticket_master.py` and reject paths escaping the repo root |
 | `default_language` | Documented default prompt language (`en`/`de`); runtime override via `TM_LANG` |
 | `project_roots[]` | **Your projects** — add name, path, pipeline for each |
 | `providers.claude` | Claude CLI config (`command`, `default_model`, `args`) |
@@ -218,6 +223,25 @@ name) — the agent following the TICKET-MASTER prompt resolves these to the
 current host's actual values before any file access. Same convention as
 `config/ticket-writer.config.example.json`. See
 `config/ticket-master.config.example.json` for a worked example.
+
+### Auditable CLI (`--list` / `--intake`)
+
+The shared Python entry point keeps ticket inspection and intake identical on
+Windows, macOS, and Linux:
+
+```bash
+python bin/ticket_master.py --list
+python bin/ticket_master.py --list --json
+python bin/ticket_master.py --intake "Describe the new issue" --project my-app
+```
+
+`--list` prints deterministic `STATUS / ID / TITLE / PATH` metadata for open
+tickets across all v1 clusters and readable legacy aliases; it never prints
+ticket bodies. `--intake` validates and normalizes a description, creates one
+exclusive `QUEUED/` file, and never appends the deprecated shared intake log.
+Use `--tickets-dir` for an explicit local queue or `--config` for a local JSON
+configuration. A missing default config uses safe repository-local defaults;
+an explicitly missing or malformed config exits with a controlled error.
 
 ---
 
