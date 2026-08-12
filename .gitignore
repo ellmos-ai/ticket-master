@@ -1,6 +1,10 @@
 # Real config (only the .example is tracked)
 config/ticket-master.config.json
 
+# Real TICKET-WRITER (SIG-TU) config - site-specific, contains the operator's
+# real area list and store paths (only the .example is tracked)
+config/ticket-writer.config.json
+
 # Real domains registry - generated from a local BACH install by
 # lib/domains_generator.py (only the .example is tracked)
 config/domains.json
