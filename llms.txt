@@ -1,4 +1,4 @@
-## Last-checked: 2026-08-10
+## Last-checked: 2026-08-14
 
 # ticket-master
 
@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `Unreleased`
 - Version: `1.9.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-08-10: `95 passed` via `python -m pytest -q`;
+- Local verification on 2026-08-14: `95 passed` via `python -m pytest -q`;
   shell syntax and Python compile checks also passed.
 - The current clone has no Git tag; no tag, release publication, or external
   communication is implied by this readback.

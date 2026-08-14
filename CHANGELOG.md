@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Discoverability, Ecosystem Badges & AI Discovery Index Sync (2026-08-14)
+- Synchronized `llms.txt` AI Discovery Index timestamp to `2026-08-14` and verified 95 passing Pytest unit tests.
+- Integrated `ellmos-ai` Ecosystem and `open-bricks` Umbrella Shields.io badges into `README.md` and `README_de.md`.
+- Verified 95/95 Pytest unit tests passing (100% green) and ruff code hygiene clean.
+
 ### Maintainer-Verifikation & Audit-Fix (2026-08-10)
 - 95 Pytest-Tests, Smoke-Checks 4/4, Ruff, `compileall`, den gemeinsamen
   Prompt-Resolver sowie `--list`/`--intake` lokal verifiziert. Der read-only
