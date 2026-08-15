@@ -132,12 +132,12 @@ blocks that ticket for every other system even though nobody is working on
 it. Two triggers release it again:
 
 **(1) Regular session close** — when the user explicitly ends the session
-("close the session", "wrap up", `/handoff`), release all of this host's
-claims in `QUEUED/` and `ACTIONABLE/` *before* writing the closing report:
+("close the session", "wrap up", `/handoff`), release claims *before* writing
+the closing report:
 
 ```
 python lib/ticket_mover.py --release-session --host <HOST> \
-       --tickets-dir <tickets_dir> [--dry-run]
+       --tickets-dir <tickets_dir> [--dry-run] [--include-queued]
 ```
 
 `--host` is mandatory and matched **exactly** — no guessed machine name, no
@@ -145,6 +145,26 @@ normalisation. Otherwise a misconfigured environment releases someone else's
 claims. Where one machine historically carries two identities (e.g. `ASUS-GEI`
 and `LAPTOP`), merging them is a separate, named operation — never a silent
 side effect of the release.
+
+**`ACTIONABLE/` and `QUEUED/` do NOT mean the same thing**
+(T-20260815-205002196, a misjudgment in the original build: both were
+treated together as "working folders"). `ACTIONABLE` = immediately
+actionable, nobody on it yet → released **unconditionally**. `QUEUED` =
+handed to an agent, result outstanding → someone may **still be working on
+it**, even when THIS release call is made by a different, already-ended
+process on the same host:
+
+- **By default, QUEUED is NOT released**, only reported (`HELD: … --
+  queued, not included`). Only pass `--include-queued` when you're genuinely
+  sure no session of yours is still working these tickets.
+- **Even with `--include-queued`, a ticket carrying a fresh
+  `DELEGIERT_AN:` marker is never released** (`HELD: … -- active
+  delegation`) — that's the actual protection. A worker starting on a
+  QUEUED ticket records this marker with `lib/ticket_mover.py
+  --mark-delegated <ticket> --agent <agent>@<host>`; any further edit to
+  the ticket (a VERLAUF entry) keeps it fresh automatically. Left
+  unrefreshed for more than 6 hours, it's treated as orphaned (a safety
+  net against a crashed worker) and no longer blocks release.
 
 **Not released:** claims in `SOLVED/`, `USER/`, `BLOCKED/`, `WAITING/` and
 `PARKED/`. There the host suffix does not mean "I am working on this" but
@@ -321,15 +341,30 @@ enter the PROCESSING CHAIN below.
 When the user explicitly ends the session ("close the session", "wrap up",
 `/handoff`), these come **before** the closing report:
 
-1. **Release claims** — `python lib/ticket_mover.py --release-session
-   --host <HOST> --tickets-dir <tickets_dir>`. Returns this host's claims in
-   `QUEUED/` and `ACTIONABLE/` so no ticket stays blocked. Details and the
-   reasoning for sparing `SOLVED/USER/BLOCKED/WAITING/PARKED`: see
-   "Returning a ticket" above.
-2. **Report refusals** — the run does not abort on a collision, it counts it.
-   Whatever could not be released belongs in the closing report.
-3. **Persist process state** — put the session state where the next session
+1. **Check whether any of your own subagents are still running.** If one is
+   still working a QUEUED ticket, that is NOT a regular close for that
+   ticket — don't pass `--include-queued`, or make sure the ticket carries a
+   fresh `DELEGIERT_AN:` marker (see below). The code protects actively
+   delegated tickets either way, but don't rely on that alone — reporting it
+   here is the second safeguard.
+2. **Release claims** — `python lib/ticket_mover.py --release-session
+   --host <HOST> --tickets-dir <tickets_dir>` releases `ACTIONABLE/`
+   unconditionally. `QUEUED/` ONLY with an additional `--include-queued`,
+   and even then never a ticket carrying a fresh `DELEGIERT_AN:` marker.
+   Details and the reasoning for sparing `SOLVED/USER/BLOCKED/WAITING/PARKED`:
+   see "Returning a ticket" above.
+3. **Report refusals AND held tickets** — the run does not abort on a
+   collision, it counts it (`REFUSED`), same for held QUEUED candidates
+   (`HELD`). Both belong in the closing report.
+4. **Persist process state** — put the session state where the next session
    will find it (on this system: USMC; see `config/knowledge.json`).
+
+**If this session itself delegated to a worker/subagent on a QUEUED
+ticket**, record that at the start of the delegation with `python
+lib/ticket_mover.py --mark-delegated <ticket> --agent <agent>@<host>` — that
+is what lets a LATER, foreign release call (e.g. a closing gate of a
+different, parallel session on the same host) recognize this ticket and
+skip it instead of releasing it.
 
 An **abort** (usage limit, crash, closed terminal) is not a regular close:
 claims stay standing there. They only fall once a later session of the same

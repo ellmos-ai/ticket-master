@@ -138,13 +138,12 @@ ist das Ticket für alle anderen Systeme dauerhaft blockiert, obwohl niemand
 mehr daran arbeitet. Zwei Auslöser geben ihn deshalb wieder frei:
 
 **(1) Regulärer Sitzungsabschluss** — beendet der User die Sitzung ausdrücklich
-(„schließe die Session ab", „Sitzung beenden", `/handoff`), werden vor dem
-Abschlussbericht alle eigenen Claims in `QUEUED/` und `ACTIONABLE/`
-freigegeben:
+(„schließe die Session ab", „Sitzung beenden", `/handoff`), wird vor dem
+Abschlussbericht zurückgegeben:
 
 ```
 python lib/ticket_mover.py --release-session --host <HOST> \
-       --tickets-dir <tickets_dir> [--dry-run]
+       --tickets-dir <tickets_dir> [--dry-run] [--include-queued]
 ```
 
 `--host` ist Pflicht und wird **exakt** verglichen — kein geratener
@@ -153,6 +152,26 @@ Umgebung fremde Claims frei. Führt ein System historisch zwei Identitäten
 (z. B. `ASUS-GEI` und `LAPTOP` für dieselbe Maschine), ist deren
 Zusammenführung ein eigener, benannter Vorgang — niemals ein stiller
 Nebeneffekt der Rückgabe.
+
+**`ACTIONABLE/` und `QUEUED/` bedeuten NICHT dasselbe** (T-20260815-205002196,
+Fehleinschätzung beim ersten Bau: beide zusammen als „Arbeitsordner"
+behandelt). `ACTIONABLE` = sofort umsetzbar, noch niemand dran → wird
+**bedingungslos** freigegeben. `QUEUED` = an einen Agenten übergeben,
+Ergebnis aussteht → dort arbeitet möglicherweise **noch jemand**, auch wenn
+DIESE Rückgabe von einem anderen, bereits beendeten Prozess desselben Hosts
+aufgerufen wird:
+
+- **Standardmäßig wird QUEUED NICHT mit freigegeben**, nur gemeldet
+  (`HELD: … -- queued, not included`). Wer wirklich sicher ist, dass keine
+  eigene Sitzung mehr an diesen Tickets arbeitet, gibt `--include-queued` an.
+- **Auch mit `--include-queued` wird nie freigegeben**, was einen frischen
+  `DELEGIERT_AN:`-Vermerk trägt (`HELD: … -- active delegation`) — das ist
+  der eigentliche Schutz. Ein Worker, der ein QUEUED-Ticket zu bearbeiten
+  beginnt, trägt diesen Vermerk mit `lib/ticket_mover.py --mark-delegated
+  <ticket> --agent <agent>@<host>` ein; jede weitere Bearbeitung des Tickets
+  (VERLAUF-Eintrag) hält ihn automatisch frisch. Ohne Aktualisierung länger
+  als 6 Stunden gilt er als verwaist (Sicherheitsnetz gegen einen
+  abgestürzten Worker) und blockiert die Freigabe nicht mehr.
 
 **Nicht freigegeben werden** Claims in `SOLVED/`, `USER/`, `BLOCKED/`,
 `WAITING/` und `PARKED/`. Dort bedeutet der Host-Suffix nicht „ich arbeite
@@ -335,16 +354,31 @@ aktivieren und in die PROCESSING-CHAIN unten eintreten.
 Beendet der User die Sitzung ausdrücklich („schließe die Session ab",
 „Sitzung beenden", `/handoff`), gehören **vor** den Abschlussbericht:
 
-1. **Claims freigeben** — `python lib/ticket_mover.py --release-session
-   --host <HOST> --tickets-dir <tickets_dir>`. Gibt die eigenen Claims in
-   `QUEUED/` und `ACTIONABLE/` zurück, damit kein Ticket blockiert bleibt.
+1. **Prüfen, ob noch eigene Subagenten aktiv laufen.** Läuft noch einer an
+   einem QUEUED-Ticket, ist das KEIN regulärer Abschluss für dieses Ticket —
+   `--include-queued` dann NICHT setzen, oder sicherstellen, dass das Ticket
+   einen frischen `DELEGIERT_AN:`-Vermerk trägt (siehe unten). Der Code
+   schützt aktiv delegierte Tickets zwar ohnehin, aber verlass dich nicht
+   allein darauf — das Melden hier ist die zweite Sicherung.
+2. **Claims freigeben** — `python lib/ticket_mover.py --release-session
+   --host <HOST> --tickets-dir <tickets_dir>` gibt `ACTIONABLE/`
+   bedingungslos zurück. `QUEUED/` NUR mit zusätzlichem `--include-queued`,
+   und selbst dann nie ein Ticket mit frischem `DELEGIERT_AN:`-Vermerk.
    Details und die Begründung, warum `SOLVED/USER/BLOCKED/WAITING/PARKED`
    ausgespart bleiben: Abschnitt „Ticket-Rückgabe" oben.
-2. **Verweigerte Rückgaben melden** — der Lauf bricht bei einer Kollision
-   nicht ab, sondern zählt sie. Was nicht freigegeben werden konnte, gehört
-   in den Abschlussbericht, nicht ins Vergessen.
-3. **Prozess-State sichern** — Sessionstand dorthin, wo ihn die Folgesitzung
+3. **Verweigerte UND gehaltene Rückgaben melden** — der Lauf bricht bei
+   einer Kollision nicht ab, sondern zählt sie (`REFUSED`), ebenso
+   gehaltene QUEUED-Kandidaten (`HELD`). Beides gehört in den
+   Abschlussbericht, nicht ins Vergessen.
+4. **Prozess-State sichern** — Sessionstand dorthin, wo ihn die Folgesitzung
    findet (auf diesem System USMC; siehe `config/knowledge.json`).
+
+**Delegiert diese Sitzung selbst an einen Worker/Subagenten auf ein
+QUEUED-Ticket**, trägt sie beim Start der Delegation `python
+lib/ticket_mover.py --mark-delegated <ticket> --agent <agent>@<host>` ein —
+das ist die Voraussetzung dafür, dass eine SPÄTERE, fremde Rückgabe (z. B.
+ein Abschluss-Gate einer anderen, parallel laufenden Sitzung desselben
+Hosts) dieses Ticket erkennt und nicht mit freigibt.
 
 Ein **Abbruch** (Limit, Absturz, geschlossenes Terminal) ist kein regulärer
 Abschluss: dort bleiben Claims stehen. Sie fallen erst, wenn eine spätere

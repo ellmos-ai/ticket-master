@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
+import time
 from pathlib import Path
 
 from ticket_writer import TICKET_FILENAME_RE
@@ -34,6 +36,36 @@ from ticket_writer import TICKET_FILENAME_RE
 # Ordner, in denen ein Host-Suffix "ich arbeite gerade daran" bedeutet. NUR
 # hier gibt die Sitzungs-Rueckgabe (release_claims) Claims frei.
 WORKING_SUBDIRS = ("QUEUED", "ACTIONABLE")
+
+# T-20260815-205002196: QUEUED und ACTIONABLE bedeuten NICHT dasselbe.
+# ACTIONABLE = sofort umsetzbar, noch niemand dran -> Freigabe unbedenklich.
+# QUEUED = an einen Agenten uebergeben, Ergebnis aussteht -> da arbeitet
+# jemand, und zwar moeglicherweise IMMER NOCH, wenn ein ANDERER Prozess
+# (z. B. eine andere, gerade beendete Sitzung desselben Hosts) die
+# Rueckgabe aufruft. Deshalb ist QUEUED unter den "Arbeitsordnern" die
+# Ausnahme, nicht die Regel: standardmaessig nur GEMELDET, nicht freigegeben
+# (Loesung c). Explizit `include_queued=True` gibt sie mit frei -- aber auch
+# dann NIE ein Ticket, das eine aktive Delegation traegt (Loesung b, siehe
+# is_actively_delegated()).
+QUEUED_SUBDIR = "QUEUED"
+
+# Vermerk im Tickettext, dass ein Agent gerade aktiv daran arbeitet. Regex
+# statt fixer Zeilenform, weil das Feld sowohl als eigene VERLAUF-Zeile
+# ("2026-08-15  DELEGIERT_AN: claude-code@ASUS-GEI") als auch als
+# eigenstaendiges Feld auftreten darf -- beide Formen erlaubt der
+# Ticket-Nachtrag zum Ticket.
+DELEGATION_MARKER_RE = re.compile(r"DELEGIERT_AN:\s*(?P<agent>\S+)")
+
+# Sicherheitsnetz, nicht die Hauptregel -- wie `expires_after` beim
+# LOCK-System (~/CLAUDE.md, "Projekt-Sperren"). Der Marker allein reicht
+# NICHT ewig als Beleg: stuerzt ein Worker ab, ohne den Marker je zu
+# entfernen oder das Ticket zu bewegen, wuerde ein blosses Vorhandensein den
+# Claim fuer immer schuetzen -- genau die Sorte verwaister Blockade, die
+# dieses Ticket beheben soll. Frische wird ueber die mtime der TICKETDATEI
+# gemessen (jede VERLAUF-Aktualisierung durch den arbeitenden Worker
+# aktualisiert sie automatisch mit -- kein separates Zeitstempel-Parsing
+# noetig).
+DELEGATION_STALE_AFTER_HOURS = 6.0
 
 # Ordner, in denen derselbe Suffix etwas anderes bedeutet: Herkunft. In SOLVED
 # steht, WER geloest hat; in BLOCKED/host-receipt, WER auf wessen Receipt
@@ -243,13 +275,64 @@ def release_claim(ticket: Path | str) -> Path:
     return move_ticket(ticket, ticket.parent, release_claim=True)
 
 
+def is_actively_delegated(ticket: Path | str, *,
+                          now: float | None = None,
+                          stale_after_hours: float = DELEGATION_STALE_AFTER_HOURS) -> bool:
+    """True, wenn das Ticket einen DELEGIERT_AN-Vermerk traegt UND dieser noch
+    frisch ist (Dateiaenderung juenger als `stale_after_hours`).
+
+    Ein Vermerk ohne Frische zaehlt NICHT als aktiv -- siehe
+    DELEGATION_STALE_AFTER_HOURS: das ist das Sicherheitsnetz gegen einen
+    Worker, der abgestuerzt ist, ohne den Claim je zurueckzugeben.
+    """
+    ticket = Path(ticket)
+    if not ticket.is_file():
+        return False
+    try:
+        text = ticket.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    if not DELEGATION_MARKER_RE.search(text):
+        return False
+    now = time.time() if now is None else now
+    age_hours = (now - ticket.stat().st_mtime) / 3600.0
+    return age_hours < stale_after_hours
+
+
+def mark_delegated(ticket: Path | str, agent: str) -> None:
+    """Traegt einen DELEGIERT_AN-Vermerk in ein Ticket ein -- die
+    schreibende Haelfte von `is_actively_delegated()`.
+
+    Aufzurufen von einem Worker, sobald er ein QUEUED-Ticket tatsaechlich zu
+    bearbeiten BEGINNT (nicht erst beim Loesen). Jeder weitere Aufruf oder
+    jede sonstige Bearbeitung des Tickets (VERLAUF-Eintrag) haelt den Marker
+    von selbst frisch, weil beides dieselbe Dateiaenderungszeit aktualisiert
+    -- kein separater Heartbeat-Prozess noetig.
+    """
+    ticket = Path(ticket)
+    if not ticket.is_file():
+        raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
+    text = ticket.read_text(encoding="utf-8", errors="replace")
+    marker = f"DELEGIERT_AN: {agent}"
+    if DELEGATION_MARKER_RE.search(text):
+        # Bestehenden Vermerk ersetzen statt einen zweiten anzuhaengen --
+        # sonst waechst die Datei bei jedem erneuten Aufruf im selben Lauf.
+        text = DELEGATION_MARKER_RE.sub(marker, text, count=1)
+    else:
+        text = text.rstrip("\n") + f"\n{marker}\n"
+    ticket.write_text(text, encoding="utf-8")
+
+
 def release_claims(base: Path | str, *, host: str,
                    folders: tuple[str, ...] = WORKING_SUBDIRS,
+                   include_queued: bool = False,
+                   stale_after_hours: float = DELEGATION_STALE_AFTER_HOURS,
                    dry_run: bool = False,
                    report_refused: bool = False):
-    """Sitzungs-Rueckgabe: gibt alle Claims von `host` in den Arbeitsordnern
-    frei, damit ein regulaer beendetes Sitzungsende keine Tickets fuer andere
-    Hosts blockiert.
+    """Sitzungs-Rueckgabe: gibt Claims von `host` frei, damit ein regulaer
+    beendetes Sitzungsende keine Tickets fuer andere Hosts blockiert -- ohne
+    dabei Tickets freizugeben, an denen noch tatsaechlich gearbeitet wird
+    (T-20260815-205002196).
 
     `host` ist ein PFLICHT-Argument ohne Default. Bewusst kein automatisches
     COMPUTERNAME: der Bestand fuehrt fuer dieselbe Maschine historisch zwei
@@ -259,19 +342,35 @@ def release_claims(base: Path | str, *, host: str,
     Zusammenfuehren veralteter Host-Identitaeten ist ein eigener, benannter
     Vorgang und passiert nicht still in der Rueckgabe.
 
-    Standard-`folders` sind QUEUED und ACTIONABLE. In SOLVED/USER/BLOCKED/
-    WAITING/PARKED bleibt der Suffix stehen: dort ist er Herkunft, nicht
-    Arbeitsanspruch. Diese Tickets werden stattdessen bei ihrer Reaktivierung
-    frei (siehe move_ticket / REACTIVATION_SOURCES).
+    ACTIONABLE (sofort umsetzbar, noch niemand dran) wird UNBEDINGT
+    freigegeben -- das ist unbedenklich, siehe Kategorien-Doku.
+
+    QUEUED (an einen Agenten uebergeben, Ergebnis aussteht) ist die Ausnahme,
+    NICHT die Regel (Loesung c aus dem Ticket):
+      - Standardmaessig (include_queued=False) wird ein QUEUED-Claim NICHT
+        freigegeben, sondern nur GEMELDET (`held`, Grund "queued, not
+        included") -- der Aufrufer sieht die Kandidaten, ohne dass sie
+        blind mitgehen.
+      - Mit include_queued=True wird ein QUEUED-Claim freigegeben, AUSSER er
+        traegt einen frischen DELEGIERT_AN-Vermerk (Loesung b,
+        is_actively_delegated()) -- dann bleibt er IN JEDEM FALL erhalten
+        und landet ebenfalls in `held`, Grund "active delegation". Das gilt
+        unabhaengig von include_queued, weil eine aktive Delegation niemals
+        blind uebergangen werden darf.
+
+    In SOLVED/USER/BLOCKED/WAITING/PARKED bleibt der Suffix stehen: dort ist
+    er Herkunft, nicht Arbeitsanspruch. Diese Tickets werden stattdessen bei
+    ihrer Reaktivierung frei (siehe move_ticket / REACTIVATION_SOURCES).
 
     Ein einzelnes blockiertes Ticket bricht den Lauf nicht ab -- sonst bliebe
     eine ganze Sitzung geclaimed, weil ein Name belegt war. Mit
-    report_refused=True kommt (freigegeben, verweigert) zurueck, sonst nur
-    die Liste der freigegebenen Pfade.
+    report_refused=True kommt (freigegeben, verweigert, gehalten) zurueck,
+    sonst nur die Liste der freigegebenen Pfade.
     """
     base = Path(base)
     freed: list[Path] = []
     refused: list[tuple[Path, str]] = []
+    held: list[tuple[Path, str]] = []
 
     for folder in folders:
         directory = base / folder
@@ -280,6 +379,15 @@ def release_claims(base: Path | str, *, host: str,
         for entry in sorted(directory.iterdir()):
             if not entry.is_file() or claim_suffix(entry.name) != host:
                 continue
+
+            if folder == QUEUED_SUBDIR:
+                if is_actively_delegated(entry, stale_after_hours=stale_after_hours):
+                    held.append((entry, "active delegation"))
+                    continue
+                if not include_queued:
+                    held.append((entry, "queued, not included (use --include-queued)"))
+                    continue
+
             if dry_run:
                 freed.append(directory / unclaimed_name(entry.name))
                 continue
@@ -288,7 +396,7 @@ def release_claims(base: Path | str, *, host: str,
             except (TicketCollisionError, RuntimeError, OSError) as exc:
                 refused.append((entry, str(exc)))
 
-    return (freed, refused) if report_refused else freed
+    return (freed, refused, held) if report_refused else freed
 
 
 def _cli(argv: list[str] | None = None) -> int:
@@ -304,33 +412,61 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("dest_dir", nargs="?",
                         help="Destination lifecycle folder (e.g. .../SOLVED).")
     parser.add_argument("--release-session", action="store_true",
-                        help=("Release this host's claims in QUEUED/ACTIONABLE "
-                              "(regular session end). Requires --host."))
+                        help=("Release this host's claims at regular session end. "
+                              "ACTIONABLE always; QUEUED only reported unless "
+                              "--include-queued is given (T-20260815-205002196). "
+                              "Requires --host."))
     parser.add_argument("--host",
                         help="Claim suffix to release, e.g. ASUS-GEI. Exact match.")
     parser.add_argument("--tickets-dir",
                         help="Ticket queue root (for --release-session).")
+    parser.add_argument("--include-queued", action="store_true",
+                        help=("Also release QUEUED claims (not just report them). "
+                              "Still never releases an actively delegated ticket "
+                              "(fresh DELEGIERT_AN marker)."))
     parser.add_argument("--dry-run", action="store_true",
                         help="Show what --release-session would free, change nothing.")
+    parser.add_argument("--mark-delegated", metavar="TICKET",
+                        help="Write a DELEGIERT_AN marker into TICKET. Requires --agent.")
+    parser.add_argument("--agent",
+                        help="Agent identity for --mark-delegated, e.g. claude-code@ASUS-GEI.")
     args = parser.parse_args(argv)
+
+    if args.mark_delegated:
+        if not args.agent:
+            parser.error("--mark-delegated requires --agent")
+        try:
+            mark_delegated(args.mark_delegated, args.agent)
+        except FileNotFoundError as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"MARKED: {args.mark_delegated} DELEGIERT_AN: {args.agent}")
+        return 0
 
     if args.release_session:
         if not args.host or not args.tickets_dir:
             parser.error("--release-session requires --host and --tickets-dir")
-        freed, refused = release_claims(
+        freed, refused, held = release_claims(
             args.tickets_dir, host=args.host, dry_run=args.dry_run,
-            report_refused=True)
+            include_queued=args.include_queued, report_refused=True)
         label = "WOULD RELEASE" if args.dry_run else "RELEASED"
         for path in freed:
             print(f"{label}: {path}")
         for path, reason in refused:
             print(f"REFUSED: {path} -- {reason}")
-        print(f"{label} {len(freed)} claim(s) for host {args.host}"
-              + (f", {len(refused)} refused" if refused else ""))
+        for path, reason in held:
+            print(f"HELD: {path} -- {reason}")
+        summary = f"{label} {len(freed)} claim(s) for host {args.host}"
+        if refused:
+            summary += f", {len(refused)} refused"
+        if held:
+            summary += f", {len(held)} held (queued/active)"
+        print(summary)
         return 1 if refused else 0
 
     if not args.source or not args.dest_dir:
-        parser.error("source and dest_dir are required unless --release-session is given")
+        parser.error("source and dest_dir are required unless --release-session "
+                      "or --mark-delegated is given")
     try:
         target = move_ticket(args.source, args.dest_dir)
     except (TicketCollisionError, FileNotFoundError, RuntimeError) as exc:

@@ -175,6 +175,10 @@ class TestReleaseSessionClaims(unittest.TestCase):
             (d / name).write_text(name, encoding="utf-8")
 
     def test_releases_only_own_host_in_working_folders(self):
+        """T-20260815-205002196: QUEUED ist standardmaessig NICHT dabei --
+        nur ACTIONABLE wird bedingungslos freigegeben. QUEUED bleibt
+        geclaimed und wird nur gemeldet (siehe test_queued_is_held_by_default
+        weiter unten), sonst wuerde eine aktive Delegation blind freigegeben."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
@@ -182,8 +186,10 @@ class TestReleaseSessionClaims(unittest.TestCase):
 
             self.assertEqual(
                 sorted(p.name for p in freed),
-                ["T-20260815-01.txt", "T-20260815-02.txt"])
-            self.assertTrue((base / "QUEUED" / "T-20260815-01.txt").is_file())
+                ["T-20260815-02.txt"])
+            self.assertTrue(
+                (base / "QUEUED" / "T-20260815-01.ASUS-GEI.txt").is_file(),
+                "QUEUED darf standardmaessig NICHT freigegeben werden")
             self.assertTrue((base / "ACTIONABLE" / "T-20260815-02.txt").is_file())
 
     def test_foreign_claims_are_never_touched(self):
@@ -230,25 +236,157 @@ class TestReleaseSessionClaims(unittest.TestCase):
             base = Path(tmp)
             self._queue(base)
             planned = ticket_mover.release_claims(base, host="ASUS-GEI", dry_run=True)
-            self.assertEqual(len(planned), 2)
+            self.assertEqual([p.name for p in planned], ["T-20260815-02.txt"])
             self.assertTrue((base / "QUEUED" / "T-20260815-01.ASUS-GEI.txt").is_file())
             self.assertTrue((base / "ACTIONABLE" / "T-20260815-02.ASUS-GEI.txt").is_file())
 
     def test_collision_does_not_abort_the_whole_release(self):
         """Ein blockiertes Ticket darf die Rueckgabe der uebrigen nicht
         verhindern -- sonst bleibt eine ganze Session geclaimed, weil ein
-        einziger Name belegt war."""
+        einziger Name belegt war. include_queued=True, damit das blockierte
+        QUEUED-Ticket ueberhaupt einen Freigabeversuch erlebt."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             (base / "QUEUED" / "T-20260815-01.txt").write_text("blockiert", encoding="utf-8")
 
-            freed, refused = ticket_mover.release_claims(
-                base, host="ASUS-GEI", report_refused=True)
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", include_queued=True, report_refused=True)
 
-            self.assertEqual([p.name for p in freed], ["T-20260815-02.txt"])
+            self.assertEqual(sorted(p.name for p in freed), ["T-20260815-02.txt"])
             self.assertEqual(len(refused), 1)
+            self.assertEqual(held, [])
             self.assertTrue((base / "QUEUED" / "T-20260815-01.ASUS-GEI.txt").is_file())
+
+
+class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
+    """T-20260815-205002196: QUEUED = 'an einen Agenten uebergeben, Ergebnis
+    aussteht' -- da arbeitet moeglicherweise noch jemand, auch wenn DIESE
+    Rueckgabe von einem anderen (z. B. gerade beendeten) Prozess desselben
+    Hosts aufgerufen wird. Belegter Fall: der Dry-Run vom 2026-08-15 haette
+    ein Ticket freigegeben, an dem ein Subagent aktiv arbeitete."""
+
+    def _one_queued(self, base: Path, host: str = "ASUS-GEI") -> Path:
+        d = base / "QUEUED"
+        d.mkdir(parents=True, exist_ok=True)
+        ticket = d / f"T-20260815-01.{host}.txt"
+        ticket.write_text("INHALT", encoding="utf-8")
+        return ticket
+
+    def test_queued_is_held_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ticket = self._one_queued(base)
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", report_refused=True)
+            self.assertEqual(freed, [])
+            self.assertEqual(refused, [])
+            self.assertEqual(len(held), 1)
+            self.assertEqual(held[0][0], ticket)
+            self.assertIn("not included", held[0][1])
+            self.assertTrue(ticket.is_file(), "darf nicht freigegeben worden sein")
+
+    def test_include_queued_releases_orphaned_queued_ticket(self):
+        """Kein DELEGIERT_AN-Vermerk -> gilt als verwaist (Worker/Session ist
+        weg) -> darf mit --include-queued freigegeben werden."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._one_queued(base)
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", include_queued=True, report_refused=True)
+            self.assertEqual([p.name for p in freed], ["T-20260815-01.txt"])
+            self.assertEqual(held, [])
+
+    def test_actively_delegated_queued_ticket_is_never_released(self):
+        """Der eigentliche Kernfall aus dem Ticket: ein frischer
+        DELEGIERT_AN-Vermerk schuetzt das Ticket, SELBST mit
+        include_queued=True."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ticket = self._one_queued(base)
+            ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
+
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", include_queued=True, report_refused=True)
+
+            self.assertEqual(freed, [])
+            self.assertEqual(len(held), 1)
+            self.assertIn("active delegation", held[0][1])
+            self.assertTrue(ticket.is_file())
+            self.assertIn("DELEGIERT_AN: claude-code@ASUS-GEI",
+                           ticket.read_text(encoding="utf-8"))
+
+    def test_stale_delegation_marker_does_not_block_release(self):
+        """Sicherheitsnetz: ein Vermerk ohne Frische (Worker abgestuerzt, nie
+        aktualisiert) darf einen Claim nicht fuer immer schuetzen."""
+        import os
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ticket = self._one_queued(base)
+            ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
+            # mtime kuenstlich auf "vor 7 Stunden" setzen (Default-Schwelle: 6h).
+            old = ticket.stat().st_mtime - 7 * 3600
+            os.utime(ticket, (old, old))
+
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", include_queued=True, report_refused=True)
+
+            self.assertEqual([p.name for p in freed], ["T-20260815-01.txt"])
+            self.assertEqual(held, [])
+
+    def test_dry_run_reports_queued_candidate_without_touching_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            ticket = self._one_queued(base)
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", dry_run=True, report_refused=True)
+            self.assertEqual(freed, [])
+            self.assertEqual(len(held), 1)
+            self.assertTrue(ticket.is_file())
+
+    def test_foreign_host_queued_ticket_is_never_touched(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            self._one_queued(base, host="WORKSTATION-LG")
+            freed, refused, held = ticket_mover.release_claims(
+                base, host="ASUS-GEI", include_queued=True, report_refused=True)
+            self.assertEqual(freed, [])
+            self.assertEqual(held, [])
+            self.assertTrue(
+                (base / "QUEUED" / "T-20260815-01.WORKSTATION-LG.txt").is_file())
+
+
+class TestDelegationMarker(unittest.TestCase):
+    """is_actively_delegated() / mark_delegated() als eigenstaendige
+    Bausteine, unabhaengig von release_claims()."""
+
+    def test_mark_then_check_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            ticket.write_text("VORGANG\n", encoding="utf-8")
+            self.assertFalse(ticket_mover.is_actively_delegated(ticket))
+            ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
+            self.assertTrue(ticket_mover.is_actively_delegated(ticket))
+
+    def test_repeated_marking_does_not_duplicate_the_line(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            ticket.write_text("VORGANG\n", encoding="utf-8")
+            ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
+            ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
+            text = ticket.read_text(encoding="utf-8")
+            self.assertEqual(text.count("DELEGIERT_AN:"), 1)
+
+    def test_marking_missing_ticket_raises(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(FileNotFoundError):
+                ticket_mover.mark_delegated(Path(tmp) / "nope.txt", "x")
+
+    def test_missing_ticket_is_not_actively_delegated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertFalse(
+                ticket_mover.is_actively_delegated(Path(tmp) / "nope.txt"))
 
 
 class TestRenameForRenumbering(unittest.TestCase):

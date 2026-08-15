@@ -4,6 +4,33 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### release_claims: QUEUED wurde blind mitfreigegeben (2026-08-15)
+
+`--release-session` behandelte `QUEUED` und `ACTIONABLE` gleich als
+"Arbeitsordner". Falsch: `ACTIONABLE` = sofort umsetzbar, niemand dran ->
+Freigabe unbedenklich. `QUEUED` = an einen Agenten uebergeben, Ergebnis
+aussteht -> da arbeitet moeglicherweise noch jemand, auch wenn DIESE
+Rueckgabe von einem anderen (z. B. gerade beendeten) Prozess desselben
+Hosts aufgerufen wird. Ein Dry-Run zeigte real, dass die Rueckgabe ein
+Ticket freigegeben haette, an dem ein Subagent aktiv arbeitete
+(T-20260815-205002196).
+
+Zwei Sicherungen, kombiniert:
+- **Zweistufig:** `QUEUED` wird standardmaessig nur GEMELDET (`HELD`), nicht
+  freigegeben. `--include-queued` gibt sie mit frei.
+- **DELEGIERT_AN-Vermerk:** `mark_delegated()`/`is_actively_delegated()` --
+  ein Ticket mit frischem Vermerk wird NIE freigegeben, auch nicht mit
+  `--include-queued`. Frische = Dateiaenderungszeit < 6h
+  (`DELEGATION_STALE_AFTER_HOURS`, Sicherheitsnetz gegen einen
+  abgestuerzten Worker, der den Marker nie zurueckgenommen hat).
+
+Neue CLI-Flags: `--include-queued`, `--mark-delegated <ticket> --agent
+<agent>`. `release_claims()` liefert bei `report_refused=True` jetzt ein
+3-Tupel `(freed, refused, held)` statt eines 2-Tupels -- Vertragsbruch,
+kein anderer Aufrufer im System betroffen (geprueft). Prompts (DE/EN,
+Abschnitte "Ticket-Rueckgabe" und "(e) Sitzungsabschluss") entsprechend
+nachgezogen.
+
 ### move_ticket: blosser Clustername als Ziel (2026-08-15)
 
 Ein Worker rief `move_ticket(source, "SOLVED")` mit dem blossen Clusternamen auf.
