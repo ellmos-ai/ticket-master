@@ -16,7 +16,8 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 
@@ -96,6 +97,122 @@ LOESUNG / ERGEBNIS
 # diesem Ticket fuehrte.
 _LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
                       "USER", "PARKED", "SOLVED", "PENDING", ".USER")
+
+# Canonical categories-v1 contract.  Keep this in one machine-readable place so
+# a strict parser does not drift away from docs/CATEGORIES.*.md and the ticket
+# template.  ``marker`` intentionally belongs to both WAITING and USER:
+# WAITING/marker is autonomously observable, whereas USER/marker requires the
+# user to provide or confirm that the marker has occurred (T-20260728-12).
+LIFECYCLE_SUBCATEGORIES: dict[str, frozenset[str]] = {
+    "INBOX": frozenset(),
+    "ACTIONABLE": frozenset(),
+    "QUEUED": frozenset(),
+    "BLOCKED": frozenset(
+        {"host-receipt", "foreign-state", "lock", "quota", "dependency"}
+    ),
+    "WAITING": frozenset({"scheduled", "review-due", "marker"}),
+    "USER": frozenset({"decision", "data", "freigabe", "hardware", "session", "marker"}),
+    "PARKED": frozenset({"skip", "backlog", "until-trigger"}),
+    "SOLVED": frozenset(),
+}
+_LEGACY_LIFECYCLE_CLUSTERS = frozenset({"OPEN", "PENDING", ".USER"})
+_REQUIRES_SUBCATEGORY = frozenset({"BLOCKED", "WAITING", "USER", "PARKED"})
+_STATUS_VALUE_RE = re.compile(
+    r"^(?P<cluster>\.USER|[A-Z]+)"
+    r"(?:/(?P<subcategory>[a-z][a-z0-9-]*))?"
+    r"(?:\s+\((?P<label>seit|since)\s+(?P<since>\d{4}-\d{2}-\d{2})\))?$"
+)
+
+
+class LifecycleStatusError(ValueError):
+    """Raised when a STATUS value violates the categories-v1 contract."""
+
+
+@dataclass(frozen=True)
+class LifecycleStatus:
+    cluster: str
+    subcategory: str | None = None
+    since: str | None = None
+
+
+def parse_lifecycle_status(value: str, *, allow_legacy: bool = True) -> LifecycleStatus:
+    """Parse and validate a STATUS value from a ticket.
+
+    Accepted date suffixes are bilingual: ``(seit YYYY-MM-DD)`` and
+    ``(since YYYY-MM-DD)``.  The language label is presentation-only, so the
+    returned value keeps the ISO date but not the label.
+    """
+
+    match = _STATUS_VALUE_RE.fullmatch(value.strip())
+    if match is None:
+        raise LifecycleStatusError(f"invalid STATUS syntax: {value!r}")
+    cluster = match.group("cluster")
+    subcategory = match.group("subcategory")
+    since = match.group("since")
+    if since is not None:
+        try:
+            date.fromisoformat(since)
+        except ValueError as exc:
+            raise LifecycleStatusError(f"invalid STATUS date: {since!r}") from exc
+
+    if cluster in _LEGACY_LIFECYCLE_CLUSTERS:
+        if not allow_legacy:
+            raise LifecycleStatusError(f"legacy STATUS is read-only: {cluster}")
+        if subcategory is not None:
+            raise LifecycleStatusError(
+                f"legacy STATUS does not accept a subcategory: {cluster}/{subcategory}"
+            )
+        return LifecycleStatus(cluster=cluster, since=since)
+
+    allowed = LIFECYCLE_SUBCATEGORIES.get(cluster)
+    if allowed is None:
+        raise LifecycleStatusError(f"unknown lifecycle cluster: {cluster}")
+    if cluster in _REQUIRES_SUBCATEGORY and subcategory is None:
+        raise LifecycleStatusError(f"STATUS {cluster} requires a subcategory")
+    if cluster not in _REQUIRES_SUBCATEGORY and subcategory is not None:
+        raise LifecycleStatusError(f"STATUS {cluster} does not accept a subcategory")
+    if subcategory is not None and subcategory not in allowed:
+        raise LifecycleStatusError(
+            f"unknown subcategory for {cluster}: {subcategory}"
+        )
+    return LifecycleStatus(cluster=cluster, subcategory=subcategory, since=since)
+
+
+def format_lifecycle_status(status: LifecycleStatus, *, language: str = "en") -> str:
+    """Render a parsed STATUS value without losing its canonical meaning."""
+
+    # Revalidate constructed dataclass instances before rendering them.
+    base = status.cluster
+    if status.subcategory is not None:
+        base += f"/{status.subcategory}"
+    label = "seit" if language == "de" else "since"
+    rendered = f"{base} ({label} {status.since})" if status.since else base
+    parse_lifecycle_status(rendered)
+    return rendered
+
+
+def validate_lifecycle_status(
+    value: str,
+    *,
+    folder: str | None = None,
+    allow_legacy: bool = True,
+) -> LifecycleStatus:
+    """Validate a STATUS value and optionally its lifecycle-folder mirror."""
+
+    status = parse_lifecycle_status(value, allow_legacy=allow_legacy)
+    if folder is None:
+        return status
+    folder_name = str(folder).strip("/\\") or "INBOX"
+    expected = {
+        "OPEN": "INBOX",
+        "PENDING": "PENDING",
+        ".USER": ".USER",
+    }.get(status.cluster, status.cluster)
+    if folder_name != expected:
+        raise LifecycleStatusError(
+            f"STATUS {status.cluster} is not congruent with folder {folder_name}"
+        )
+    return status
 
 # Ticket-Dateiname: T-<8-stelliges Datum>-<laufende Nummer>[.<HOST-oder-Suffix>].txt
 # Eine Gruppe fuer Datum, eine fuer die Nummer, eine optionale fuer den Claim-/

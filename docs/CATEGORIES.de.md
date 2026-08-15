@@ -7,7 +7,8 @@ für den Betrieb ohne ständige User-Rückfragen.
 
 Verbindlich für: `prompts/TICKET-MASTER.de.md` / `TICKET-MASTER.en.md`
 (Routing), `prompts/TICKET-WRITER.*.md` (Dedup-Scan), `lib/ticket_writer.py`
-(`_LIFECYCLE_SUBDIRS`), `tickets/_templates/TICKET.txt` (STATUS-Feld).
+(`_LIFECYCLE_SUBDIRS`, STATUS-Parser/-Validator),
+`tickets/_templates/TICKET.txt` (STATUS-Feld).
 
 ---
 
@@ -20,7 +21,7 @@ Verbindlich für: `prompts/TICKET-MASTER.de.md` / `TICKET-MASTER.en.md`
 | QUEUED | `tickets/QUEUED/` | an Provider/Agent übergeben, Ergebnis ausstehend | — |
 | BLOCKED | `tickets/BLOCKED/` | externer Blocker (nicht der User) | `host-receipt`, `foreign-state`, `lock`, `quota`, `dependency` |
 | WAITING | `tickets/WAITING/` | zeit- oder marker-gebunden | `scheduled`, `review-due`, `marker` |
-| USER | `tickets/USER/` | hängt zwingend am User | `decision`, `data`, `freigabe`, `hardware`, `session` |
+| USER | `tickets/USER/` | hängt zwingend am User | `decision`, `data`, `freigabe`, `hardware`, `session`, `marker` |
 | PARKED | `tickets/PARKED/` | bewusst zurückgestellt | `skip`, `backlog`, `until-trigger` |
 | SOLVED | `tickets/SOLVED/` | gelöst und empirisch bestätigt | — |
 
@@ -50,7 +51,9 @@ INBOX.
 
 - `scheduled` — festes Datum/Zeitplan; Bearbeitung startet am Termin.
 - `review-due` — ein Review ist fällig (fachlich, nicht blockiert).
-- `marker` — wartet auf eine Marker-Datei oder ein definiertes Event.
+- `marker` — wartet auf eine autonom prüfbare Marker-Datei oder ein definiertes
+  Event; ist die Feststellung oder Bestätigung nur durch den User möglich,
+  stattdessen `USER/marker` verwenden.
 
 ### USER (nächster Schritt ist zwingend der User)
 
@@ -59,6 +62,9 @@ INBOX.
 - `freigabe` — eine explizite Freigabe/Genehmigung des Users ist nötig.
 - `hardware` — physischer Schritt/Gerät, den nur der User ausführen kann.
 - `session` — nur-User-startbares Modell, Login-Session oder manueller Lauf.
+- `marker` — ein Marker/Ereignis muss zwingend vom User geliefert oder
+  bestätigt werden. Beispiel: Der User bestätigt, dass ein Wettbewerb beendet
+  ist. Ein autonom prüfbarer Marker bleibt `WAITING/marker`.
 
 ### PARKED (bewusst zurückgestellt)
 
@@ -77,7 +83,8 @@ STATUS:        <CLUSTER>[/<unterkategorie>] (seit YYYY-MM-DD)
 ```
 
 Beispiele: `STATUS: ACTIONABLE (seit 2026-07-31)`,
-`STATUS: BLOCKED/host-receipt (seit 2026-07-31)`.
+`STATUS: BLOCKED/host-receipt (seit 2026-07-31)`,
+`STATUS: USER/marker (seit 2026-07-31)`.
 
 - Ordner und STATUS müssen kongruent sein.
 - Jedes Verschieben zwischen Clustern aktualisiert STATUS und fügt eine
@@ -126,7 +133,9 @@ Betrieb ohne ständige User-Rückfragen:
   → nach ACTIONABLE ziehen und bearbeiten, nicht liegen lassen.
 - **USER → gebündelt vorlegen.** USER-Tickets sammeln und als EINE gebündelte
   Vorlage präsentieren (keine Einzel-Pings). Nach der User-Antwort jedes
-  Ticket sofort umhängen (meist ACTIONABLE oder PARKED/skip).
+  Ticket sofort umhängen (meist ACTIONABLE oder PARKED/skip). Das gilt auch
+  für `USER/marker`; der Marker wird nicht still als autonomes
+  `WAITING/marker` umgedeutet.
 - **WAITING → am Datum/Marker ziehen.** `scheduled`/`review-due` beim
   Tageswechsel, `marker` bei jedem Lauf prüfen; eingetreten → ACTIONABLE.
 - **PARKED → kein Auto-Re-Check.** Nur auf ausdrücklichen Auftrag oder beim

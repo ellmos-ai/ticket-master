@@ -57,7 +57,7 @@ soll.
 
 2. **Erfordert ein nur vom User startbares Modell / Gerät / externe Freigabe /
    ist gerade nicht empirisch verifizierbar**
-   → Ticket nach `USER/` (Unterkategorie `session`/`hardware`/`freigabe`) bzw.
+   → Ticket nach `USER/` (Unterkategorie `session`/`hardware`/`freigabe`/`marker`) bzw.
    `BLOCKED/` (externer Blocker) verschieben — Kategorien v1, siehe
    `docs/CATEGORIES.de.md`.
 
@@ -160,7 +160,10 @@ Die Konventionen stehen unten und im Template `tickets/_templates/TICKET.txt`.
     lock / quota / dependency)
   - Zeit-/Marker-gebunden → `tickets/WAITING/` (scheduled / review-due / marker)
   - Hängt zwingend am User → `tickets/USER/` (decision / data / freigabe /
-    hardware / session)
+    hardware / session / marker)
+  - Marker-Regel: autonom prüfbarer Marker → `WAITING/marker`; muss der User
+    Eintritt/Feststellung liefern oder bestätigen → `USER/marker`. Einen
+    belegten `USER/marker`-Status niemals still nach WAITING umdeuten.
   - Bewusst zurückgestellt → `tickets/PARKED/` (skip / backlog / until-trigger)
   - Ticket gelöst → nach `tickets/SOLVED/` verschieben
   - Legacy (vor v1, nur lesen, keine neuen Einträge): `tickets/PENDING/`,

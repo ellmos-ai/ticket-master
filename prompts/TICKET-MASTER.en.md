@@ -54,7 +54,7 @@ context — exactly what the Lean Router principle exists to prevent.
 
 2. **Requires user-only model / device / external approval / not empirically
    verifiable right now**
-   → Move ticket to `USER/` (subcategory `session`/`hardware`/`freigabe`) or
+   → Move ticket to `USER/` (subcategory `session`/`hardware`/`freigabe`/`marker`) or
    `BLOCKED/` (external blocker) — categories v1, see
    `docs/CATEGORIES.en.md`.
 
@@ -151,7 +151,10 @@ Conventions are below and in the template at `tickets/_templates/TICKET.txt`.
     lock / quota / dependency)
   - Time-/marker-bound → `tickets/WAITING/` (scheduled / review-due / marker)
   - Strictly user-dependent → `tickets/USER/` (decision / data / freigabe /
-    hardware / session)
+    hardware / session / marker)
+  - Marker rule: autonomously observable marker → `WAITING/marker`; if the
+    user must provide or confirm occurrence, use `USER/marker`. Never silently
+    reinterpret an evidenced `USER/marker` status as WAITING.
   - Deliberately set aside → `tickets/PARKED/` (skip / backlog / until-trigger)
   - Ticket solved → move to `tickets/SOLVED/`
   - Legacy (pre-v1, read-only, no new entries): `tickets/PENDING/`,
