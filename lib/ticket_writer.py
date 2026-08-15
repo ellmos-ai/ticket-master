@@ -15,6 +15,7 @@ home of the helper; the running instance lives in the user's _scripts/ mirror.
 from __future__ import annotations
 
 import os
+import random
 import re
 from datetime import datetime
 from pathlib import Path
@@ -100,15 +101,15 @@ _LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
 # Ticket-Dateiname:
 #   T-<8-stelliges Datum>-<laufende Nummer>[_<slug>][.<HOST-oder-Suffix>].txt
 # Gruppen: date, number, slug (optional, beschreibend), suffix (optional, Claim).
-# Von _next_number UND vom Audit (lib/ticket_audit.py) genutzt, damit beide
-# garantiert dieselbe Grammatik sehen und nicht auseinanderlaufen.
+# Von der Nummernvergabe UND vom Audit (lib/ticket_audit.py) genutzt, damit
+# beide garantiert dieselbe Grammatik sehen und nicht auseinanderlaufen.
 #
 # Die slug-Gruppe kam am 2026-08-15 dazu (Messung am Live-Bestand: 277
 # Ticketdateien, davon 110 nicht erkannt, 101 belegte Datum/Nummer-Paare
 # unsichtbar). Der Bestand traegt neben "T-DATE-NN[.HOST].txt" verbreitet die
 # Form "T-DATE-NN_beschreibung.txt" mit UNTERSTRICH -- fuer das alte Muster,
 # das an dieser Stelle einen Punkt verlangte, existierten diese Tickets nicht.
-# _next_number konnte deren Nummern daher ein zweites Mal ausgeben, und
+# Die Vergabe konnte deren Nummern daher ein zweites Mal ausgeben, und
 # ticket_audit.collect_ids sah eine Kollision zwischen einer Slug- und einer
 # Nicht-Slug-Fassung derselben Nummer nicht. Das ist derselbe Defekt wie in
 # T-20260808-03, nur eine Ebene tiefer: dort vergaben zwei Agenten dieselbe
@@ -157,23 +158,76 @@ def iter_lifecycle_files(base: Path):
                        m.group("suffix"))
 
 
-def _next_number(base: Path, datestr: str) -> int:
-    """Naechste freie laufende Nummer fuer ein Datum (beruecksichtigt claimed
-    Tickets T-DATE-NN.<HOST>.txt und unclaimed T-DATE-NN.txt ueber alle
-    Lebenszyklus-Ordner)."""
-    highest = 0
-    for _path, entry_date, number, _suffix in iter_lifecycle_files(base):
-        if entry_date == datestr:
-            highest = max(highest, number)
-    return highest + 1
+# Stellenzahl der Zufallsnummer (Nutzerentscheid 2026-08-15).
+ID_DIGITS = 9
+_ID_MIN = 10 ** (ID_DIGITS - 1)
+_ID_MAX = 10 ** ID_DIGITS - 1
+
+# Reine Schleifenbremse: bei 9 Stellen ist schon der erste Wurf praktisch
+# immer frei.
+_MAX_DRAWS = 100
+
+
+def used_numbers(base: Path, datestr: str) -> set[int]:
+    """Alle an diesem Datum bereits vergebenen Nummern, ueber alle
+    Lebenszyklus-Ordner hinweg (claimed wie unclaimed)."""
+    return {number for _path, entry_date, number, _suffix
+            in iter_lifecycle_files(base) if entry_date == datestr}
+
+
+def draw_number(used: set[int], rng=None) -> int:
+    """Zieht eine freie 9-stellige Zufallsnummer.
+
+    WARUM ZUFALL STATT HOCHZAEHLEN (Nutzerentscheid 2026-08-15):
+    Die Queue liegt in einem cloud-synchronisierten Ordner, den mehrere Hosts
+    gleichzeitig benutzen. `os.O_EXCL` beim Anlegen wirkt aber nur LOKAL, und
+    ein Abgleich gegen den Bestand sieht nur, was der Cloud-Sync bereits
+    zugestellt hat. Zwei Hosts, die kurz nacheinander ein Ticket anlegen,
+    ziehen beim Hochzaehlen daher zwangslaeufig dieselbe Nummer -- am
+    2026-08-15 real passiert: um 18:45 legte ASUS-GEI T-20260815-21 an, um
+    18:46 WORKSTATION-LG einen voellig anderen Vorgang unter derselben ID.
+    Der <HOST>-Suffix verhindert dabei die DATEI-Kollision, nicht die
+    ID-Kollision.
+
+    Zufall loest genau das: zwei Hosts, die einander nicht sehen koennen,
+    ziehen trotzdem verschiedene Nummern. Der Abgleich gegen `used` ist NICHT
+    der Schutzmechanismus -- er kann den fremden Stand ja nicht kennen --,
+    sondern nur eine lokale Zusatzsicherung. Die eigentliche Sicherheit kommt
+    aus der Groesse des Zahlenraums.
+
+    WARUM 9 STELLEN: Der Raum muss das Geburtstagsparadox aushalten, nicht
+    nur die Einzelkollision. Bei 35 Tickets am Tag (realer Durchsatz am
+    2026-08-15) liegt die Kollisionswahrscheinlichkeit bei 2 Stellen bereits
+    bei 99,95 %, bei 4 Stellen noch bei 6,4 %, bei 9 Stellen bei rund
+    0,000007 % pro Tag.
+
+    WARUM KEIN HOST-KUERZEL in der Nummer (geprueft und verworfen
+    2026-08-15): Der Dateiname traegt mit dem <HOST>-Suffix bereits eine
+    Host-Angabe, und die bedeutet ZUSTAENDIGKEIT (wer bearbeitet gerade). Ein
+    zweites Host-Zeichen in der ID haette daneben HERKUNFT bedeutet (wer hat
+    angelegt) -- zwei Bedeutungen, die sich im Alltag verwechseln lassen;
+    "T-20260815-A21.WORKSTATION-LG.txt" liest sich wie ein Widerspruch.
+    Ausserdem muesste man die Kuerzel aller Hosts kennen, um eine ID
+    ueberhaupt zu verstehen.
+    """
+    rng = rng or random.SystemRandom()
+    for _ in range(_MAX_DRAWS):
+        number = rng.randrange(_ID_MIN, _ID_MAX + 1)
+        if number not in used:
+            return number
+    raise RuntimeError(
+        f"no free ticket number found after {_MAX_DRAWS} draws "
+        f"({len(used)} numbers already taken for this date)")
 
 
 def create(title: str, body: str, project: str | None = None, priority: str = "mittel",
            pipeline: str = "<offen>", tickets_dir: Path | None = None,
-           today: str | None = None) -> str:
+           today: str | None = None, rng=None) -> str:
     """Erzeugt ein unclaimed Ticket in <tickets_dir>/INBOX/. Returns den Pfad.
 
-    tickets_dir ist erforderlich (oder via TICKET_MASTER_TICKETS_DIR gesetzt)."""
+    tickets_dir ist erforderlich (oder via TICKET_MASTER_TICKETS_DIR gesetzt).
+    rng ist injizierbar (wie today=) fuer deterministische Tests; ohne Angabe
+    wird random.SystemRandom() genutzt."""
     base = Path(tickets_dir) if tickets_dir else _default_tickets_dir()
     if base is None:
         raise ValueError(
@@ -183,9 +237,10 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
 
     date_iso = today or datetime.now().strftime("%Y-%m-%d")
     datestr = date_iso.replace("-", "")
-    number = _next_number(base, datestr)
+    used = used_numbers(base, datestr)
     while True:
-        ticket_id = f"T-{datestr}-{number:02d}"
+        number = draw_number(used, rng)
+        ticket_id = f"T-{datestr}-{number}"
         target = inbox / f"{ticket_id}.txt"
         content = _TICKET_TEMPLATE.format(
             ticket_id=ticket_id, title=title.strip() or "<ohne Titel>",
@@ -194,13 +249,14 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
             body=body.strip() or "<keine Beschreibung>",
         )
         try:
-            # Exklusiv anlegen ("x"): schreibt NIE ueber ein bestehendes Ticket.
-            # Vergibt ein paralleler Erzeuger (anderes System, Cloud-Sync)
-            # dieselbe Nummer, kollidiert der zweite hier und zaehlt hoch.
+            # Exklusiv anlegen ("x"): schreibt NIE ueber ein bestehendes
+            # Ticket. Letzte Sicherung, falls ein paralleler Erzeuger auf
+            # DIESEM Host in derselben Millisekunde dieselbe Zahl zieht --
+            # dann wird neu gewuerfelt statt ueberschrieben.
             with target.open("x", encoding="utf-8") as fh:
                 fh.write(content)
         except FileExistsError:
-            number += 1
+            used.add(number)
             continue
         return str(target)
 

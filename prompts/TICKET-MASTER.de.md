@@ -85,15 +85,34 @@ Wenn die Ticket-Queue über einen cloud-synced Ordner (OneDrive, Dropbox,
 Google Drive) von mehreren Systemen gleichzeitig genutzt wird, wird der Claim
 per **Dateiname** signalisiert — kein In-File-Feld nötig:
 
-| Zustand    | Dateiname-Muster               | Beispiel                         |
-|------------|-------------------------------|----------------------------------|
-| Unclaimed  | `T-YYYYMMDD-NN.txt`           | `T-20260619-01.txt`              |
-| Claimed    | `T-YYYYMMDD-NN.<HOST>.txt`    | `T-20260619-01.WORKSTATION.txt`  |
-| Gelöst     | nach `SOLVED/` verschieben    | wie bisher                       |
+| Zustand    | Dateiname-Muster               | Beispiel                                |
+|------------|-------------------------------|-----------------------------------------|
+| Unclaimed  | `T-YYYYMMDD-<nr>.txt`         | `T-20260619-483920174.txt`              |
+| Claimed    | `T-YYYYMMDD-<nr>.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
+| Gelöst     | nach `SOLVED/` verschieben    | wie bisher                              |
 
 **Glob-Muster für Agenten:**
-- `tickets/T-??????-??.txt` → unclaimed Tickets
-- `tickets/T-*.WORKSTATION.txt` → von WORKSTATION geclaimte Tickets
+- `tickets/*/T-*.txt` ohne Host-Suffix → unclaimed Tickets
+- `tickets/*/T-*.WORKSTATION.txt` → von WORKSTATION geclaimte Tickets
+
+### Die Nummer ist eine 9-stellige Zufallszahl (seit 2026-08-15)
+
+**Nie selbst würfeln, nie hochzählen — immer `lib/ticket_writer.py create()`
+bzw. die CLI benutzen.** Die Vergabe zieht eine 9-stellige Zufallszahl, gleicht
+sie lokal gegen alle Lebenszyklus-Ordner ab und legt die Datei exklusiv an;
+kollidiert sie doch, wird neu gewürfelt.
+
+**Warum Zufall und nicht fortlaufend:** `O_EXCL` und der Abgleich wirken nur
+**lokal**. Wer hochzählt, zieht auf zwei Hosts zwangsläufig dieselbe Nummer,
+sobald der Cloud-Sync hinterherhinkt — am 2026-08-15 real passiert: 18:45 legte
+ASUS-GEI `T-20260815-21` an, 18:46 WORKSTATION-LG einen völlig anderen Vorgang
+unter derselben ID. Der `<HOST>`-Suffix verhindert die *Datei*-Kollision, nicht
+die *ID*-Kollision. Zufall löst genau das: Hosts, die einander nicht sehen,
+ziehen trotzdem verschiedene Nummern. Bei 35 Tickets am Tag liegt das
+Restrisiko bei rund 0,000007 % pro Tag.
+
+**Bestehende kurze IDs bleiben gültig** (`T-20260808-03`); es wird nichts
+migriert. Nur neue Tickets bekommen die lange Form.
 
 Ein Rename im selben Verzeichnis ist auf NTFS/Cloud-Sync atomar. Wenn eine
 Konfliktkopie entsteht, hat ein System den Claim gewonnen; das andere muss

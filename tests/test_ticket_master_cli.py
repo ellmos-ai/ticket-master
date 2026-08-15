@@ -126,7 +126,11 @@ class TicketMasterCliTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 cli.intake_ticket("safe\x00unsafe", tickets_dir=Path(tmp))
 
-    def test_intake_collision_increments_without_overwriting(self):
+    def test_intake_does_not_overwrite_an_existing_ticket(self):
+        """Seit 2026-08-15 wird die Nummer zufaellig gezogen (9-stellig) statt
+        hochgezaehlt. Geprueft wird deshalb die Garantie, nicht der Wert: das
+        vorhandene Ticket bleibt unangetastet, und das neue traegt eine eigene,
+        formgueltige ID am selben Datum."""
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -135,7 +139,8 @@ class TicketMasterCliTests(unittest.TestCase):
             existing = inbox / "T-20260810-01.txt"
             existing.write_text("ORIGINAL", encoding="utf-8")
             path = cli.intake_ticket("new", tickets_dir=base, today="2026-08-10")
-            self.assertEqual(path.name, "T-20260810-02.txt")
+            self.assertNotEqual(path.name, existing.name)
+            self.assertTrue(path.name.startswith("T-20260810-"))
             self.assertEqual(existing.read_text(encoding="utf-8"), "ORIGINAL")
 
     def test_cli_list_json_and_explicit_missing_config_are_controlled(self):

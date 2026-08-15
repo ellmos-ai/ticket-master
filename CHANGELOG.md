@@ -4,6 +4,36 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### ID-Vergabe: 9-stellige Zufallszahl statt fortlaufender Nummer (2026-08-15)
+
+**Der Anlass ist gemessen, nicht theoretisch.** Am 2026-08-15 legte ASUS-GEI um
+18:45 `T-20260815-21` an; um 18:46 legte WORKSTATION-LG einen völlig anderen
+Vorgang unter derselben ID an. `os.O_EXCL` und der Abgleich gegen den Bestand
+wirken nur **lokal** — bei verzögertem Cloud-Sync sehen zwei Hosts einander
+nicht und zählen zwangsläufig auf dieselbe Nummer. Der `<HOST>`-Suffix
+verhindert dabei die *Datei*-Kollision, nicht die *ID*-Kollision.
+
+`create()` zieht deshalb jetzt eine **9-stellige Zufallszahl**, gleicht sie
+lokal gegen alle Lebenszyklus-Ordner ab und legt exklusiv an; bei Kollision
+wird neu gewürfelt statt hochgezählt. Der Abgleich ist ausdrücklich **nicht**
+der Schutzmechanismus (er kann den fremden Stand nicht kennen) — die Sicherheit
+kommt aus der Größe des Zahlenraums.
+
+**Warum 9 Stellen:** Maßgeblich ist das Geburtstagsparadox, nicht die
+Einzelkollision. Bei 35 Tickets am Tag (realer Durchsatz) kollidieren 2 Stellen
+mit 99,95 %, 4 Stellen mit 6,4 %, 9 Stellen mit rund 0,000007 % pro Tag.
+
+**Warum kein Host-Kürzel in der ID** (geprüft und verworfen): Der Dateiname
+trägt mit dem `<HOST>`-Suffix bereits eine Host-Angabe, und die bedeutet
+*Zuständigkeit*. Ein zweites Host-Zeichen in der ID hätte *Herkunft* bedeutet —
+zwei Bedeutungen, die sich verwechseln lassen; `T-20260815-A21.WORKSTATION-LG.txt`
+liest sich wie ein Widerspruch. Zudem müsste man alle Host-Kürzel kennen, um
+eine ID überhaupt zu verstehen.
+
+`create()` nimmt `rng=` (injizierbar wie `today=`) für deterministische Tests.
+Neu: `used_numbers()`, `draw_number()`, Konstante `ID_DIGITS`; `_next_number()`
+entfällt. **Bestehende kurze IDs bleiben gültig, es wird nichts migriert.**
+
 ### Ticket-Rückgabe + gehärtete Dateinamen-Grammatik (2026-08-15)
 
 **Ticket-Rückgabe.** Ein Claim (`T-DATE-NN.<HOST>.txt`) blockierte ein Ticket

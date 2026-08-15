@@ -80,15 +80,34 @@ When the ticket queue is shared across multiple systems via a cloud-synced
 folder (OneDrive, Dropbox, Google Drive), the claim is signalled via the
 **filename** — no in-file field needed:
 
-| State    | Filename pattern              | Example                          |
-|----------|-------------------------------|----------------------------------|
-| Unclaimed | `T-YYYYMMDD-NN.txt`          | `T-20260619-01.txt`              |
-| Claimed  | `T-YYYYMMDD-NN.<HOST>.txt`   | `T-20260619-01.WORKSTATION.txt`  |
-| Solved   | move to `SOLVED/`             | as usual                         |
+| State    | Filename pattern               | Example                                 |
+|----------|--------------------------------|-----------------------------------------|
+| Unclaimed | `T-YYYYMMDD-<nr>.txt`         | `T-20260619-483920174.txt`              |
+| Claimed  | `T-YYYYMMDD-<nr>.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
+| Solved   | move to `SOLVED/`              | as usual                                |
 
 **Glob patterns for agents:**
-- `tickets/T-??????-??.txt` → unclaimed tickets
-- `tickets/T-*.WORKSTATION.txt` → tickets claimed by WORKSTATION
+- `tickets/*/T-*.txt` without a host suffix → unclaimed tickets
+- `tickets/*/T-*.WORKSTATION.txt` → tickets claimed by WORKSTATION
+
+### The number is a 9-digit random value (since 2026-08-15)
+
+**Never roll your own, never count up — always use `lib/ticket_writer.py
+create()` or the CLI.** Allocation draws a 9-digit random number, checks it
+locally against every lifecycle folder, and creates the file exclusively; on a
+collision it draws again.
+
+**Why random instead of sequential:** `O_EXCL` and the local check only work
+**locally**. Counting up makes two hosts draw the same number as soon as cloud
+sync lags — which really happened on 2026-08-15: at 18:45 ASUS-GEI created
+`T-20260815-21`, at 18:46 WORKSTATION-LG created a completely different ticket
+under the same ID. The `<HOST>` suffix prevents the *file* collision, not the
+*ID* collision. Randomness solves exactly that: hosts that cannot see each
+other still draw different numbers. At 35 tickets a day the residual risk is
+about 0.000007 % per day.
+
+**Existing short IDs stay valid** (`T-20260808-03`); nothing is migrated. Only
+new tickets use the long form.
 
 A rename within the same directory is atomic on NTFS/cloud-sync. If a conflict
 copy appears, one system has won the claim; the other must roll back and pick

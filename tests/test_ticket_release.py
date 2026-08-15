@@ -73,15 +73,27 @@ class TestFilenameGrammar(unittest.TestCase):
 
     def test_slug_ticket_blocks_its_number(self):
         """Kern des Defekts: eine per Slug benannte Nummer muss als vergeben
-        gelten, sonst bekommt das naechste Ticket dieselbe ID."""
+        gelten, sonst kann sie ein zweites Mal gezogen werden. Der RNG liefert
+        hier absichtlich zuerst genau die belegte Zahl."""
+        import random
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "SOLVED").mkdir()
-            (base / "SOLVED" / "T-20260612-01_promptboard-readme.txt").write_text(
+            (base / "SOLVED" / "T-20260612-123456789_promptboard-readme.txt").write_text(
                 "alt", encoding="utf-8")
+
+            class ScriptedRandom(random.Random):
+                def __init__(self, values):
+                    super().__init__()
+                    self._values = list(values)
+
+                def randrange(self, *_args, **_kwargs):
+                    return self._values.pop(0)
+
             path = Path(ticket_writer.create(
-                "Neu", "Body", tickets_dir=base, today="2026-06-12"))
-            self.assertEqual(path.name, "T-20260612-02.txt")
+                "Neu", "Body", tickets_dir=base, today="2026-06-12",
+                rng=ScriptedRandom([123456789, 987654321])))
+            self.assertEqual(path.name, "T-20260612-987654321.txt")
 
     def test_slug_is_not_part_of_the_id(self):
         """Der Slug belegt die Nummer, gehoert aber nicht zur ID -- sonst
