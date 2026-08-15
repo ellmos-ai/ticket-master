@@ -139,6 +139,15 @@ und Startsequenz-Schritt „(e) Sitzungsabschluss".
 
 24 neue Tests (`tests/test_ticket_release.py`), Suite 95 → 119 grün.
 
+### Categories-v1 USER marker parity (T-20260815-06)
+
+- Added the already-decided `USER/marker` subcategory to the bilingual
+  categories contract, TICKET-MASTER routing, template, and READMEs. The
+  contract now distinguishes an autonomously observable `WAITING/marker` from
+  a marker that the user must provide or confirm (`USER/marker`).
+- Added a strict bilingual lifecycle STATUS parser/validator and round-trip
+  regressions in `lib/ticket_writer.py`, including folder-congruence checks.
+
 ### Intake lifecycle consistency (T-20260812-06)
 - `ticket_writer.create()` and the shared `--intake` CLI now create unclaimed
   tickets in `INBOX/` with `STATUS: INBOX`, matching the binding categories-v1

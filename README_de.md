@@ -339,7 +339,7 @@ tickets/
 ├── QUEUED/                     <- handed to a provider, awaiting result
 ├── BLOCKED/                    <- external blocker (host-receipt / foreign-state / lock / quota / dependency)
 ├── WAITING/                    <- time- or marker-bound (scheduled / review-due / marker)
-├── USER/                       <- strictly depends on the user (decision / data / freigabe / hardware / session)
+├── USER/                       <- strictly depends on the user (decision / data / freigabe / hardware / session / marker)
 ├── PARKED/                     <- deliberately set aside (skip / backlog / until-trigger)
 ├── SOLVED/                     <- resolved and empirically confirmed
 ├── PENDING/                    <- LEGACY alias (pre-v1) — readable, no new entries
@@ -349,6 +349,8 @@ tickets/
 Das vollständige Kategorien-Modell (Ein-/Ausgangsregeln, Autonomie-Loop,
 STATUS-Spiegelung) steht in [docs/CATEGORIES.de.md](docs/CATEGORIES.de.md)
 ([English](docs/CATEGORIES.en.md)).
+`WAITING/marker` gilt für einen autonom prüfbaren Marker, `USER/marker` wenn
+der User diesen Marker liefern oder bestätigen muss.
 
 Der Audit-/Triage-Trail lebt **pro Ticket** in der Ticketdatei selbst
 (Felder `STATUS` / `VERLAUF` / `LOESUNG`). Triviale, sofort erledigte und
