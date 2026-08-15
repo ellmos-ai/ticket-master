@@ -4,6 +4,21 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### move_ticket: blosser Clustername als Ziel (2026-08-15)
+
+Ein Worker rief `move_ticket(source, "SOLVED")` mit dem blossen Clusternamen auf.
+Als relativer Pfad ist das ein Ordner im **aktuellen Arbeitsverzeichnis** — es
+entstand `ticket-master/lib/SOLVED/`, und das Ticket verschwand still aus der
+Queue. Kein Fehler, keine Warnung: genau die lautlose Fehlablage, gegen die
+dieses Modul sonst fail-closed arbeitet.
+
+`resolve_dest_dir()` loest einen relativen Pfad aus genau einem Namensteil jetzt
+gegen die **Queue-Wurzel der Quelle** auf, wenn der Name ein bekannter
+Lebenszyklus-Ordner ist. Deterministisch (die Quelle bestimmt die Wurzel) und
+trifft, was der Aufrufer meinte. Bewusst eng: jeder andere relative Pfad bleibt
+relativ, sonst wuerde aus Bequemlichkeit Magie. Neu ausserdem `queue_root()`.
+4 Tests (123 gesamt).
+
 ### ID-Vergabe: 9-stellige Zufallszahl statt fortlaufender Nummer (2026-08-15)
 
 **Der Anlass ist gemessen, nicht theoretisch.** Am 2026-08-15 legte ASUS-GEI um

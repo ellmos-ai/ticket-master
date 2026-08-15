@@ -82,6 +82,45 @@ def _should_release_on_move(source: Path, dest_dir: Path) -> bool:
             and dest_dir.name == REACTIVATION_TARGET)
 
 
+def queue_root(source: Path) -> Path:
+    """Wurzel der Queue, ausgehend von einem Ticketpfad.
+
+    Liegt das Ticket in einem Lebenszyklus-Ordner, ist die Wurzel dessen
+    Elternordner; liegt es direkt in der Wurzel (INBOX-Alias), ist sie der
+    eigene Elternordner.
+    """
+    from ticket_writer import _LIFECYCLE_SUBDIRS
+    parent = source.parent
+    return parent.parent if parent.name in _LIFECYCLE_SUBDIRS else parent
+
+
+def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
+    """Loest ein Verschiebeziel auf -- und faengt dabei einen Bedienfehler ab,
+    der am 2026-08-15 real passiert ist.
+
+    Ein Worker rief move_ticket(source, "SOLVED") mit dem blossen Clusternamen
+    auf. Als relativer Pfad ist das ein Ordner im AKTUELLEN Arbeitsverzeichnis;
+    angelegt wurde daher ticket-master/lib/SOLVED/, und das Ticket verschwand
+    still aus der Queue -- ohne Fehler, ohne Warnung. Genau die Sorte lautloser
+    Fehlablage, gegen die dieses Modul sonst fail-closed arbeitet.
+
+    Deshalb: Ist das Ziel ein RELATIVER Pfad aus genau einem Namensteil UND ist
+    dieser Name ein bekannter Lebenszyklus-Ordner, wird er gegen die Queue-Wurzel
+    der QUELLE aufgeloest. Das ist deterministisch (die Quelle bestimmt die
+    Wurzel) und trifft immer das, was der Aufrufer gemeint hat.
+
+    Bewusst eng gehalten: Ein beliebiger anderer relativer Pfad bleibt relativ.
+    Sonst wuerde aus der Bequemlichkeit Magie, die an anderer Stelle ueberrascht.
+    """
+    dest = Path(dest_dir)
+    if dest.is_absolute() or len(dest.parts) != 1:
+        return dest
+    from ticket_writer import _LIFECYCLE_SUBDIRS
+    if dest.name not in _LIFECYCLE_SUBDIRS:
+        return dest
+    return queue_root(source) / dest.name
+
+
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
                 new_name: str | None = None) -> Path:
@@ -122,9 +161,11 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     verkuerzt wird.
     """
     source = Path(source)
-    dest_dir = Path(dest_dir)
     if not source.is_file():
         raise FileNotFoundError(f"move source does not exist or is not a file: {source}")
+    # Blosser Clustername ("SOLVED") wird gegen die Queue-Wurzel der Quelle
+    # aufgeloest, statt still einen Ordner im Arbeitsverzeichnis anzulegen.
+    dest_dir = resolve_dest_dir(source, dest_dir)
 
     dest_dir.mkdir(parents=True, exist_ok=True)
 

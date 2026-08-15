@@ -293,6 +293,59 @@ class TestRenameForRenumbering(unittest.TestCase):
             self.assertEqual(target.name, "T-20260731-24.WORKSTATION-LG.txt")
 
 
+class TestBareClusterNameAsDestination(unittest.TestCase):
+    """Belegt am 2026-08-15: ein Worker rief move_ticket(src, "SOLVED") mit
+    dem blossen Clusternamen auf. Das legte still ein Verzeichnis "SOLVED"
+    im Arbeitsverzeichnis an (dort: ticket-master/lib/SOLVED/) und das Ticket
+    verschwand aus der Queue -- ohne Fehlermeldung. Genau die Sorte stiller
+    Fehlablage, die dieses Modul verhindern soll."""
+
+    def test_bare_cluster_name_resolves_against_the_queue_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "QUEUED").mkdir()
+            source = base / "QUEUED" / "T-20260815-111111111.ASUS-GEI.txt"
+            source.write_text("x", encoding="utf-8")
+
+            target = ticket_mover.move_ticket(source, "SOLVED")
+
+            self.assertEqual(target.parent, base / "SOLVED")
+            self.assertTrue(target.is_file())
+            self.assertFalse((Path.cwd() / "SOLVED").exists(),
+                             "darf keinen Ordner im Arbeitsverzeichnis anlegen")
+
+    def test_bare_cluster_name_works_from_the_queue_root_too(self):
+        """Liegt die Quelle direkt in der Wurzel (INBOX-Alias), ist die Wurzel
+        ihr eigener Elternordner."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260815-222222222.txt"
+            source.write_text("x", encoding="utf-8")
+            target = ticket_mover.move_ticket(source, "ACTIONABLE")
+            self.assertEqual(target.parent, base / "ACTIONABLE")
+
+    def test_unknown_relative_name_is_left_alone(self):
+        """Nur BEKANNTE Clusternamen werden aufgeloest. Ein beliebiger
+        relativer Pfad bleibt relativ -- sonst wuerde die Bequemlichkeit zur
+        Magie und ueberraeschte an anderer Stelle."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "QUEUED").mkdir()
+            source = base / "QUEUED" / "T-20260815-333333333.txt"
+            source.write_text("x", encoding="utf-8")
+            target = ticket_mover.move_ticket(source, base / "irgendwas-eigenes")
+            self.assertEqual(target.parent, base / "irgendwas-eigenes")
+
+    def test_absolute_paths_are_unaffected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "QUEUED").mkdir()
+            source = base / "QUEUED" / "T-20260815-444444444.txt"
+            source.write_text("x", encoding="utf-8")
+            target = ticket_mover.move_ticket(source, base / "SOLVED")
+            self.assertEqual(target.parent, base / "SOLVED")
+
+
 class TestReleaseOnReactivation(unittest.TestCase):
     """Wunsch des Nutzers (2026-08-15): wartende Tickets sollen uebernehmbar
     werden, SOBALD sie wieder aktuell sind -- nicht schon im Wartezustand."""
