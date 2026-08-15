@@ -240,7 +240,9 @@ python bin/ticket_master.py --intake "Describe the new issue" --project my-app
 `--list` prints deterministic `STATUS / ID / TITLE / PATH` metadata for open
 tickets across all v1 clusters and readable legacy aliases; it never prints
 ticket bodies. `--intake` validates and normalizes a description, creates one
-exclusive `QUEUED/` file, and never appends the deprecated shared intake log.
+exclusive unclaimed `INBOX/` file, and never appends the deprecated shared
+intake log. A ticket moves to `QUEUED/` only after an actual provider/agent
+handover.
 Use `--tickets-dir` for an explicit local queue or `--config` for a local JSON
 configuration. A missing default config uses safe repository-local defaults;
 an explicitly missing or malformed config exits with a controlled error.

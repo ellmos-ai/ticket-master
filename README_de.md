@@ -246,9 +246,11 @@ python bin/ticket_master.py --intake "Neue Aufgabe beschreiben" --project my-app
 `--list` gibt deterministische Metadaten `STATUS / ID / TITEL / PFAD` für
 offene Tickets in allen v1-Clustern und lesbaren Legacy-Aliasordnern aus; der
 Tickettext wird nicht ausgegeben. `--intake` validiert und normalisiert die
-Beschreibung, legt exklusiv genau eine Datei unter `QUEUED/` an und schreibt
-nicht in das veraltete gemeinsame Intake-Log. Für eine lokale Queue kann
-`--tickets-dir`, für eine JSON-Konfiguration `--config` verwendet werden.
+Beschreibung, legt exklusiv genau eine unclaimed Datei unter `INBOX/` an und
+schreibt nicht in das veraltete gemeinsame Intake-Log. Erst eine tatsächliche
+Übergabe an einen Provider/Agent verschiebt das Ticket nach `QUEUED/`. Für
+eine lokale Queue kann `--tickets-dir`, für eine JSON-Konfiguration `--config`
+verwendet werden.
 Eine fehlende Standard-Config nutzt sichere Repository-Defaults; eine explizit
 fehlende oder fehlerhafte Config endet mit einem kontrollierten Fehler.
 
