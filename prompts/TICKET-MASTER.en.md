@@ -106,6 +106,46 @@ by eyeballing/counting the directory; use `lib/ticket_writer.py create()`
 file via atomic exclusive-create and auto-increments on collision instead of
 letting two agents pick the same number.
 
+### Returning a ticket — a claim is borrowed, not owned
+
+A claim binds a ticket to one host. Left standing after the session ends, it
+blocks that ticket for every other system even though nobody is working on
+it. Two triggers release it again:
+
+**(1) Regular session close** — when the user explicitly ends the session
+("close the session", "wrap up", `/handoff`), release all of this host's
+claims in `QUEUED/` and `ACTIONABLE/` *before* writing the closing report:
+
+```
+python lib/ticket_mover.py --release-session --host <HOST> \
+       --tickets-dir <tickets_dir> [--dry-run]
+```
+
+`--host` is mandatory and matched **exactly** — no guessed machine name, no
+normalisation. Otherwise a misconfigured environment releases someone else's
+claims. Where one machine historically carries two identities (e.g. `ASUS-GEI`
+and `LAPTOP`), merging them is a separate, named operation — never a silent
+side effect of the release.
+
+**Not released:** claims in `SOLVED/`, `USER/`, `BLOCKED/`, `WAITING/` and
+`PARKED/`. There the host suffix does not mean "I am working on this" but
+**provenance**: who solved it, who is waiting on whose receipt, whom the user
+must answer. A blanket release would erase that and make finished work look
+open to another host.
+
+**(2) Reactivation** — when a ticket leaves a waiting state
+(`BLOCKED`/`WAITING`/`USER`/`PARKED`) for `ACTIONABLE`, it is free work again
+and the claim drops **automatically** inside `move_ticket()`, so any host can
+pick up an unblocked ticket without anyone remembering to do it. While it
+waits, the suffix stays.
+
+Deliberately excluded: `QUEUED → ACTIONABLE` (failed delegation; the same host
+falls back through its own candidate chain) and `INBOX → ACTIONABLE` (freshly
+triaged, never a waiting state).
+
+If the released name is already taken in the destination, the ticket moves
+under its claimed name rather than letting the unblocking fail.
+
 ---
 
 ## LOGGING (audit without file ceremony)
@@ -256,6 +296,26 @@ selection run as before with the directly referenced files/configs.
 **POSITION 0** = inactive waiting state. The session is open; the agent does
 nothing and consumes no tokens. When the user types a new ticket → activate and
 enter the PROCESSING CHAIN below.
+
+### (e) Session close — return the claims
+
+When the user explicitly ends the session ("close the session", "wrap up",
+`/handoff`), these come **before** the closing report:
+
+1. **Release claims** — `python lib/ticket_mover.py --release-session
+   --host <HOST> --tickets-dir <tickets_dir>`. Returns this host's claims in
+   `QUEUED/` and `ACTIONABLE/` so no ticket stays blocked. Details and the
+   reasoning for sparing `SOLVED/USER/BLOCKED/WAITING/PARKED`: see
+   "Returning a ticket" above.
+2. **Report refusals** — the run does not abort on a collision, it counts it.
+   Whatever could not be released belongs in the closing report.
+3. **Persist process state** — put the session state where the next session
+   will find it (on this system: USMC; see `config/knowledge.json`).
+
+An **abort** (usage limit, crash, closed terminal) is not a regular close:
+claims stay standing there. They only fall once a later session of the same
+host releases them — which is why the release also belongs at the *start* of
+a run whose predecessor visibly aborted.
 
 ---
 

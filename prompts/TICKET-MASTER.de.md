@@ -112,6 +112,49 @@ lib/ticket_writer.py --title ... --body ...`) — das legt die Datei atomar
 exklusiv an und zählt bei einer Kollision automatisch hoch, statt zwei
 Agenten dieselbe Nummer ziehen zu lassen.
 
+### Ticket-Rückgabe — ein Claim ist geliehen, nicht besessen
+
+Ein Claim bindet ein Ticket an einen Host. Bleibt er nach Sitzungsende stehen,
+ist das Ticket für alle anderen Systeme dauerhaft blockiert, obwohl niemand
+mehr daran arbeitet. Zwei Auslöser geben ihn deshalb wieder frei:
+
+**(1) Regulärer Sitzungsabschluss** — beendet der User die Sitzung ausdrücklich
+(„schließe die Session ab", „Sitzung beenden", `/handoff`), werden vor dem
+Abschlussbericht alle eigenen Claims in `QUEUED/` und `ACTIONABLE/`
+freigegeben:
+
+```
+python lib/ticket_mover.py --release-session --host <HOST> \
+       --tickets-dir <tickets_dir> [--dry-run]
+```
+
+`--host` ist Pflicht und wird **exakt** verglichen — kein geratener
+Maschinenname, keine Normalisierung. Sonst gibt eine falsch konfigurierte
+Umgebung fremde Claims frei. Führt ein System historisch zwei Identitäten
+(z. B. `ASUS-GEI` und `LAPTOP` für dieselbe Maschine), ist deren
+Zusammenführung ein eigener, benannter Vorgang — niemals ein stiller
+Nebeneffekt der Rückgabe.
+
+**Nicht freigegeben werden** Claims in `SOLVED/`, `USER/`, `BLOCKED/`,
+`WAITING/` und `PARKED/`. Dort bedeutet der Host-Suffix nicht „ich arbeite
+daran", sondern **Herkunft**: wer hat gelöst, wer wartet auf wessen Receipt,
+wem muss der User antworten. Eine pauschale Rückgabe würde diese Information
+löschen und abgeschlossene Vorgänge für andere Hosts wie offene Arbeit
+aussehen lassen.
+
+**(2) Reaktivierung** — verlässt ein Ticket einen Wartezustand
+(`BLOCKED`/`WAITING`/`USER`/`PARKED`) Richtung `ACTIONABLE`, ist es wieder
+freie Arbeit und der Claim fällt **automatisch** in `move_ticket()`. So kann
+jeder Host ein entblocktes Ticket übernehmen, ohne dass jemand daran denken
+muss. Solange es wartet, bleibt der Suffix stehen.
+
+Bewusst ausgenommen: `QUEUED → ACTIONABLE` (fehlgeschlagene Delegation, der
+Host fällt auf seine eigene Fallback-Kette zurück) und `INBOX → ACTIONABLE`
+(frisch triagiert, war nie ein Wartezustand).
+
+Ist der freigegebene Name im Ziel schon belegt, wandert das Ticket unter
+seinem geclaimten Namen weiter, statt die Entblockung scheitern zu lassen.
+
 ---
 
 ## LOGGING (Audit ohne Datei-Zeremonie)
@@ -267,6 +310,27 @@ laufen wie bisher mit den direkt referenzierten Dateien/Configs.
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut
 nichts und verbraucht keine Tokens. Wenn der User ein neues Ticket eingibt →
 aktivieren und in die PROCESSING-CHAIN unten eintreten.
+
+### (e) Sitzungsabschluss — Claims zurückgeben
+
+Beendet der User die Sitzung ausdrücklich („schließe die Session ab",
+„Sitzung beenden", `/handoff`), gehören **vor** den Abschlussbericht:
+
+1. **Claims freigeben** — `python lib/ticket_mover.py --release-session
+   --host <HOST> --tickets-dir <tickets_dir>`. Gibt die eigenen Claims in
+   `QUEUED/` und `ACTIONABLE/` zurück, damit kein Ticket blockiert bleibt.
+   Details und die Begründung, warum `SOLVED/USER/BLOCKED/WAITING/PARKED`
+   ausgespart bleiben: Abschnitt „Ticket-Rückgabe" oben.
+2. **Verweigerte Rückgaben melden** — der Lauf bricht bei einer Kollision
+   nicht ab, sondern zählt sie. Was nicht freigegeben werden konnte, gehört
+   in den Abschlussbericht, nicht ins Vergessen.
+3. **Prozess-State sichern** — Sessionstand dorthin, wo ihn die Folgesitzung
+   findet (auf diesem System USMC; siehe `config/knowledge.json`).
+
+Ein **Abbruch** (Limit, Absturz, geschlossenes Terminal) ist kein regulärer
+Abschluss: dort bleiben Claims stehen. Sie fallen erst, wenn eine spätere
+Sitzung desselben Hosts sie freigibt — deshalb gehört die Rückgabe auch an
+den Anfang eines Laufs, wenn die Vorsitzung erkennbar abgebrochen ist.
 
 ---
 

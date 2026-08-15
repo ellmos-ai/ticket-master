@@ -29,13 +29,63 @@ import contextlib
 import os
 from pathlib import Path
 
+from ticket_writer import TICKET_FILENAME_RE
+
+# Ordner, in denen ein Host-Suffix "ich arbeite gerade daran" bedeutet. NUR
+# hier gibt die Sitzungs-Rueckgabe (release_claims) Claims frei.
+WORKING_SUBDIRS = ("QUEUED", "ACTIONABLE")
+
+# Ordner, in denen derselbe Suffix etwas anderes bedeutet: Herkunft. In SOLVED
+# steht, WER geloest hat; in BLOCKED/host-receipt, WER auf wessen Receipt
+# wartet; in USER, wem der Nutzer antworten muss. Eine pauschale Rueckgabe
+# wuerde diese Information loeschen und 193 abgeschlossene Vorgaenge (Stand
+# 2026-08-15) fuer einen anderen Host wieder wie unerledigte Arbeit aussehen
+# lassen -- deshalb bleiben sie ausgespart.
+PROVENANCE_SUBDIRS = ("SOLVED", "USER", "BLOCKED", "WAITING", "PARKED")
+
+# Reaktivierung: verlaesst ein Ticket einen Wartezustand Richtung ACTIONABLE,
+# ist es wieder freie Arbeit -- und darf von JEDEM Host uebernommen werden.
+# Genau an diesem Uebergang faellt der Claim (Nutzerentscheid 2026-08-15).
+# Bewusst NICHT enthalten: QUEUED -> ACTIONABLE (Fehlschlag der Delegation,
+# derselbe Host faellt auf seine eigene Fallback-Kette zurueck) und
+# INBOX -> ACTIONABLE (frisch triagiert, war nie ein Wartezustand).
+REACTIVATION_SOURCES = ("BLOCKED", "WAITING", "USER", "PARKED")
+REACTIVATION_TARGET = "ACTIONABLE"
+
 
 class TicketCollisionError(RuntimeError):
     """Raised when a move target already holds a (different) ticket file."""
 
 
-def move_ticket(source: Path | str, dest_dir: Path | str) -> Path:
-    """Move a ticket file into dest_dir under its current filename.
+def unclaimed_name(filename: str) -> str:
+    """Dateiname ohne Claim-Suffix ("T-DATE-NN[_slug].txt").
+
+    Ein beschreibender Slug bleibt erhalten -- freigegeben wird der Claim,
+    nicht die Benennung. Ist der Name kein Ticketname oder ohnehin schon
+    unclaimed, kommt er unveraendert zurueck.
+    """
+    m = TICKET_FILENAME_RE.match(filename)
+    if not m or not m.group("suffix"):
+        return filename
+    slug = f"_{m.group('slug')}" if m.group("slug") else ""
+    return f"T-{m.group('date')}-{m.group('number')}{slug}.txt"
+
+
+def claim_suffix(filename: str) -> str | None:
+    """Host-/Claim-Suffix eines Ticketnamens, oder None wenn unclaimed."""
+    m = TICKET_FILENAME_RE.match(filename)
+    return m.group("suffix") if m else None
+
+
+def _should_release_on_move(source: Path, dest_dir: Path) -> bool:
+    return (source.parent.name in REACTIVATION_SOURCES
+            and dest_dir.name == REACTIVATION_TARGET)
+
+
+def move_ticket(source: Path | str, dest_dir: Path | str,
+                release_claim: bool | None = None,
+                new_name: str | None = None) -> Path:
+    """Move a ticket file into dest_dir, by default under its current filename.
 
     Fails closed: if dest_dir already contains a file with that name, nothing
     is written and nothing is deleted — TicketCollisionError is raised and
@@ -50,6 +100,26 @@ def move_ticket(source: Path | str, dest_dir: Path | str) -> Path:
     editing the ticket while the move is in flight — the move then aborts
     with both copies intact rather than deleting a stale source under a
     changed original).
+
+    release_claim steuert, ob der Host-Suffix beim Verschieben faellt:
+      None (Default) -- automatisch: bei einer Reaktivierung (BLOCKED/WAITING/
+            USER/PARKED -> ACTIONABLE) faellt der Claim, sonst bleibt er.
+            Ein Ticket, das aus dem Wartezustand zurueck in die Arbeit geht,
+            ist wieder fuer jeden Host frei; solange es wartet, bleibt der
+            Suffix als Herkunftsnachweis stehen.
+      True  -- Claim in jedem Fall freigeben.
+      False -- Claim in jedem Fall behalten.
+
+    Ist der freigegebene Name im Ziel bereits belegt, wird NICHT abgebrochen:
+    das Ticket wandert dann unter seinem geclaimten Namen. Sonst wuerde eine
+    Entblockung an einem fremden Namensnachbarn scheitern und das Ticket
+    bliebe im Wartezustand haengen, obwohl sein Blocker weg ist.
+
+    new_name benennt die Datei zusaetzlich um (Umnummerierung bei einer
+    ID-Kollision). Derselbe Zielordner ist erlaubt -- dann ist der Aufruf ein
+    reiner, fail-closed Rename. new_name schlaegt release_claim, damit der
+    uebergebene Name wirklich der Zielname ist und nicht nachtraeglich
+    verkuerzt wird.
     """
     source = Path(source)
     dest_dir = Path(dest_dir)
@@ -57,7 +127,17 @@ def move_ticket(source: Path | str, dest_dir: Path | str) -> Path:
         raise FileNotFoundError(f"move source does not exist or is not a file: {source}")
 
     dest_dir.mkdir(parents=True, exist_ok=True)
-    target = dest_dir / source.name
+
+    if new_name:
+        target_name = new_name
+    else:
+        if release_claim is None:
+            release_claim = _should_release_on_move(source, dest_dir)
+        target_name = unclaimed_name(source.name) if release_claim else source.name
+        if release_claim and (dest_dir / target_name).exists():
+            target_name = source.name
+
+    target = dest_dir / target_name
     if target.exists():
         raise TicketCollisionError(
             f"move target already exists, refusing to overwrite: {target}"
@@ -99,16 +179,117 @@ def move_ticket(source: Path | str, dest_dir: Path | str) -> Path:
     return target
 
 
+def release_claim(ticket: Path | str) -> Path:
+    """Gibt den Claim EINES Tickets frei: benennt "T-DATE-NN[_slug].<HOST>.txt"
+    in "T-DATE-NN[_slug].txt" um, sodass jeder Host es beanspruchen kann.
+
+    Fail-closed wie move_ticket: liegt die unclaimed Fassung schon da (ein
+    anderer Vorgang unter derselben Nummer), wird nichts ueberschrieben,
+    sondern TicketCollisionError geworfen. Ein bereits unclaimed Ticket ist
+    ein No-op und kommt unveraendert zurueck.
+    """
+    ticket = Path(ticket)
+    if not ticket.is_file():
+        raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
+
+    freed = ticket.parent / unclaimed_name(ticket.name)
+    if freed == ticket:
+        return ticket
+    if freed.exists():
+        raise TicketCollisionError(
+            f"unclaimed name already taken, refusing to overwrite: {freed}"
+        )
+    return move_ticket(ticket, ticket.parent, release_claim=True)
+
+
+def release_claims(base: Path | str, *, host: str,
+                   folders: tuple[str, ...] = WORKING_SUBDIRS,
+                   dry_run: bool = False,
+                   report_refused: bool = False):
+    """Sitzungs-Rueckgabe: gibt alle Claims von `host` in den Arbeitsordnern
+    frei, damit ein regulaer beendetes Sitzungsende keine Tickets fuer andere
+    Hosts blockiert.
+
+    `host` ist ein PFLICHT-Argument ohne Default. Bewusst kein automatisches
+    COMPUTERNAME: der Bestand fuehrt fuer dieselbe Maschine historisch zwei
+    Identitaeten (ASUS-GEI und LAPTOP), und eine falsch geratene Identitaet
+    wuerde entweder nichts freigeben oder -- schlimmer -- fremde Claims
+    anfassen. Verglichen wird deshalb exakt und ohne Normalisierung; das
+    Zusammenfuehren veralteter Host-Identitaeten ist ein eigener, benannter
+    Vorgang und passiert nicht still in der Rueckgabe.
+
+    Standard-`folders` sind QUEUED und ACTIONABLE. In SOLVED/USER/BLOCKED/
+    WAITING/PARKED bleibt der Suffix stehen: dort ist er Herkunft, nicht
+    Arbeitsanspruch. Diese Tickets werden stattdessen bei ihrer Reaktivierung
+    frei (siehe move_ticket / REACTIVATION_SOURCES).
+
+    Ein einzelnes blockiertes Ticket bricht den Lauf nicht ab -- sonst bliebe
+    eine ganze Sitzung geclaimed, weil ein Name belegt war. Mit
+    report_refused=True kommt (freigegeben, verweigert) zurueck, sonst nur
+    die Liste der freigegebenen Pfade.
+    """
+    base = Path(base)
+    freed: list[Path] = []
+    refused: list[tuple[Path, str]] = []
+
+    for folder in folders:
+        directory = base / folder
+        if not directory.is_dir():
+            continue
+        for entry in sorted(directory.iterdir()):
+            if not entry.is_file() or claim_suffix(entry.name) != host:
+                continue
+            if dry_run:
+                freed.append(directory / unclaimed_name(entry.name))
+                continue
+            try:
+                freed.append(release_claim(entry))
+            except (TicketCollisionError, RuntimeError, OSError) as exc:
+                refused.append((entry, str(exc)))
+
+    return (freed, refused) if report_refused else freed
+
+
 def _cli(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(
         prog="ticket_mover",
-        description="Fail-closed move of a single ticket file into a lifecycle folder.",
+        description=("Fail-closed move of a single ticket file into a lifecycle "
+                     "folder, or release this host's claims at session end."),
     )
-    parser.add_argument("source", help="Path to the ticket file to move.")
-    parser.add_argument("dest_dir", help="Destination lifecycle folder (e.g. .../SOLVED).")
+    parser.add_argument("source", nargs="?",
+                        help="Path to the ticket file to move.")
+    parser.add_argument("dest_dir", nargs="?",
+                        help="Destination lifecycle folder (e.g. .../SOLVED).")
+    parser.add_argument("--release-session", action="store_true",
+                        help=("Release this host's claims in QUEUED/ACTIONABLE "
+                              "(regular session end). Requires --host."))
+    parser.add_argument("--host",
+                        help="Claim suffix to release, e.g. ASUS-GEI. Exact match.")
+    parser.add_argument("--tickets-dir",
+                        help="Ticket queue root (for --release-session).")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Show what --release-session would free, change nothing.")
     args = parser.parse_args(argv)
+
+    if args.release_session:
+        if not args.host or not args.tickets_dir:
+            parser.error("--release-session requires --host and --tickets-dir")
+        freed, refused = release_claims(
+            args.tickets_dir, host=args.host, dry_run=args.dry_run,
+            report_refused=True)
+        label = "WOULD RELEASE" if args.dry_run else "RELEASED"
+        for path in freed:
+            print(f"{label}: {path}")
+        for path, reason in refused:
+            print(f"REFUSED: {path} -- {reason}")
+        print(f"{label} {len(freed)} claim(s) for host {args.host}"
+              + (f", {len(refused)} refused" if refused else ""))
+        return 1 if refused else 0
+
+    if not args.source or not args.dest_dir:
+        parser.error("source and dest_dir are required unless --release-session is given")
     try:
         target = move_ticket(args.source, args.dest_dir)
     except (TicketCollisionError, FileNotFoundError, RuntimeError) as exc:

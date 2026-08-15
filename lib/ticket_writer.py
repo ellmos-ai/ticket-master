@@ -97,11 +97,39 @@ LOESUNG / ERGEBNIS
 _LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
                       "USER", "PARKED", "SOLVED", "PENDING", ".USER")
 
-# Ticket-Dateiname: T-<8-stelliges Datum>-<laufende Nummer>[.<HOST-oder-Suffix>].txt
-# Eine Gruppe fuer Datum, eine fuer die Nummer, eine optionale fuer den Claim-/
-# Konflikt-Suffix. Von _next_number UND vom Audit (lib/ticket_audit.py) genutzt,
-# damit beide garantiert dieselbe Grammatik sehen und nicht auseinanderlaufen.
-TICKET_FILENAME_RE = re.compile(r"^T-(\d{8})-(\d+)(?:\.([A-Za-z0-9_-]+))?\.txt$")
+# Ticket-Dateiname:
+#   T-<8-stelliges Datum>-<laufende Nummer>[_<slug>][.<HOST-oder-Suffix>].txt
+# Gruppen: date, number, slug (optional, beschreibend), suffix (optional, Claim).
+# Von _next_number UND vom Audit (lib/ticket_audit.py) genutzt, damit beide
+# garantiert dieselbe Grammatik sehen und nicht auseinanderlaufen.
+#
+# Die slug-Gruppe kam am 2026-08-15 dazu (Messung am Live-Bestand: 277
+# Ticketdateien, davon 110 nicht erkannt, 101 belegte Datum/Nummer-Paare
+# unsichtbar). Der Bestand traegt neben "T-DATE-NN[.HOST].txt" verbreitet die
+# Form "T-DATE-NN_beschreibung.txt" mit UNTERSTRICH -- fuer das alte Muster,
+# das an dieser Stelle einen Punkt verlangte, existierten diese Tickets nicht.
+# _next_number konnte deren Nummern daher ein zweites Mal ausgeben, und
+# ticket_audit.collect_ids sah eine Kollision zwischen einer Slug- und einer
+# Nicht-Slug-Fassung derselben Nummer nicht. Das ist derselbe Defekt wie in
+# T-20260808-03, nur eine Ebene tiefer: dort vergaben zwei Agenten dieselbe
+# Nummer, hier war eine bereits vergebene Nummer schlicht unsichtbar.
+#
+# WICHTIG, und der Grund fuer die getrennte Gruppe: Der Slug belegt die
+# Nummer, ist aber NICHT Teil der kanonischen ID. Die ID bleibt "T-DATE-NN" --
+# sonst waeren "T-20260612-01_alpha.txt" und "T-20260612-01.txt" zwei
+# verschiedene Vorgaenge statt einer Kollision.
+#
+# Die Erweiterung ist bewusst eng: Datumsgruppe und laufende Nummer bleiben
+# Pflicht, die Endung bleibt .txt. Damit gelten die Altlasten unter PENDING/
+# (T-41_LOESCH-REPORT.txt, T-41_cleanup.ps1, T-41_gnomad_transfer.sh)
+# weiterhin NICHT als Tickets -- ein Muster, das Reports und Shell-Skripte
+# mitzaehlt, waere schlechter als eines, das ein paar Tickets uebersieht.
+TICKET_FILENAME_RE = re.compile(
+    r"^T-(?P<date>\d{8})-(?P<number>\d+)"
+    r"(?:_(?P<slug>[A-Za-z0-9][\w-]*))?"
+    r"(?:\.(?P<suffix>[A-Za-z0-9_-]+))?"
+    r"\.txt$"
+)
 
 
 def iter_lifecycle_files(base: Path):
@@ -110,6 +138,11 @@ def iter_lifecycle_files(base: Path):
     Liefert (pfad, datestr, nummer, suffix_oder_None) je Treffer. Suffix ist
     der Host-/Konfliktanteil vor ".txt" (z. B. "WORKSTATION-LG" bei
     "T-20260808-03.WORKSTATION-LG.txt"), None bei unclaimed Tickets.
+
+    Ein beschreibender Slug ("T-DATE-NN_thema.txt") wird erkannt, aber NICHT
+    mitgeliefert: er gehoert nicht zur ID. Fuer die Nummernvergabe zaehlt die
+    Datei trotzdem voll mit -- die Nummer ist vergeben, egal wie die Datei
+    darueber hinaus benannt ist.
     """
     for sub in _LIFECYCLE_SUBDIRS:
         directory = base / sub if sub else base
@@ -120,8 +153,8 @@ def iter_lifecycle_files(base: Path):
                 continue
             m = TICKET_FILENAME_RE.match(entry.name)
             if m:
-                datestr, number, suffix = m.group(1), int(m.group(2)), m.group(3)
-                yield entry, datestr, number, suffix
+                yield (entry, m.group("date"), int(m.group("number")),
+                       m.group("suffix"))
 
 
 def _next_number(base: Path, datestr: str) -> int:

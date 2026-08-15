@@ -4,6 +4,45 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Ticket-Rückgabe + gehärtete Dateinamen-Grammatik (2026-08-15)
+
+**Ticket-Rückgabe.** Ein Claim (`T-DATE-NN.<HOST>.txt`) blockierte ein Ticket
+dauerhaft für jedes andere System, auch lange nachdem die Sitzung vorbei war —
+es gab keinen Weg zurück. Zwei Auslöser geben ihn jetzt frei:
+
+- `ticket_mover.release_claims(base, host=…)` — Sitzungs-Rückgabe beim
+  regulären Abschluss, CLI `python lib/ticket_mover.py --release-session
+  --host <HOST> --tickets-dir <…> [--dry-run]`. Wirkt **nur** in `QUEUED/`
+  und `ACTIONABLE/`; in `SOLVED/USER/BLOCKED/WAITING/PARKED` ist der
+  Host-Suffix Herkunft (wer hat gelöst, wer wartet auf wessen Receipt) und
+  bleibt stehen. `host` ist Pflicht und wird exakt verglichen — kein
+  geratener Maschinenname, damit nie ein fremder Claim fällt.
+- **Reaktivierung**: verlässt ein Ticket `BLOCKED`/`WAITING`/`USER`/`PARKED`
+  Richtung `ACTIONABLE`, fällt der Claim automatisch in `move_ticket()` —
+  entblockte Arbeit ist wieder für jeden Host frei, ohne dass jemand daran
+  denken muss. `QUEUED → ACTIONABLE` und `INBOX → ACTIONABLE` bleiben
+  ausgenommen.
+- `move_ticket(new_name=…)` ergänzt einen fail-closed Rename (Umnummerierung
+  bei ID-Kollisionen), `release_claim()` gibt einen einzelnen Claim frei,
+  `unclaimed_name()`/`claim_suffix()` sind die gemeinsame Namenslogik.
+
+**Dateinamen-Grammatik.** `TICKET_FILENAME_RE` verlangte vor dem Suffix einen
+Punkt und kannte die im Bestand verbreitete Slug-Form
+`T-DATE-NN_beschreibung.txt` mit **Unterstrich** nicht. Gemessen am
+Live-Bestand: **110 von 277** Ticketdateien unsichtbar, **101** belegte
+Datum/Nummer-Paare, die `_next_number` erneut hätte vergeben können und die
+`ticket_audit.collect_ids` nicht auf Kollisionen prüfte. Damit war die
+Vergabesperre aus T-20260808-03 nur halb wirksam. Der Slug ist jetzt eine
+eigene Gruppe — er belegt die Nummer, gehört aber **nicht** zur ID. Datum und
+laufende Nummer bleiben Pflicht, die Endung bleibt `.txt`, damit Altlasten wie
+`T-41_cleanup.ps1` weiterhin nicht als Tickets gelten. Erkannte Ticketdateien:
+**167 → 264**, sichtbare ID-Kollisionen 2 → 5.
+
+Prompts (`TICKET-MASTER.de.md`/`.en.md`): neuer Abschnitt „Ticket-Rückgabe"
+und Startsequenz-Schritt „(e) Sitzungsabschluss".
+
+24 neue Tests (`tests/test_ticket_release.py`), Suite 95 → 119 grün.
+
 ### Intake lifecycle consistency (T-20260812-06)
 - `ticket_writer.create()` and the shared `--intake` CLI now create unclaimed
   tickets in `INBOX/` with `STATUS: INBOX`, matching the binding categories-v1
