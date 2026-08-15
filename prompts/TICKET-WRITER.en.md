@@ -140,8 +140,11 @@ sensible") — but it must be made **explicitly**.
 
 Tickets are created in the module's canonical ticket format — preferably via
 `lib/ticket_writer.py` (`create(title, body, ...)`, exclusive create, running
-number), otherwise manually following `tickets/_templates/TICKET.txt`. The
-ticket body carries the SIG-TU structure:
+number), otherwise manually following `tickets/_templates/TICKET.txt`.
+**New tickets are unclaimed intake:** no host suffix, stored under `INBOX/`,
+with `STATUS: INBOX`. Later processing adds the claim; `QUEUED` starts only
+after an actual provider/sub-agent handover. The ticket body carries the
+SIG-TU structure:
 
 ```
 ORIGIN:        SIG-TU run <date> | area: <area name>

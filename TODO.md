@@ -150,8 +150,9 @@
       without shell-specific scripts — easier cross-platform maintenance.
 - [x] `--list` mode: print deterministic, non-secret open-ticket metadata from
       `tickets/` to stdout (including v1 clusters and legacy aliases).
-- [x] `--intake "description"` flag: validate and exclusively pre-create a
-      `QUEUED/` ticket file from the command line without the shared intake log.
+- [x] `--intake "description"` flag: validate and exclusively pre-create an
+      unclaimed `INBOX/` ticket file from the command line without the shared
+      intake log; `QUEUED/` starts only after a real handover.
 - [ ] Config validation on startup: warn if `project_roots` is empty or provider
       commands are not found in PATH.
 
@@ -218,15 +219,13 @@
       `_control-center/`). Vorschlag: Hinweis ergänzen wie "Beleg-C-
       Recherche endet, sobald eine eindeutige Entscheidungs-/Planquelle
       gefunden ist — nicht das ganze Zielsystem durchsuchen".
-- [ ] **Keine Vorgabe zur Datei-/Claim-Konvention beim Selbst-Anlegen
+- [x] **Datei-/Claim-Konvention beim Selbst-Anlegen
       eines SIG-TU-Tickets.** Der Prompt sagt nur "Ticket-Dateien im
-      `tickets_dir`", nicht ob neu erzeugte SIG-TU-Tickets sofort mit
-      Host-Suffix (wie die real beobachtete Praxis in `_TICKETS/`,
-      z.B. `T-20260801-17.WORKSTATION-LG.txt`) oder unclaimed in
-      Root/INBOX abgelegt werden. Im Testlauf wurde die beobachtete
-      Praxis übernommen (`T-20260801-18.ASUS-GEI.txt`), das ist aber
-      Konvention aus Beobachtung, nicht aus dem Prompt selbst — sollte
-      im TICKET-AUSGABEFORMAT-Abschnitt präzisiert werden.
+      `tickets_dir`, nicht ob neu erzeugte SIG-TU-Tickets sofort mit
+      Host-Suffix oder unclaimed in Root/INBOX abgelegt werden. Gelöst mit
+      T-20260812-06: `TICKET-AUSGABEFORMAT` legt neue Tickets ohne Host-Suffix
+      unter `INBOX/` mit `STATUS: INBOX` an; der Claim folgt bei Bearbeitung,
+      `QUEUED` erst bei tatsächlicher Übergabe.
 ## TASKWRITER-Recheck 2026-08-02
 
 Live-Baseline des kanonischen Clones: `main`, HEAD/origin

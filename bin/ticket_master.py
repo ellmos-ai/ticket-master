@@ -343,7 +343,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--list", action="store_true", help="list open ticket metadata")
-    mode.add_argument("--intake", metavar="DESCRIPTION", help="create one exclusive QUEUED intake ticket")
+    mode.add_argument("--intake", metavar="DESCRIPTION", help="create one exclusive INBOX intake ticket")
     mode.add_argument("--print-prompt", action="store_true", help="resolve and print the prompt path")
     parser.add_argument("--json", action="store_true", help="emit --list output as JSON")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")

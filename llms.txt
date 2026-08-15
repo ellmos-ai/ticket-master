@@ -45,7 +45,8 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 - `bin/ticket-master.sh` / `bin/ticket-master.bat` / `bin/ticket-master.ps1`:
   cross-platform starters.
 - `bin/ticket_master.py`: shared prompt resolver plus auditable `--list` and
-  exclusive `--intake` CLI modes.
+  exclusive unclaimed-`INBOX` `--intake` CLI modes; `QUEUED` begins only after
+  an actual provider/agent handover.
 - `TM_CONFIG` optionally selects the local JSON config; `TM_LANG` selects a
   prompt language with controlled `en` fallback.
 - `tests/test_smoke.py`: structure, JSON validity, and anonymisation checks.

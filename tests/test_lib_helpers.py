@@ -24,8 +24,10 @@ class TestTicketWriter(unittest.TestCase):
                                         tickets_dir=Path(tmp), today="2026-06-27")
             p = Path(path)
             self.assertEqual(p.name, "T-20260627-01.txt")
-            self.assertEqual(p.parent.name, "QUEUED")
-            self.assertIn("Titel", p.read_text(encoding="utf-8"))
+            self.assertEqual(p.parent.name, "INBOX")
+            text = p.read_text(encoding="utf-8")
+            self.assertIn("STATUS:        INBOX", text)
+            self.assertIn("Titel", text)
 
     def test_id_unique_across_lifecycle_dirs(self):
         """Nummernvergabe zaehlt Tickets in ALLEN Lebenszyklus-Ordnern —
@@ -64,9 +66,9 @@ class TestTicketWriter(unittest.TestCase):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            queued = base / "QUEUED"
-            queued.mkdir()
-            first = queued / "T-20260627-01.txt"
+            inbox = base / "INBOX"
+            inbox.mkdir()
+            first = inbox / "T-20260627-01.txt"
             first.write_text("ORIGINAL", encoding="utf-8")
             with patch.object(ticket_writer, "_next_number", return_value=1):
                 path = ticket_writer.create("Neu", "Body", tickets_dir=base,
@@ -83,7 +85,7 @@ class TestTicketWriter(unittest.TestCase):
                 "--tickets-dir", tmp,
             ])
             self.assertEqual(exit_code, 0)
-            created = list((Path(tmp) / "QUEUED").glob("T-*.txt"))
+            created = list((Path(tmp) / "INBOX").glob("T-*.txt"))
             self.assertEqual(len(created), 1)
             self.assertIn("CLI-Titel", created[0].read_text(encoding="utf-8"))
 

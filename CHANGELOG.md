@@ -4,6 +4,14 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Intake lifecycle consistency (T-20260812-06)
+- `ticket_writer.create()` and the shared `--intake` CLI now create unclaimed
+  tickets in `INBOX/` with `STATUS: INBOX`, matching the binding categories-v1
+  contract. `QUEUED/` is reserved for tickets actually handed to a provider or
+  sub-agent. The English/German READMEs, TICKET-WRITER prompts, skill overview,
+  TODO history, CLI help, and regression assertions were synchronized. Existing
+  queue contents are deliberately not migrated.
+
 ### Discoverability, Ecosystem Badges & AI Discovery Index Sync (2026-08-14)
 - Synchronized `llms.txt` AI Discovery Index timestamp to `2026-08-14` and verified 95 passing Pytest unit tests.
 - Integrated `ellmos-ai` Ecosystem and `open-bricks` Umbrella Shields.io badges into `README.md` and `README_de.md`.

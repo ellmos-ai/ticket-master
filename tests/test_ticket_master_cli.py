@@ -111,8 +111,9 @@ class TicketMasterCliTests(unittest.TestCase):
                 tickets_dir=base,
                 today="2026-08-10",
             )
-            self.assertEqual(path.parent.name, "QUEUED")
+            self.assertEqual(path.parent.name, "INBOX")
             text = path.read_text(encoding="utf-8")
+            self.assertIn("STATUS:        INBOX", text)
             self.assertIn("second line", text)
             self.assertIn("[ticket separator escaped]", text)
             self.assertFalse((base / "_logs" / "INTAKE-TRIAGE-LOG.txt").exists())
@@ -129,9 +130,9 @@ class TicketMasterCliTests(unittest.TestCase):
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            queued = base / "QUEUED"
-            queued.mkdir()
-            existing = queued / "T-20260810-01.txt"
+            inbox = base / "INBOX"
+            inbox.mkdir()
+            existing = inbox / "T-20260810-01.txt"
             existing.write_text("ORIGINAL", encoding="utf-8")
             path = cli.intake_ticket("new", tickets_dir=base, today="2026-08-10")
             self.assertEqual(path.name, "T-20260810-02.txt")

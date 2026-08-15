@@ -143,8 +143,11 @@ Regel bleibt sinnvoll") — aber sie muss **explizit** geführt werden.
 
 Tickets werden im kanonischen Ticket-Format des Moduls angelegt — bevorzugt
 über `lib/ticket_writer.py` (`create(title, body, ...)`, exklusives Anlegen,
-laufende Nummer), sonst manuell nach `tickets/_templates/TICKET.txt`. Der
-Ticket-Body trägt die SIG-TU-Struktur:
+laufende Nummer), sonst manuell nach `tickets/_templates/TICKET.txt`.
+**Neu erzeugte Tickets sind unclaimed Intake:** ohne Host-Suffix unter
+`INBOX/` mit `STATUS: INBOX`. Eine spätere Bearbeitung setzt den Claim; erst
+bei einer tatsächlichen Übergabe an einen Provider/Subagenten wird `QUEUED`
+gesetzt. Der Ticket-Body trägt die SIG-TU-Struktur:
 
 ```
 HERKUNFT:      SIG-TU-Lauf <Datum> | Bereich: <Bereichsname>

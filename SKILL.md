@@ -29,7 +29,7 @@ in each `T-….<HOST>.txt`); the shared `tickets/_logs/` intake log is deprecate
 ## The loop (per ticket)
 
 ```
-capture  -> structured ticket file + intake-log line
+capture  -> unclaimed structured ticket file in INBOX
 triage   -> assign to the right project (+ optional domain/endpoint) +
             urgency (decoupled from the 5-dimension score) + score
 route    -> delegate to best provider/sub-agent for an immediate fix,

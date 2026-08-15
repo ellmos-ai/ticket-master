@@ -3,7 +3,7 @@ ticket_writer.py — Asynchronous ticket creation for the ticket-master queue.
 
 Lets any tool (e.g. a lock watcher GUI) drop a ticket into the queue even when
 no TICKET-MASTER session is running. Writes an unclaimed ticket file
-T-YYYYMMDD-NN.txt (no <HOST> suffix) into <tickets_dir>/QUEUED/ using the
+T-YYYYMMDD-NN.txt (no <HOST> suffix) into <tickets_dir>/INBOX/ using the
 canonical TICKET format (fields ID/TITLE/STATUS/.../LOG/SOLUTION).
 
 User-neutral module: `tickets_dir` is required (or taken from the
@@ -31,7 +31,7 @@ TICKET
 ID:            {ticket_id}
 TITEL:         {title}
 ERSTELLT:      {date}
-STATUS:        QUEUED
+STATUS:        INBOX
 PRIORITAET:    {priority}
 
 --------------------------------------------------------------
@@ -138,22 +138,22 @@ def _next_number(base: Path, datestr: str) -> int:
 def create(title: str, body: str, project: str | None = None, priority: str = "mittel",
            pipeline: str = "<offen>", tickets_dir: Path | None = None,
            today: str | None = None) -> str:
-    """Erzeugt ein unclaimed Ticket in <tickets_dir>/QUEUED/. Returns den Pfad.
+    """Erzeugt ein unclaimed Ticket in <tickets_dir>/INBOX/. Returns den Pfad.
 
     tickets_dir ist erforderlich (oder via TICKET_MASTER_TICKETS_DIR gesetzt)."""
     base = Path(tickets_dir) if tickets_dir else _default_tickets_dir()
     if base is None:
         raise ValueError(
             "tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
-    queued = base / "QUEUED"
-    queued.mkdir(parents=True, exist_ok=True)
+    inbox = base / "INBOX"
+    inbox.mkdir(parents=True, exist_ok=True)
 
     date_iso = today or datetime.now().strftime("%Y-%m-%d")
     datestr = date_iso.replace("-", "")
     number = _next_number(base, datestr)
     while True:
         ticket_id = f"T-{datestr}-{number:02d}"
-        target = queued / f"{ticket_id}.txt"
+        target = inbox / f"{ticket_id}.txt"
         content = _TICKET_TEMPLATE.format(
             ticket_id=ticket_id, title=title.strip() or "<ohne Titel>",
             date=date_iso, priority=priority, pipeline=pipeline,
@@ -181,7 +181,7 @@ def _cli(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="ticket_writer",
-        description="Atomically create an unclaimed ticket (T-YYYYMMDD-NN.txt in QUEUED/).",
+        description="Atomically create an unclaimed ticket (T-YYYYMMDD-NN.txt in INBOX/).",
     )
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")
