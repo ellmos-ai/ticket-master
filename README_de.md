@@ -15,8 +15,8 @@ Delegation nicht sinnvoll ist. Plattformübergreifend (Windows/macOS/Linux),
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-95%20passed-brightgreen.svg)](tests/)
+[![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
+[![Tests](https://img.shields.io/badge/pytest-133%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -30,9 +30,10 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > KI-Agenten und RAG-Indexer finden maschinenlesbare Kontextinformationen, Suchbegriffe und Einstiegspunkte in [llms.txt](llms.txt).
 
-**Release-Status:** `Unreleased` — `VERSION` und `pyproject.toml` melden beide
-`1.9.0`; der aktuelle Clone enthält keinen Git-Tag und es wird keine
-Release-Veröffentlichung behauptet.
+**Release-Status:** `v1.10.0` — `VERSION` und `pyproject.toml` melden beide
+`1.10.0`; als `v1.10.0` in Git getaggt (Auskapselung von TICKET-WRITER/SIG-TU
+nach `ellmos-ai/system-auditor`). Eine gesonderte Veröffentlichung (PyPI, npm, …)
+wird nicht behauptet.
 
 ---
 
@@ -109,7 +110,34 @@ Kernprinzipien (wie der Agent angewiesen wird, sich zu verhalten):
 </p>
 
 - **TICKET-MASTER**: Dünner Router und Verkehrsleiter. Verteilt eingehende Tickets ruhig an spezialisierte Subagenten oder Projektaufgaben-Boards.
-- **TICKET-WRITER („SIG-TU")**: System Integrity Guardian. Schildwache mit Lupe und Klemmbrett; prüft Belege strikt auf ABC-Qualitätsniveau.
+- **TICKET-WRITER („SIG-TU")**: System Integrity Guardian — **in ein eigenes Modul ausgekapselt.** Siehe unten.
+
+### Aus TICKET-WRITER wurde `system-auditor`
+
+Die Prüfrolle, die früher hier wohnte, hat ein eigenes Zuhause:
+**[`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor)**.
+
+**Warum sie gegangen ist.** Eine Rolle, die quer über *alle* Policy-, Entscheidungs- und
+Gedächtnisspeicher eines Systems liest, ist kein Ticket-Modul — sie hat Tickets nur als
+Ausgabekanal benutzt. Der Verlegungs-Vorbehalt in `prompts/TICKET-WRITER.de.md` sagt das
+seit dem 2026-07-31 („möglicherweise kein Ticket-Modul, sondern eine eigene Domäne"); damit
+ist er aufgelöst.
+
+**Was die Trennung bringt.** Der Auditor hat Fähigkeiten entwickelt, die mit
+Ticket-Verwaltung nichts zu tun haben und hier fehl am Platz gewesen wären: Audits tragen
+vier Token (Zeitraum, Domäne, System, Auditor), und wer einige festhält und genau einen
+variieren lässt, erhält **Meta-Audits** — über Maschinen, über Modelle (Interrater), über
+Domänen. Zwei Maschinen, die dieselbe Domäne prüfen, kommen berechtigt zu verschiedenen
+Ergebnissen, weil jede ihre eigene Wirklichkeit sieht; genau dieser Unterschied ist das
+Produkt, und er braucht einen eigenen Lebenszyklus.
+
+**Was hier bleibt.** Alles rund um Tickets: Format, Kategorien, Lebenszyklus, IDs, Routing.
+Der Auditor ist jetzt schlichter **Konsument** — er kennt eine Schnittstelle, „lege eine
+Maßnahme an", und bekommt eine Referenz zurück. Er vergibt keine Ticket-IDs und kennt den
+Kategorienbaum nicht. Wo kein Ticketsystem installiert ist, schreibt er stattdessen Dateien.
+
+**Migration.** `prompts/TICKET-WRITER.*.md` bleiben vorerst liegen, als abgelöst markiert
+und auf den neuen Rollen-Prompt verweisend. Nichts in diesem Repository hängt an ihnen.
 
 ---
 

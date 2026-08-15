@@ -174,7 +174,13 @@
 
 ## Offen — Architektur-Vorbehalt SIG-TU (2026-07-31)
 
-- [ ] **Verlegung prüfen (Trigger: ControlRoom-Komposition steht):**
+- [x] **ERLEDIGT 2026-08-15 — Verlegung vollzogen nach `ellmos-ai/system-auditor`.**
+      Gewählt wurde die dritte der damals genannten Optionen (eigenständiges
+      Integrity-Modul). Die Rolle ist dort als `prompts/AUDITOR.de.md` kanonisch;
+      ticket-master ist nur noch Konsument über eine Maßnahmen-Senke und behält die
+      Hoheit über Ticketformat, Kategorien, IDs und Routing. Die hiesigen
+      `prompts/TICKET-WRITER.*.md` sind als abgelöst markiert.
+      Ursprünglicher Vorbehalt:
       SIG-TU/TICKET-WRITER greift querschnittlich auf fremde Policy-,
       Entscheidungs- und Gedächtnis-Speicher zu und kann der Kapselung
       von ticket-master widersprechen. Zum Einführungszeitpunkt kein
@@ -184,8 +190,14 @@
       Vermerk in `prompts/TICKET-WRITER.de.md` + `.en.md` (Relocation
       note [K 2026-07-31]). [K 2026-07-31]
 
-## Offen — SIG-TU-Rollentest 2026-08-01 (5 Reibungspunkte)
+## Offen — SIG-TU-Rollentest 2026-08-01 (5 Reibungspunkte) — Rolle inzwischen ausgekapselt
 
+> **2026-08-16:** Die geprüfte Rolle lebt seit 2026-08-15 als eigenes Modul in
+> [`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor) (siehe
+> Abschnitt „Architektur-Vorbehalt SIG-TU" oben). Diese Sektion bleibt als
+> Herkunftsbeleg stehen; verbleibende offene Punkte sind nicht mehr Sache von
+> ticket-master.
+>
 > Quelle: TICKET-WRITER/SIG-TU-Rollentest 2026-08-01 (Auftrag OP-TW-TEST),
 > Bereich `control-center-manifest-vs-reality`. Reibungspunkte am
 > Rollen-Prompt/Config selbst, nicht am geprüften Zielsystem — siehe
@@ -209,16 +221,18 @@
       `~/CLAUDE.md`/`~/OneDrive/CLAUDE.md`: "Kanonischer Ort:
       `~/OneDrive/SYSTEM-MANIFEST.md`"). Genau die Art Pfad-Drift, die
       SIG-TU selbst aufspüren soll.
-- [ ] **Beleg-C-Recherche hat keine Tiefen-/Umfangs-Leitplanke.** Der
-      Prompt erlaubt für Beleg C ausdrücklich bereichsübergreifendes
-      Lesen ("Bereichsdisziplin" im LOOP-CONTRACT), aber nicht, wie
-      tief/wie viele Dateien das sein dürfen, bevor es faktisch zu einem
-      zweiten, unkontrollierten Sweep wird. Im Testlauf brauchte die
-      Auflösung von zwei Anfangsverdachten mehrere Leseschritte in
-      `.AI/.MODULES/.CONTROL/controlroom/` (außerhalb des Zielbereichs
-      `_control-center/`). Vorschlag: Hinweis ergänzen wie "Beleg-C-
-      Recherche endet, sobald eine eindeutige Entscheidungs-/Planquelle
-      gefunden ist — nicht das ganze Zielsystem durchsuchen".
+- [x] **Beleg-C-Recherche hat keine Tiefen-/Umfangs-Leitplanke — im Nachfolger
+      adressiert.** Der Prompt erlaubte für Beleg C ausdrücklich
+      bereichsübergreifendes Lesen ("Bereichsdisziplin" im LOOP-CONTRACT),
+      aber nicht, wie tief/wie viele Dateien das sein dürfen, bevor es
+      faktisch zu einem zweiten, unkontrollierten Sweep wird. Im Testlauf
+      brauchte die Auflösung von zwei Anfangsverdachten mehrere Leseschritte
+      in `.AI/.MODULES/.CONTROL/controlroom/` (außerhalb des Zielbereichs
+      `_control-center/`). `ellmos-ai/system-auditor` (`prompts/AUDITOR.en.md`,
+      Abschnitt „Resolve rule sources") führt für Beleg B/C jetzt eine
+      dritte Auflösungsstufe „convention — a bounded name list, bounded
+      depth, only inside the domain" statt eines freien Verzeichnis-Crawls;
+      kein separater Fix hier nötig, da die Rolle ausgekapselt ist.
 - [x] **Datei-/Claim-Konvention beim Selbst-Anlegen
       eines SIG-TU-Tickets.** Der Prompt sagt nur "Ticket-Dateien im
       `tickets_dir`, nicht ob neu erzeugte SIG-TU-Tickets sofort mit

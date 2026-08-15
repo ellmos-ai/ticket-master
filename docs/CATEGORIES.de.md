@@ -6,8 +6,11 @@ feineren Unterkategorien, klaren Ein-/Ausgangsregeln und einem Autonomie-Loop
 für den Betrieb ohne ständige User-Rückfragen.
 
 Verbindlich für: `prompts/TICKET-MASTER.de.md` / `TICKET-MASTER.en.md`
-(Routing), `prompts/TICKET-WRITER.*.md` (Dedup-Scan), `lib/ticket_writer.py`
-(`_LIFECYCLE_SUBDIRS`), `tickets/_templates/TICKET.txt` (STATUS-Feld).
+(Routing), `prompts/TICKET-WRITER.*.md` (Dedup-Scan — Rolle seit 2026-08-15
+ausgekapselt nach `ellmos-ai/system-auditor`, Datei bleibt nur als
+Herkunftsbeleg liegen), `lib/ticket_writer.py` (`_LIFECYCLE_SUBDIRS`,
+weiterhin aktive ID-Vergabe-Bibliothek, nicht zu verwechseln mit der
+ausgekapselten Rolle), `tickets/_templates/TICKET.txt` (STATUS-Feld).
 
 ---
 

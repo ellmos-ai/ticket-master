@@ -14,8 +14,8 @@ management when delegation is not appropriate. Cross-platform (Windows/macOS/Lin
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.9.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-95%20passed-brightgreen.svg)](tests/)
+[![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
+[![Tests](https://img.shields.io/badge/pytest-133%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -29,8 +29,9 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
 
-**Release status:** `Unreleased` — `VERSION` and `pyproject.toml` both report
-`1.9.0`; the current clone has no Git tag and no release publication is claimed.
+**Release status:** `v1.10.0` — `VERSION` and `pyproject.toml` both report
+`1.10.0`; tagged `v1.10.0` in Git (TICKET-WRITER/SIG-TU extraction into
+`ellmos-ai/system-auditor`). No separate publication (PyPI, npm, …) is claimed.
 
 ---
 
@@ -105,7 +106,32 @@ Key design principles (how the agent is instructed to behave):
 </p>
 
 - **TICKET-MASTER**: Lean traffic router &amp; dispatcher. Calmly distributes incoming tickets to worker sub-agents or project task boards.
-- **TICKET-WRITER ("SIG-TU")**: System Integrity Guardian. Sentinel with magnifying glass &amp; clipboard; audits proof documents to ensure ABC-level quality.
+- **TICKET-WRITER ("SIG-TU")**: System Integrity Guardian — **moved out into its own module.** See below.
+
+### TICKET-WRITER has become `system-auditor`
+
+The auditing role that used to live here now has its own home:
+**[`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor)**.
+
+**Why it left.** A role that reads across *all* policy, decision and memory stores of a
+system is not a ticket module — it only used tickets as its output channel. The relocation
+note in `prompts/TICKET-WRITER.de.md` had said so since 2026-07-31 ("possibly not a ticket
+module but a domain of its own"); this resolves it.
+
+**What the split buys.** The auditor grew capabilities that have nothing to do with ticket
+handling and would have been out of place here: audits carry four tokens (period, domain,
+system, auditor), and holding some fixed while letting one vary produces **meta audits** —
+across machines, across models (interrater), across domains. Two machines auditing the same
+domain legitimately disagree, because each sees its own reality; that difference is the
+product, and it needs a lifecycle of its own.
+
+**What stays here.** Everything about tickets: format, categories, lifecycle, IDs, routing.
+The auditor is now a plain **consumer** — it knows one interface, "record a measure", and
+gets a reference back. It does not mint ticket IDs and does not know the category tree.
+Where no ticket system is installed, it writes files instead.
+
+**Migration.** `prompts/TICKET-WRITER.*.md` remain in place for now, marked as superseded
+and pointing at the new role prompt. Nothing in this repository depends on them.
 
 ---
 

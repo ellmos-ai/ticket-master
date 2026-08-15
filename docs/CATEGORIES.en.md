@@ -6,8 +6,11 @@ clusters, finer subcategories, explicit entry/exit rules, and an autonomy
 loop for operation without constant user round-trips.
 
 Binding for: `prompts/TICKET-MASTER.de.md` / `TICKET-MASTER.en.md` (routing),
-`prompts/TICKET-WRITER.*.md` (dedup scan), `lib/ticket_writer.py`
-(`_LIFECYCLE_SUBDIRS`), `tickets/_templates/TICKET.txt` (STATUS field).
+`prompts/TICKET-WRITER.*.md` (dedup scan — role moved out to
+`ellmos-ai/system-auditor` on 2026-08-15, file remains only as a record of
+origin), `lib/ticket_writer.py` (`_LIFECYCLE_SUBDIRS`, still the active
+ID-assignment library — not to be confused with the relocated role),
+`tickets/_templates/TICKET.txt` (STATUS field).
 
 German version: [CATEGORIES.de.md](CATEGORIES.de.md)
 

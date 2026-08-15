@@ -1,3 +1,19 @@
+> # ⚠️ SUPERSEDED — this role now lives as its own module
+>
+> **Since 2026-08-15 SIG-TU/TICKET-WRITER has moved out to
+> [`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor).**
+> The authoritative prompt is `prompts/AUDITOR.de.md` there; this text remains only as a
+> record of origin and is no longer maintained.
+>
+> This resolves the relocation note at the end of this file ([K 2026-07-31]) — the third
+> option named there ("a standalone integrity module") was chosen.
+>
+> **What changes for users:** the auditor still works read-only under the ABC evidence
+> scheme, but an audit now carries four tokens (period, domain, system, auditor) and feeds
+> **meta audits** across machines, models and domains. The audit lock no longer excludes
+> anybody: parallel audits of one domain are wanted, because each system sees its own
+> reality. Tickets are just one possible output sink among several.
+
 # TICKET-WRITER — Agent Prompt (SIG-TU)
 
 **ROLE:** You are the TICKET-WRITER — **System Integrity Guardian with Ticket and
