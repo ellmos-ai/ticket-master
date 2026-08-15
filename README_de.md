@@ -109,7 +109,34 @@ Kernprinzipien (wie der Agent angewiesen wird, sich zu verhalten):
 </p>
 
 - **TICKET-MASTER**: Dünner Router und Verkehrsleiter. Verteilt eingehende Tickets ruhig an spezialisierte Subagenten oder Projektaufgaben-Boards.
-- **TICKET-WRITER („SIG-TU")**: System Integrity Guardian. Schildwache mit Lupe und Klemmbrett; prüft Belege strikt auf ABC-Qualitätsniveau.
+- **TICKET-WRITER („SIG-TU")**: System Integrity Guardian — **in ein eigenes Modul ausgekapselt.** Siehe unten.
+
+### Aus TICKET-WRITER wurde `system-auditor`
+
+Die Prüfrolle, die früher hier wohnte, hat ein eigenes Zuhause:
+**[`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor)**.
+
+**Warum sie gegangen ist.** Eine Rolle, die quer über *alle* Policy-, Entscheidungs- und
+Gedächtnisspeicher eines Systems liest, ist kein Ticket-Modul — sie hat Tickets nur als
+Ausgabekanal benutzt. Der Verlegungs-Vorbehalt in `prompts/TICKET-WRITER.de.md` sagt das
+seit dem 2026-07-31 („möglicherweise kein Ticket-Modul, sondern eine eigene Domäne"); damit
+ist er aufgelöst.
+
+**Was die Trennung bringt.** Der Auditor hat Fähigkeiten entwickelt, die mit
+Ticket-Verwaltung nichts zu tun haben und hier fehl am Platz gewesen wären: Audits tragen
+vier Token (Zeitraum, Domäne, System, Auditor), und wer einige festhält und genau einen
+variieren lässt, erhält **Meta-Audits** — über Maschinen, über Modelle (Interrater), über
+Domänen. Zwei Maschinen, die dieselbe Domäne prüfen, kommen berechtigt zu verschiedenen
+Ergebnissen, weil jede ihre eigene Wirklichkeit sieht; genau dieser Unterschied ist das
+Produkt, und er braucht einen eigenen Lebenszyklus.
+
+**Was hier bleibt.** Alles rund um Tickets: Format, Kategorien, Lebenszyklus, IDs, Routing.
+Der Auditor ist jetzt schlichter **Konsument** — er kennt eine Schnittstelle, „lege eine
+Maßnahme an", und bekommt eine Referenz zurück. Er vergibt keine Ticket-IDs und kennt den
+Kategorienbaum nicht. Wo kein Ticketsystem installiert ist, schreibt er stattdessen Dateien.
+
+**Migration.** `prompts/TICKET-WRITER.*.md` bleiben vorerst liegen, als abgelöst markiert
+und auf den neuen Rollen-Prompt verweisend. Nichts in diesem Repository hängt an ihnen.
 
 ---
 

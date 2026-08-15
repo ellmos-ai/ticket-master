@@ -174,7 +174,13 @@
 
 ## Offen — Architektur-Vorbehalt SIG-TU (2026-07-31)
 
-- [ ] **Verlegung prüfen (Trigger: ControlRoom-Komposition steht):**
+- [x] **ERLEDIGT 2026-08-15 — Verlegung vollzogen nach `ellmos-ai/system-auditor`.**
+      Gewählt wurde die dritte der damals genannten Optionen (eigenständiges
+      Integrity-Modul). Die Rolle ist dort als `prompts/AUDITOR.de.md` kanonisch;
+      ticket-master ist nur noch Konsument über eine Maßnahmen-Senke und behält die
+      Hoheit über Ticketformat, Kategorien, IDs und Routing. Die hiesigen
+      `prompts/TICKET-WRITER.*.md` sind als abgelöst markiert.
+      Ursprünglicher Vorbehalt:
       SIG-TU/TICKET-WRITER greift querschnittlich auf fremde Policy-,
       Entscheidungs- und Gedächtnis-Speicher zu und kann der Kapselung
       von ticket-master widersprechen. Zum Einführungszeitpunkt kein

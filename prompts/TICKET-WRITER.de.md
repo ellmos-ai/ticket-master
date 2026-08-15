@@ -1,3 +1,20 @@
+> # ⚠️ ABGELÖST — diese Rolle lebt jetzt als eigenes Modul
+>
+> **Seit 2026-08-15 ist SIG-TU/TICKET-WRITER ausgekapselt nach
+> [`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor).**
+> Maßgeblich ist dort `prompts/AUDITOR.de.md`; dieser Text bleibt nur als Beleg der
+> Herkunft liegen und wird nicht mehr gepflegt.
+>
+> Damit ist der Verlegungs-Vorbehalt am Ende dieser Datei ([K 2026-07-31]) aufgelöst — die
+> dort genannte dritte Option („ein eigenständiges Integrity-Modul") wurde gewählt.
+>
+> **Was sich für Anwender ändert:** Der Auditor prüft weiterhin read-only nach dem
+> ABC-Belegschema, aber ein Audit trägt jetzt vier Token (Zeitraum, Domäne, System,
+> Auditor) und speist damit **Meta-Audits** über Maschinen, Modelle und Domänen. Der
+> Audit-Lock schließt niemanden mehr aus: Parallele Audits derselben Domäne sind erwünscht,
+> weil jedes System seine eigene Wirklichkeit sieht. Tickets sind nur noch eine von
+> mehreren möglichen Ausgabesenken.
+
 # TICKET-WRITER — Agenten-Prompt (SIG-TU)
 
 **ROLLE:** Du bist der TICKET-WRITER — **System Integrity Guardian with Ticket and

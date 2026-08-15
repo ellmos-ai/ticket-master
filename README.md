@@ -105,7 +105,32 @@ Key design principles (how the agent is instructed to behave):
 </p>
 
 - **TICKET-MASTER**: Lean traffic router &amp; dispatcher. Calmly distributes incoming tickets to worker sub-agents or project task boards.
-- **TICKET-WRITER ("SIG-TU")**: System Integrity Guardian. Sentinel with magnifying glass &amp; clipboard; audits proof documents to ensure ABC-level quality.
+- **TICKET-WRITER ("SIG-TU")**: System Integrity Guardian — **moved out into its own module.** See below.
+
+### TICKET-WRITER has become `system-auditor`
+
+The auditing role that used to live here now has its own home:
+**[`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor)**.
+
+**Why it left.** A role that reads across *all* policy, decision and memory stores of a
+system is not a ticket module — it only used tickets as its output channel. The relocation
+note in `prompts/TICKET-WRITER.de.md` had said so since 2026-07-31 ("possibly not a ticket
+module but a domain of its own"); this resolves it.
+
+**What the split buys.** The auditor grew capabilities that have nothing to do with ticket
+handling and would have been out of place here: audits carry four tokens (period, domain,
+system, auditor), and holding some fixed while letting one vary produces **meta audits** —
+across machines, across models (interrater), across domains. Two machines auditing the same
+domain legitimately disagree, because each sees its own reality; that difference is the
+product, and it needs a lifecycle of its own.
+
+**What stays here.** Everything about tickets: format, categories, lifecycle, IDs, routing.
+The auditor is now a plain **consumer** — it knows one interface, "record a measure", and
+gets a reference back. It does not mint ticket IDs and does not know the category tree.
+Where no ticket system is installed, it writes files instead.
+
+**Migration.** `prompts/TICKET-WRITER.*.md` remain in place for now, marked as superseded
+and pointing at the new role prompt. Nothing in this repository depends on them.
 
 ---
 

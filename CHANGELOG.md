@@ -4,6 +4,22 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **TICKET-WRITER (SIG-TU) ausgekapselt nach `ellmos-ai/system-auditor`.** Eine Rolle, die
+  quer ueber alle Policy-, Entscheidungs- und Gedaechtnisspeicher liest, ist kein
+  Ticket-Modul -- sie nutzte Tickets nur als Ausgabekanal. Damit ist der
+  Verlegungs-Vorbehalt vom 2026-07-31 aufgeloest (dritte Option: eigenstaendiges
+  Integrity-Modul).
+- `prompts/TICKET-WRITER.de.md` und `.en.md` tragen einen Abloesungs-Hinweis und verweisen
+  auf den neuen Rollen-Prompt. Sie bleiben als Herkunftsbeleg liegen; nichts in diesem
+  Repository haengt an ihnen.
+- README/README_de erklaeren die Trennung und was hier bleibt: Ticketformat, Kategorien,
+  Lebenszyklus, IDs und Routing. Der Auditor ist nur noch Konsument einer
+  Massnahmen-Senke -- er vergibt keine Ticket-IDs und kennt den Kategorienbaum nicht.
+
+## [Unreleased]
+
 ### ID-Vergabe: 9-stellige Zufallszahl statt fortlaufender Nummer (2026-08-15)
 
 **Der Anlass ist gemessen, nicht theoretisch.** Am 2026-08-15 legte ASUS-GEI um
