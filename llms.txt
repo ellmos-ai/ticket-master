@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.10.0` (tagged in Git; no separate publication such as PyPI/npm is claimed)
 - Version: `1.10.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-08-16: `133 passed` via `python -m pytest -q`.
+- Local verification on 2026-08-16: `139 passed` via `python -m pytest -q`.
 - 2026-08-16: the TICKET-WRITER (SIG-TU) role moved out to
   `ellmos-ai/system-auditor`; `prompts/TICKET-WRITER.*.md` remain in this
   repository only as a record of origin.

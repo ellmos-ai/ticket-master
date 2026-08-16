@@ -48,6 +48,7 @@ REQUIRED_PATHS = [
     "VERSION",
     "llms.txt",
     "SECURITY.md",
+    "tests/test_metadata.py",
     ".gitignore",
     ".gitattributes",
 ]

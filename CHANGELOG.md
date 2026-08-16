@@ -4,6 +4,14 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Discoverability, Badges & Metadata Parity (2026-08-16)
+
+- **Test Suite & Badges:** Test-Badge in `README.md` und `README_de.md` auf 139 Pytest-Tests (100% grün) synchronisiert; PEP 621 `[tool.ruff]` Konfiguration in `pyproject.toml` ergänzt und Ruff-Cleanliness hergestellt.
+- **Automatisierte Paritätstests:** Vollständige Metadaten-, Manifest- und Dokumentationsparitätstestsuite in `tests/test_metadata.py` implementiert (6/6 Tests grün).
+- **Ökosystem-Vernetzung:** Geschwisterwerkzeuge-Matrix innerhalb der `ellmos-ai`-, `dev-bricks`- und `open-bricks`-Ökosysteme (`clutch`, `coma`, `swarm-ai`, `system-explorer`, `policy-registry`, `sqlite-transit-sync`, `workflowhooker`, `memoryhooker`, `DevCenter`, `CodeBox`, `safe-start-for-codex`, `automation-master`) in beiden Sprachfassungen integriert.
+- **Haftungsausschluss:** Standardisierte zweisprachige Haftungs- und Spendenklausel (§ 521 BGB / MIT) verankert.
+- **LLM Context:** `llms.txt` auf Stand 2026-08-16 und 139 Tests synchronisiert.
+
 ## [1.10.0] — 2026-08-16
 
 ### Changed

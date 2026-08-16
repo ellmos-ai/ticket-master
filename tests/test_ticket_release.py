@@ -20,8 +20,8 @@ from pathlib import Path
 LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
-import ticket_mover
-import ticket_writer
+import ticket_mover  # noqa: E402
+import ticket_writer  # noqa: E402
 
 
 class TestFilenameGrammar(unittest.TestCase):

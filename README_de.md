@@ -16,7 +16,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-133%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-139%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -497,6 +497,35 @@ der ellmos-Stack-Familie.
 Kernmodul von [ellmos-ai/agent-ops-stack](https://github.com/ellmos-ai/agent-ops-stack)
 (Rolle `ticket-routing`); Familie/Katalog: [ellmos-ai/stacks](https://github.com/ellmos-ai/stacks);
 Org-Übersicht: [ellmos-ai](https://github.com/ellmos-ai).
+
+## Ökosystem & Geschwisterwerkzeuge
+
+Teil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastruktur und des übergeordneten [open-bricks](https://github.com/open-bricks) Open-Source-Software-Ökosystems:
+
+| Werkzeug | Organisation | Beschreibung |
+|----------|--------------|--------------|
+| [clutch](https://github.com/ellmos-ai/clutch) | ellmos-ai | Adaptiver Multi-Modell-LLM-Router & Agent-Execution-Gear |
+| [coma](https://github.com/ellmos-ai/coma) | ellmos-ai | Single-Binary Multi-Agent-Orchestrator & Koordinations-Engine |
+| [swarm-ai](https://github.com/ellmos-ai/swarm-ai) | ellmos-ai | Schwarmintelligenz und autonome Agenten-Konsens-Engine |
+| [system-explorer](https://github.com/ellmos-ai/system-explorer) | ellmos-ai | Lokale Systemerkennung und Hardware-Ressourcen-Monitor |
+| [policy-registry](https://github.com/ellmos-ai/policy-registry) | ellmos-ai | Einheitliche Agenten-Rechte- und Policy-Management-Engine |
+| [sqlite-transit-sync](https://github.com/ellmos-ai/sqlite-transit-sync) | ellmos-ai | Multi-Agent-State-Synchronisation über SQLite-WAL-Journale |
+| [workflowhooker](https://github.com/ellmos-ai/workflowhooker) | ellmos-ai | Event-Hooks und Agenten-Workflow-Automatisierungs-Trigger |
+| [memoryhooker](https://github.com/ellmos-ai/memoryhooker) | ellmos-ai | Transparentes SQLite/FTS5 Arbeitsgedächtnis für Agenten |
+| [DevCenter](https://github.com/dev-bricks/DevCenter) | dev-bricks | Entwickler-Control-Plane, Repository-Dashboard & Umgebungsmanager |
+| [CodeBox](https://github.com/dev-bricks/CodeBox) | dev-bricks | Polyglotter Code-Snippet-Manager & Entwickler-Werkbank |
+| [safe-start-for-codex](https://github.com/dev-bricks/safe-start-for-codex) | dev-bricks | Sicherer Starter und Rechte-Isolator für Codex CLI Sessions |
+| [automation-master](https://github.com/dev-bricks/automation-master) | dev-bricks | Automations-Orchestrierung und lokaler Job-Scheduler |
+
+---
+
+## Haftung / Liability
+
+Dieses Projekt ist eine **unentgeltliche Open-Source-Schenkung** im Sinne der §§ 516 ff. BGB. Die Haftung des Urhebers ist gemäß **§ 521 BGB** auf **Vorsatz und grobe Fahrlässigkeit** beschränkt. Ergänzend gelten die Haftungsausschlüsse der MIT-Lizenz.
+
+Nutzung auf eigenes Risiko. Keine Wartungszusage, keine Verfügbarkeitsgarantie, keine Gewähr für Fehlerfreiheit oder Eignung für einen bestimmten Zweck.
+
+This project is an unpaid open-source donation. Liability is limited to intent and gross negligence (§ 521 German Civil Code). Use at your own risk. No warranty, no maintenance guarantee, no fitness-for-purpose assumed.
 
 ---
 
