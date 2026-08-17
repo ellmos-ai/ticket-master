@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### CI compatibility
+
+- Replaced test-only `random.Random` subclasses with minimal scripted RNG
+  doubles, avoiding Python 3.10's constructor seeding of the list fixture.
+
 ### Discoverability, Badges & Metadata Parity (2026-08-16)
 
 - **Test Suite & Badges:** Test-Badge in `README.md` und `README_de.md` auf 139 Pytest-Tests (100% grün) synchronisiert; PEP 621 `[tool.ruff]` Konfiguration in `pyproject.toml` ergänzt und Ruff-Cleanliness hergestellt.

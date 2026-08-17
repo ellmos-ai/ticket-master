@@ -41,7 +41,6 @@ class TestTicketWriter(unittest.TestCase):
         ein nach SOLVED verschobenes Ticket darf seine Nummer nicht freigeben.
         Erzwungen wird das hier ueber einen RNG, der zuerst genau die schon
         belegten Zahlen liefert."""
-        import random
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "SOLVED").mkdir()
@@ -49,9 +48,8 @@ class TestTicketWriter(unittest.TestCase):
                 "alt", encoding="utf-8")
             (base / "T-20260627-222222222.txt").write_text("intake", encoding="utf-8")
 
-            class ScriptedRandom(random.Random):
+            class ScriptedRandom:
                 def __init__(self, values):
-                    super().__init__()
                     self._values = list(values)
 
                 def randrange(self, *_args, **_kwargs):
@@ -83,7 +81,6 @@ class TestTicketWriter(unittest.TestCase):
     def test_create_never_overwrites_existing(self):
         """Zieht der RNG eine Zahl, deren Datei schon existiert (Race auf
         demselben Host), wird neu gewuerfelt statt ueberschrieben."""
-        import random
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -92,9 +89,8 @@ class TestTicketWriter(unittest.TestCase):
             first = inbox / "T-20260627-444444444.txt"
             first.write_text("ORIGINAL", encoding="utf-8")
 
-            class ScriptedRandom(random.Random):
+            class ScriptedRandom:
                 def __init__(self, values):
-                    super().__init__()
                     self._values = list(values)
 
                 def randrange(self, *_args, **_kwargs):
