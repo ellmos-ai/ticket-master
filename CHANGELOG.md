@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### CI compatibility
+
+- Replaced test-only `random.Random` subclasses with minimal scripted RNG
+  doubles, avoiding Python 3.10's constructor seeding of the list fixture.
+
 ### Discoverability, Badges & Metadata Parity (2026-08-16)
 
 - **Test Suite & Badges:** Test-Badge in `README.md` und `README_de.md` auf 139 Pytest-Tests (100% grün) synchronisiert; PEP 621 `[tool.ruff]` Konfiguration in `pyproject.toml` ergänzt und Ruff-Cleanliness hergestellt.
@@ -138,6 +143,15 @@ Prompts (`TICKET-MASTER.de.md`/`.en.md`): neuer Abschnitt „Ticket-Rückgabe"
 und Startsequenz-Schritt „(e) Sitzungsabschluss".
 
 24 neue Tests (`tests/test_ticket_release.py`), Suite 95 → 119 grün.
+
+### Categories-v1 USER marker parity (T-20260815-06)
+
+- Added the already-decided `USER/marker` subcategory to the bilingual
+  categories contract, TICKET-MASTER routing, template, and READMEs. The
+  contract now distinguishes an autonomously observable `WAITING/marker` from
+  a marker that the user must provide or confirm (`USER/marker`).
+- Added a strict bilingual lifecycle STATUS parser/validator and round-trip
+  regressions in `lib/ticket_writer.py`, including folder-congruence checks.
 
 ### Intake lifecycle consistency (T-20260812-06)
 - `ticket_writer.create()` and the shared `--intake` CLI now create unclaimed

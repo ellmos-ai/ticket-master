@@ -75,16 +75,14 @@ class TestFilenameGrammar(unittest.TestCase):
         """Kern des Defekts: eine per Slug benannte Nummer muss als vergeben
         gelten, sonst kann sie ein zweites Mal gezogen werden. Der RNG liefert
         hier absichtlich zuerst genau die belegte Zahl."""
-        import random
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "SOLVED").mkdir()
             (base / "SOLVED" / "T-20260612-123456789_promptboard-readme.txt").write_text(
                 "alt", encoding="utf-8")
 
-            class ScriptedRandom(random.Random):
+            class ScriptedRandom:
                 def __init__(self, values):
-                    super().__init__()
                     self._values = list(values)
 
                 def randrange(self, *_args, **_kwargs):

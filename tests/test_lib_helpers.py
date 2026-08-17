@@ -41,7 +41,6 @@ class TestTicketWriter(unittest.TestCase):
         ein nach SOLVED verschobenes Ticket darf seine Nummer nicht freigeben.
         Erzwungen wird das hier ueber einen RNG, der zuerst genau die schon
         belegten Zahlen liefert."""
-        import random
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "SOLVED").mkdir()
@@ -49,9 +48,8 @@ class TestTicketWriter(unittest.TestCase):
                 "alt", encoding="utf-8")
             (base / "T-20260627-222222222.txt").write_text("intake", encoding="utf-8")
 
-            class ScriptedRandom(random.Random):
+            class ScriptedRandom:
                 def __init__(self, values):
-                    super().__init__()
                     self._values = list(values)
 
                 def randrange(self, *_args, **_kwargs):
@@ -83,7 +81,6 @@ class TestTicketWriter(unittest.TestCase):
     def test_create_never_overwrites_existing(self):
         """Zieht der RNG eine Zahl, deren Datei schon existiert (Race auf
         demselben Host), wird neu gewuerfelt statt ueberschrieben."""
-        import random
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
@@ -92,9 +89,8 @@ class TestTicketWriter(unittest.TestCase):
             first = inbox / "T-20260627-444444444.txt"
             first.write_text("ORIGINAL", encoding="utf-8")
 
-            class ScriptedRandom(random.Random):
+            class ScriptedRandom:
                 def __init__(self, values):
-                    super().__init__()
                     self._values = list(values)
 
                 def randrange(self, *_args, **_kwargs):
@@ -130,6 +126,61 @@ class TestTicketWriter(unittest.TestCase):
             os.environ.pop("TICKET_MASTER_TICKETS_DIR", None)
             exit_code = ticket_writer._cli(["--title", "x"])
         self.assertEqual(exit_code, 1)
+
+    def test_user_marker_is_a_canonical_user_subcategory(self):
+        self.assertIn("marker", ticket_writer.LIFECYCLE_SUBCATEGORIES["USER"])
+        status = ticket_writer.validate_lifecycle_status(
+            "USER/marker (seit 2026-07-31)", folder="USER"
+        )
+        self.assertEqual(
+            status,
+            ticket_writer.LifecycleStatus(
+                cluster="USER", subcategory="marker", since="2026-07-31"
+            ),
+        )
+
+    def test_lifecycle_status_roundtrip_is_bilingual(self):
+        expected = ticket_writer.LifecycleStatus(
+            cluster="USER", subcategory="marker", since="2026-07-31"
+        )
+        for language, raw in (
+            ("de", "USER/marker (seit 2026-07-31)"),
+            ("en", "USER/marker (since 2026-07-31)"),
+        ):
+            parsed = ticket_writer.parse_lifecycle_status(raw)
+            self.assertEqual(parsed, expected)
+            rendered = ticket_writer.format_lifecycle_status(parsed, language=language)
+            self.assertEqual(rendered, raw)
+            self.assertEqual(ticket_writer.parse_lifecycle_status(rendered), parsed)
+
+    def test_lifecycle_status_rejects_wrong_cluster_or_folder(self):
+        for raw in ("USER", "USER/review-due", "WAITING/session", "INBOX/marker"):
+            with self.subTest(raw=raw), self.assertRaises(
+                ticket_writer.LifecycleStatusError
+            ):
+                ticket_writer.parse_lifecycle_status(raw)
+        with self.assertRaises(ticket_writer.LifecycleStatusError):
+            ticket_writer.validate_lifecycle_status("USER/marker", folder="WAITING")
+
+    def test_user_marker_contract_surfaces_are_synchronised(self):
+        root = Path(__file__).resolve().parents[1]
+        surfaces = (
+            "docs/CATEGORIES.de.md",
+            "docs/CATEGORIES.en.md",
+            "prompts/TICKET-MASTER.de.md",
+            "prompts/TICKET-MASTER.en.md",
+            "tickets/_templates/TICKET.txt",
+            "README.md",
+            "README_de.md",
+        )
+        for relative in surfaces:
+            with self.subTest(relative=relative):
+                text = (root / relative).read_text(encoding="utf-8")
+                self.assertIn("USER/marker", text)
+        for relative in ("docs/CATEGORIES.de.md", "docs/CATEGORIES.en.md"):
+            with self.subTest(marker_boundary=relative):
+                text = (root / relative).read_text(encoding="utf-8")
+                self.assertIn("WAITING/marker", text)
 
 
 class TestDocScanner(unittest.TestCase):

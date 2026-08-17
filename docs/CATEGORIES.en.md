@@ -9,7 +9,8 @@ Binding for: `prompts/TICKET-MASTER.de.md` / `TICKET-MASTER.en.md` (routing),
 `prompts/TICKET-WRITER.*.md` (dedup scan — role moved out to
 `ellmos-ai/system-auditor` on 2026-08-15, file remains only as a record of
 origin), `lib/ticket_writer.py` (`_LIFECYCLE_SUBDIRS`, still the active
-ID-assignment library — not to be confused with the relocated role),
+ID-assignment library — not to be confused with the relocated role, plus the
+STATUS parser/validator),
 `tickets/_templates/TICKET.txt` (STATUS field).
 
 German version: [CATEGORIES.de.md](CATEGORIES.de.md)
@@ -25,7 +26,7 @@ German version: [CATEGORIES.de.md](CATEGORIES.de.md)
 | QUEUED | `tickets/QUEUED/` | handed to a provider/agent, result pending | — |
 | BLOCKED | `tickets/BLOCKED/` | external blocker (not the user) | `host-receipt`, `foreign-state`, `lock`, `quota`, `dependency` |
 | WAITING | `tickets/WAITING/` | time- or marker-bound | `scheduled`, `review-due`, `marker` |
-| USER | `tickets/USER/` | strictly depends on the user | `decision`, `data`, `freigabe`, `hardware`, `session` |
+| USER | `tickets/USER/` | strictly depends on the user | `decision`, `data`, `freigabe`, `hardware`, `session`, `marker` |
 | PARKED | `tickets/PARKED/` | deliberately set aside | `skip`, `backlog`, `until-trigger` |
 | SOLVED | `tickets/SOLVED/` | solved and empirically confirmed | — |
 
@@ -54,7 +55,9 @@ directory (`tickets/*.txt`) counts as INBOX.
 
 - `scheduled` — fixed date/schedule; work starts at the appointed time.
 - `review-due` — a review is due (content-wise, not blocked).
-- `marker` — waiting for a marker file or a defined event.
+- `marker` — waiting for an autonomously observable marker file or defined
+  event; use `USER/marker` instead when only the user can establish or confirm
+  that it occurred.
 
 ### USER (next step is strictly the user)
 
@@ -64,6 +67,9 @@ directory (`tickets/*.txt`) counts as INBOX.
   kept for consistency with the source taxonomy).
 - `hardware` — a physical step/device only the user can perform.
 - `session` — a user-only launchable model, login session, or manual run.
+- `marker` — a marker/event must be supplied or confirmed by the user. Example:
+  the user confirms that a competition has ended. An autonomously observable
+  marker remains `WAITING/marker`.
 
 ### PARKED (deliberately set aside)
 
@@ -82,7 +88,8 @@ STATUS:        <CLUSTER>[/<subcategory>] (since YYYY-MM-DD)
 ```
 
 Examples: `STATUS: ACTIONABLE (since 2026-07-31)`,
-`STATUS: BLOCKED/host-receipt (since 2026-07-31)`.
+`STATUS: BLOCKED/host-receipt (since 2026-07-31)`,
+`STATUS: USER/marker (since 2026-07-31)`.
 
 - Folder and STATUS must be congruent.
 - Every move between clusters updates STATUS and appends a `HISTORY`/`LOG`
@@ -131,7 +138,9 @@ Operation without constant user round-trips:
   pull to ACTIONABLE and work it — do not leave it lying around.
 - **USER → present in batches.** Collect USER tickets and present them as
   ONE batched brief (no individual pings). After the user's answer, re-file
-  each ticket immediately (usually ACTIONABLE or PARKED/skip).
+  each ticket immediately (usually ACTIONABLE or PARKED/skip). This includes
+  `USER/marker`; do not silently reinterpret that marker as autonomous
+  `WAITING/marker`.
 - **WAITING → pull on date/marker.** Check `scheduled`/`review-due` on day
   change, `marker` on every run; once reached → ACTIONABLE.
 - **PARKED → no auto re-check.** Only on explicit order or when the named
