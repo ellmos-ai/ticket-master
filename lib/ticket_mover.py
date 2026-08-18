@@ -89,6 +89,21 @@ class TicketCollisionError(RuntimeError):
     """Raised when a move target already holds a (different) ticket file."""
 
 
+class DestinationLooksLikeFileError(ValueError):
+    """Raised when dest_dir's last path segment is itself a ticket filename.
+
+    move_ticket() always appends the source's own filename under dest_dir --
+    dest_dir must be the destination FOLDER (e.g. ".../SOLVED"), never the
+    full destination FILE path (".../SOLVED/T-....txt"). Passing the file
+    path there is not caught by is_absolute()/single-part checks in
+    resolve_dest_dir() (those only rescue a bare cluster name), so without
+    this guard dest_dir.mkdir() silently creates a directory shaped like a
+    ticket filename and the ticket ends up nested one level too deep inside
+    it (T-20260818-427750316: happened live on a USER->SOLVED move, the
+    on-disk result was .../SOLVED/T-....txt/T-....txt).
+    """
+
+
 def unclaimed_name(filename: str) -> str:
     """Dateiname ohne Claim-Suffix ("T-DATE-NN[_slug].txt").
 
@@ -198,6 +213,18 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     # Blosser Clustername ("SOLVED") wird gegen die Queue-Wurzel der Quelle
     # aufgeloest, statt still einen Ordner im Arbeitsverzeichnis anzulegen.
     dest_dir = resolve_dest_dir(source, dest_dir)
+
+    # Bedienfehler abfangen, BEVOR mkdir() ihn in eine echte Fehlablage
+    # verwandelt: dest_dir ist die Zielordner, nicht die Zieldatei. Ein
+    # dest_dir, dessen letztes Pfadsegment selbst wie ein Ticketname aussieht,
+    # ist so gut wie immer genau dieser Bedienfehler (T-20260818-427750316).
+    if TICKET_FILENAME_RE.match(dest_dir.name):
+        raise DestinationLooksLikeFileError(
+            f"dest_dir looks like a ticket FILE path, not a destination "
+            f"FOLDER: {dest_dir}. Pass the lifecycle folder only "
+            f"(e.g. '.../SOLVED'), not '.../SOLVED/{dest_dir.name}' -- "
+            f"move_ticket() appends the filename itself."
+        )
 
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -469,7 +496,8 @@ def _cli(argv: list[str] | None = None) -> int:
                       "or --mark-delegated is given")
     try:
         target = move_ticket(args.source, args.dest_dir)
-    except (TicketCollisionError, FileNotFoundError, RuntimeError) as exc:
+    except (TicketCollisionError, FileNotFoundError, RuntimeError,
+            DestinationLooksLikeFileError) as exc:
         print(f"REFUSED: {exc}")
         return 1
     print(f"MOVED: {target}")

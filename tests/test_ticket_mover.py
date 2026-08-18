@@ -72,6 +72,43 @@ class TestMoveTicket(unittest.TestCase):
             target = ticket_mover.move_ticket(source, dest_dir)
             self.assertTrue(target.is_file())
 
+    def test_dest_dir_as_full_ticket_file_path_is_refused(self):
+        """T-20260818-427750316: ein Aufrufer, der dest_dir versehentlich als
+        volle Zieldatei statt als Zielordner uebergibt (".../SOLVED/T-....txt"
+        statt ".../SOLVED"), erzeugte bisher lautlos einen verschachtelten
+        Ordner in Ticket-Dateiform (SOLVED/T-....txt/T-....txt) -- real live
+        beobachtet bei einem USER->SOLVED-Move. move_ticket() muss das jetzt
+        VOR jeder Schreibaktion erkennen und fail-closed ablehnen: kein
+        Zielordner/-datei entsteht, die Quelle bleibt unangetastet."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260818-01.ASUS-GEI.txt"
+            source.write_text("CONTENT", encoding="utf-8")
+            dest_dir = base / "SOLVED"
+            # Der Bedienfehler: volle Zieldatei statt Zielordner.
+            bogus_dest = dest_dir / source.name
+
+            with self.assertRaises(ticket_mover.DestinationLooksLikeFileError):
+                ticket_mover.move_ticket(source, bogus_dest)
+
+            # Der historische Schaden: dest_dir.name ("T-....txt") wurde als
+            # ECHTER ORDNER angelegt und enthielt die Datei ein Level zu tief.
+            self.assertFalse(dest_dir.exists(), "SOLVED/ darf gar nicht erst entstehen")
+            self.assertTrue(source.is_file())
+            self.assertEqual(source.read_text(encoding="utf-8"), "CONTENT")
+
+        # Der korrekte Aufruf (dest_dir = Ordner) muss weiterhin funktionieren --
+        # der Guard darf legitime Ziele nicht mit-blockieren.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260818-02.ASUS-GEI.txt"
+            source.write_text("CONTENT", encoding="utf-8")
+            dest_dir = base / "SOLVED"
+            target = ticket_mover.move_ticket(source, dest_dir)
+            self.assertEqual(target, dest_dir / source.name)
+            self.assertTrue(target.is_file())
+            self.assertFalse(source.exists())
+
     def test_source_changed_during_move_aborts_without_deleting(self):
         """Schuetzt gegen einen fremden Schreiber, der die Quelle waehrend des
         Verschiebens noch aendert: Move bricht ab, Quelle bleibt (im neuen,

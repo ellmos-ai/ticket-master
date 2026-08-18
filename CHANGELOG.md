@@ -4,6 +4,19 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Bug fixes
+
+- **`ticket_mover.move_ticket()` refuses a dest_dir that is itself a ticket file path
+  (T-20260818-427750316).** Passing the full destination FILE path instead of the
+  destination FOLDER (`.../SOLVED/T-....txt` instead of `.../SOLVED`) was not caught by
+  `resolve_dest_dir()`'s bare-cluster-name rescue and led `dest_dir.mkdir()` to silently
+  create a directory shaped like a ticket filename, nesting the moved ticket one level too
+  deep (`SOLVED/T-....txt/T-....txt`) — observed live on a USER→SOLVED move. `move_ticket()`
+  now raises `DestinationLooksLikeFileError` before any write when `dest_dir.name` matches
+  `TICKET_FILENAME_RE`; the CLI reports it the same way as other refusals
+  (`REFUSED: ...`, exit 1). Regression test:
+  `test_dest_dir_as_full_ticket_file_path_is_refused`.
+
 ### CI compatibility
 
 - Replaced test-only `random.Random` subclasses with minimal scripted RNG
