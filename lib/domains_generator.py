@@ -55,6 +55,31 @@ existing status/match vocabulary rather than introducing a new one. Enabled
 via `--modules-catalog`; default is unset, in which case the generator
 behaves exactly as it did before this source existed.
 
+Skill-library provenance becomes the PRIMARY stage-1 source (T-20260818-
+137943175, Nachanalyse 2026-08-18): `load_skill_library()` reads
+`bach_origin`/`provenance.origin_path` directly from each skill's OWN
+SKILL.md frontmatter under an ellmos skill library, instead of through the
+(now schema-drifted, provenance-less) skill registry `components.json`.
+Per expert, `match_standalone_skill()` is tried against this pool FIRST;
+`load_bach_components()`'s registry pool is now a LEGACY FALLBACK, tried
+only when the library found nothing (e.g. a system with only a registry
+checked out, no full library) -- `load_modules_catalog()`'s module pool
+stays the third source, unchanged, tried only after both skill tiers.
+`match_tool_by_stem()` additionally covers experts' sibling boss-level
+`dependencies.tools` entries (evidenced: `dossier-briefing`,
+`location-suche` -- extractions of a TOOL file, not of a named expert) via
+the same two-tier precedence, surfaced as synthetic `"__tool__:<stem>"`
+pseudo-experts (mirrors `match_domain_skill()`'s `"__domain__:<boss>"`
+convention). A `bach_origin: true` library skill that resolves to neither an
+expert nor a tool anywhere (evidenced: `assist/wetter`, `assist/
+tageszeitung` -- provably BACH-extracted, but not referenced by any boss's
+`orchestrates.experts` or `dependencies.tools`, in body text or otherwise)
+is not force-attached to an unrelated expert via fuzzy proximity; it is
+reported under `source.skill_library_bach_origin_unattached` instead, so
+the gap stays visible rather than silently dropped. Enabled via
+`--skill-library-dir`; default is unset, in which case the generator
+behaves exactly as it did before this source existed.
+
 This script is a GENERATOR that runs once on the "origin system" (the machine
 that has BACH installed). Its output, `config/domains.json`, is consumed at
 ticket-master runtime and is itself BACH-free — no BACH path or BACH code is
@@ -331,6 +356,113 @@ def load_custom_components(registry_components_path: Path) -> list[dict]:
     return [c for c in components if (c.get("provenance") or {}).get("origin") == "custom"]
 
 
+def _parse_provenance_value(raw: str) -> dict:
+    """Parses a skill SKILL.md's single-line `provenance: {...}` frontmatter
+    value (T-20260818-137943175). Written by the extraction tooling as a
+    Python dict repr (single-quoted strings, `None`/`True`/`False` literals),
+    e.g. `{'origin': 'bach', 'origin_path': 'system/hub/_services/weather/
+    weather_service.py', 'origin_version': '1.0.0', ...}` -- NOT valid YAML
+    or JSON, so `parse_frontmatter()`'s top-level scalar branch only ever
+    captures it as one raw string. `ast.literal_eval` is the correct,
+    side-effect-free stdlib tool for exactly this shape (unlike `eval()`, it
+    only ever produces literals/containers, never executes arbitrary code).
+    Malformed/partial values must not abort a library-wide scan of ~400+
+    files (observed: a skill's embedded `notes` string containing a literal
+    unescaped newline) -- returns `{}` on any parse failure, the same
+    best-effort contract every other loader in this module already has."""
+    raw = raw.strip()
+    if not raw.startswith("{"):
+        return {}
+    try:
+        import ast
+        value = ast.literal_eval(raw)
+    except (ValueError, SyntaxError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def load_skill_library(skills_dir: Path) -> list[dict]:
+    """PRIMARY stage-1 source (T-20260818-137943175 + T-20260818-410274502
+    follow-up, "Nachanalyse" 2026-08-18): scans every `SKILL.md` under an
+    ellmos skill library (`.TOPICS/.AI/.SKILLS/skills/<category>/<name>/
+    SKILL.md`) directly, not through the skill registry. Root cause this
+    heals: each skill's OWN frontmatter carries `bach_origin` (bool) and,
+    when true, `provenance.origin_path` -- the registry `components.json`
+    this generator previously relied on exclusively for stage 1
+    (`load_bach_components()`) does not carry these fields at all (measured
+    against the live 2026-08-18 registry: 0/136 entries have a `provenance`
+    key -- it migrated to a "public-catalog-v1" schema without them). Every
+    expert whose lineage now only lives in the library frontmatter silently
+    regressed to stage-2 fuzzy or "nicht-portiert" once that drift happened.
+    Reading the library directly is upstream of the drift and does not
+    depend on the registry being in sync with it -- see `load_bach_components()`,
+    which stays in place as the LEGACY FALLBACK for systems that only have a
+    (possibly stale) registry checked out and no full library.
+
+    Only `bach_origin: true` skills are returned (case-insensitive string
+    compare -- like the rest of this module, `parse_frontmatter()` never
+    bool-coerces, so the YAML scalar `true`/`false` survives as a raw
+    string). A skill with `bach_origin: false` (e.g. `assist/transkription`,
+    whose own frontmatter explicitly documents "kein direkter BACH-Origin
+    ... neu konzipiert") is deliberately EXCLUDED here, even if some other
+    signal (name, topic) makes it look related to a BACH expert -- a skill
+    that denies its own BACH lineage must never be offered to stage-1
+    exact matching as if it were a provenance-backed link. This is the
+    concrete implementation of the Nachanalyse's methodology note: a
+    frontmatter denial beats a topical/fuzzy resemblance, not the other way
+    round. (It does not need to additionally suppress that skill from
+    whatever fuzzy result it may already have via the pre-existing registry/
+    extra-skills pools -- those pools and this one are disjoint by
+    construction, since only `bach_origin: true` skills ever reach this
+    pool.) A skill with `bach_origin: true` but no resolvable
+    `provenance.origin_path` is also skipped -- useless for an exact-match
+    source, and this loader's contract is stage-1 exact matches only, not a
+    general-purpose fuzzy pool.
+
+    `id` reuses the registry's own `skill:<category>:<name>` scheme exactly
+    (verified against the live registry, T-20260818) so a resolved reference
+    from this source is indistinguishable downstream from one the registry
+    would have produced when intact -- no new id shape for `standalone_skill`/
+    `matched_skills` consumers to special-case. `provenance.origin_path` is
+    carried through unchanged so `match_standalone_skill()` (unmodified) can
+    consume this pool exactly as it already consumes
+    `load_bach_components()`'s. Missing/unreadable directory or file is
+    skipped silently -- same best-effort contract as every other loader
+    here."""
+    skills_dir = Path(skills_dir)
+    found: list[dict] = []
+    if not skills_dir.is_dir():
+        return found
+    for category_dir in sorted(skills_dir.iterdir()):
+        if not category_dir.is_dir():
+            continue
+        for skill_dir in sorted(category_dir.iterdir()):
+            skill_file = skill_dir / "SKILL.md"
+            if not skill_file.is_file():
+                continue
+            try:
+                text = skill_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            frontmatter = parse_frontmatter(text)
+            bach_origin_raw = str(frontmatter.get("bach_origin", "")).strip().lower()
+            if bach_origin_raw != "true":
+                continue
+            provenance = _parse_provenance_value(str(frontmatter.get("provenance", "")))
+            origin_path = str(provenance.get("origin_path") or "")
+            if not origin_path:
+                continue
+            name = str(frontmatter.get("name", skill_dir.name))
+            found.append({
+                "id": f"skill:{category_dir.name}:{name}",
+                "name": name,
+                "description": str(frontmatter.get("description", "")),
+                "category": category_dir.name,
+                "provenance": {"origin_path": origin_path},
+            })
+    return found
+
+
 def _expert_name_variants(name: str) -> set[str]:
     base = name.strip().lower().replace("_", "-")
     variants = {base}
@@ -356,6 +488,52 @@ def match_standalone_skill(expert_name: str, bach_components: list[dict]) -> dic
         segments = origin_path.split("/")
         stem = Path(origin_path).stem
         if any(v in segments for v in variants) or stem in variants:
+            return comp
+    return None
+
+
+def match_tool_by_stem(tool_filename: str, components: list[dict]) -> dict | None:
+    """Boss-level `dependencies.tools` match (T-20260818-137943175
+    Nachanalyse Teil 3): a handful of skills (evidenced: `dossier-briefing`,
+    `location-suche`) are lineage-backed extractions of a boss agent's own
+    TOOL file, not of any of its named `orchestrates.experts` -- there is no
+    per-expert entry to attach them to. `persoenlicher-assistent`'s
+    `dependencies.tools: [dossier_generator.py, location_search.py,
+    route_planner.py]` sits ALONGSIDE, not inside, its four orchestrated
+    experts (`haushaltsmanagement`, `decision-briefing`, `literaturverwalter`,
+    `transkriptions-service`) -- `build_domains()`'s existing per-expert loop
+    has no entry point for a tool at all before this function.
+
+    Deliberately a SEPARATE, simpler function rather than reusing
+    `match_standalone_skill()`'s expert-name-variant machinery: that would
+    silently fail here. `_expert_name_variants()` folds underscores to
+    hyphens (built for hyphenated BACH expert-folder names), so passing a
+    raw Python filename stem like "dossier_generator" through it produces
+    variants `{"dossier-generator", "dossier-generator-agent"}` that can
+    never equal an origin_path's own un-folded stem "dossier_generator" --
+    verified empirically against the live corpus before choosing this
+    separate function instead of extending that one.
+
+    Matches on EXACT stem equality only (case-insensitive, both sides via
+    `Path(...).stem`, no fuzzy/substring fallback) -- deliberately the
+    strictest tier available, since a tool filename is unambiguous where it
+    matches at all. Verified against the three real tool filenames of
+    `persoenlicher-assistent`: `dossier_generator` <-> a skill whose
+    `provenance.origin_path` stem is `dossier_generator` (match);
+    `location_search` <-> a skill whose origin_path stem is
+    `location_search` (match); `route_planner` <-> no skill with that exact
+    stem exists in the library (correctly NO match -- deliberately not the
+    unrelated `reiseroute` skill, which would require substring/fuzzy
+    bridging this function does not attempt)."""
+    tool_stem = Path(tool_filename).stem.strip().lower()
+    if not tool_stem:
+        return None
+    for comp in components:
+        origin_path = str((comp.get("provenance") or {}).get("origin_path") or "")
+        if not origin_path:
+            continue
+        comp_stem = Path(origin_path.replace("\\", "/")).stem.strip().lower()
+        if comp_stem == tool_stem:
             return comp
     return None
 
@@ -711,7 +889,8 @@ def fuzzy_match_modules_compound(expert_name: str, modules: list[dict]) -> list[
 def build_domains(agents_dir: Path, registry_components_path: Path | None,
                    extra_boss_dirs: list[str] | None = None,
                    extra_skills_dir: Path | None = None,
-                   modules_catalog_path: Path | None = None) -> dict:
+                   modules_catalog_path: Path | None = None,
+                   skill_library_dir: Path | None = None) -> dict:
     agents_dir = Path(agents_dir)
     if not agents_dir.is_dir():
         raise FileNotFoundError(f"BACH agents dir not found: {agents_dir}")
@@ -721,6 +900,10 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     if registry_components_path is not None and Path(registry_components_path).is_file():
         bach_components = load_bach_components(Path(registry_components_path))
         custom_components = load_custom_components(Path(registry_components_path))
+
+    skill_library_components: list[dict] = []
+    if skill_library_dir is not None:
+        skill_library_components = load_skill_library(Path(skill_library_dir))
 
     extra_skills: list[dict] = []
     if extra_skills_dir is not None:
@@ -783,7 +966,7 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     # Read every boss's frontmatter once, up front, so the exact-match
     # exclusion below can be computed GLOBALLY across all bosses/experts
     # before any fuzzy matching happens -- not just within one boss.
-    boss_data: list[tuple[str, str, str, str, list[str], list[str]]] = []
+    boss_data: list[tuple[str, str, str, str, list[str], list[str], list[str]]] = []
     for dirname, path in sorted(boss_dirs.items()):
         skill_file = path / "SKILL.md"
         text = skill_file.read_text(encoding="utf-8", errors="replace")
@@ -793,7 +976,12 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
         orchestrates = frontmatter.get("orchestrates", {})
         expert_names = orchestrates.get("experts", []) if isinstance(orchestrates, dict) else []
         services = orchestrates.get("services", []) if isinstance(orchestrates, dict) else []
-        boss_data.append((dirname, domain_id, label, description, expert_names, services))
+        # T-20260818-137943175: boss-level tools, matched separately via
+        # `match_tool_by_stem()` below -- see that function's docstring for
+        # why these sit alongside `orchestrates.experts`, not inside it.
+        dependencies = frontmatter.get("dependencies", {})
+        tool_files = dependencies.get("tools", []) if isinstance(dependencies, dict) else []
+        boss_data.append((dirname, domain_id, label, description, expert_names, services, tool_files))
 
     # Stage 1 (exact) runs for EVERY expert of EVERY boss first. The
     # resulting matched skill IDs are excluded from the stage-2 fuzzy pool
@@ -802,18 +990,36 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     # via a coincidental keyword/token overlap, "teilportiert" for an
     # unrelated expert in a completely different domain.
     global_exact_matches: dict[tuple[str, str], dict] = {}
-    for dirname, _domain_id, _label, _description, expert_names, _services in boss_data:
+    for dirname, _domain_id, _label, _description, expert_names, _services, tool_files in boss_data:
         for expert_name in expert_names:
-            match = match_standalone_skill(expert_name, bach_components)
+            # T-20260818-137943175: skill-library frontmatter provenance is
+            # now the PRIMARY stage-1 source; the registry pool is a LEGACY
+            # FALLBACK, tried only when the library found nothing (see
+            # `load_skill_library()` docstring for why the registry alone
+            # can no longer be relied on). Module-catalog identity stays the
+            # third, unchanged tier.
+            match = match_standalone_skill(expert_name, skill_library_components) if skill_library_components else None
+            if match is None and bach_components:
+                match = match_standalone_skill(expert_name, bach_components)
             if match is None and modules_components:
                 # T-20260818-410274502: module-catalog exact tier, tried
-                # only when the skill registry found nothing -- a skill-
-                # registry provenance link is a stronger signal (an actual
-                # BACH extraction record) than a bare name-identity match,
-                # so it takes precedence whenever both happen to exist.
+                # only when neither skill tier found anything -- a skill
+                # provenance link is a stronger signal (an actual BACH
+                # extraction record) than a bare name-identity match, so it
+                # takes precedence whenever either exists.
                 match = match_standalone_module(expert_name, modules_components)
             if match:
                 global_exact_matches[(dirname, expert_name)] = match
+        for tool_file in tool_files:
+            # T-20260818-137943175: boss-level tool match, same two-tier
+            # precedence (library primary, registry fallback), synthetic
+            # `__tool__:<stem>` key -- see `match_tool_by_stem()` docstring.
+            tool_match = match_tool_by_stem(tool_file, skill_library_components) if skill_library_components else None
+            if tool_match is None and bach_components:
+                tool_match = match_tool_by_stem(tool_file, bach_components)
+            if tool_match:
+                tool_key = f"__tool__:{Path(tool_file).stem}"
+                global_exact_matches[(dirname, tool_key)] = tool_match
     global_exact_matched_ids = {m["id"] for m in global_exact_matches.values()}
     fuzzy_pool_available = [c for c in fuzzy_pool if c.get("id") not in global_exact_matched_ids]
     # Module-only subset of the same exact-excluded pool, for the module
@@ -823,7 +1029,7 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     modules_pool_available = [c for c in fuzzy_pool_available if c["id"].startswith("module:")]
 
     domains = []
-    for dirname, domain_id, label, description, expert_names, services in boss_data:
+    for dirname, domain_id, label, description, expert_names, services, tool_files in boss_data:
         experts = []
         for expert_name in expert_names:
             match = global_exact_matches.get((dirname, expert_name))
@@ -874,6 +1080,26 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
                 "matched_skills": [],
             })
 
+        # Boss-level tools (T-20260818-137943175): exact-only, no fuzzy/
+        # "nicht-portiert" fallback -- unlike a named expert (which is
+        # always listed, matched or not, since it's part of the boss's own
+        # declared structure), a tool only produces an entry when it
+        # actually resolved to something; a tool with no match is simply
+        # not mentioned, same "add nothing unless there's something to say"
+        # contract `match_domain_skill()`'s `__domain__:` entries already
+        # follow.
+        for tool_file in tool_files:
+            tool_key = f"__tool__:{Path(tool_file).stem}"
+            tool_match = global_exact_matches.get((dirname, tool_key))
+            if tool_match:
+                experts.append({
+                    "name": tool_key,
+                    "standalone_skill": tool_match["id"],
+                    "status": "portiert",
+                    "match": "exact",
+                    "matched_skills": [tool_match["id"]],
+                })
+
         # Stage 0 (domain-level, T-20260808-02): a standalone skill can cover
         # the WHOLE boss agent instead of one of its named experts (see
         # `match_domain_skill()` docstring). Applied AFTER the per-expert
@@ -921,6 +1147,26 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
         })
 
     domains.sort(key=lambda d: d["id"])
+
+    # T-20260818-137943175: bach_origin:true library skills that never ended
+    # up referenced anywhere in the output above (neither as an expert's
+    # `standalone_skill`/`matched_skills`, nor as a tool's) -- provably
+    # BACH-extracted, but structurally unattached to any boss's
+    # `orchestrates.experts`/`dependencies.tools` (evidenced: `assist/
+    # wetter`, `assist/tageszeitung`; verified none of the 8 BACH boss
+    # agents' SKILL.md reference either by name, in frontmatter or body
+    # text). Reported rather than force-attached via fuzzy proximity to
+    # some unrelated expert -- see `load_skill_library()` docstring.
+    referenced_skill_ids: set[str] = set()
+    for domain in domains:
+        for expert in domain["experts"]:
+            if expert.get("standalone_skill"):
+                referenced_skill_ids.add(expert["standalone_skill"])
+            referenced_skill_ids.update(expert.get("matched_skills") or [])
+    skill_library_unattached = sorted(
+        c["id"] for c in skill_library_components if c["id"] not in referenced_skill_ids
+    )
+
     return {
         "schema": "ticket-master-domains-v1",
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -933,6 +1179,9 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
             "extra_skills_scanned": len(extra_skills),
             "modules_catalog_provided": modules_catalog_path is not None,
             "modules_scanned": len(modules_components),
+            "skill_library_provided": skill_library_dir is not None,
+            "skill_library_scanned": len(skill_library_components),
+            "skill_library_bach_origin_unattached": skill_library_unattached,
         },
         "domains": domains,
     }
@@ -975,6 +1224,18 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--skill-library-dir",
+        default=os.environ.get("TICKET_MASTER_SKILL_LIBRARY_DIR"),
+        help=(
+            "Optional path to an ellmos skill library's skills/ root "
+            "(T-20260818-137943175) -- PRIMARY stage-1 exact-match source, "
+            "reading bach_origin/provenance.origin_path directly from each "
+            "skill's own SKILL.md frontmatter. --skills-registry-components "
+            "becomes a legacy fallback when this is set. Default: none "
+            "(behaves exactly as before this option existed)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=str(Path(__file__).resolve().parent.parent / "config" / "domains.json"),
         help="Output path for the generated domains.json.",
@@ -1009,7 +1270,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Modules catalog not found: {modules_catalog_path} — continuing without it.", file=sys.stderr)
         modules_catalog_path = None
 
-    result = build_domains(agents_dir, registry_path, args.extra_boss_dir, extra_skills_dir, modules_catalog_path)
+    skill_library_dir = Path(args.skill_library_dir) if args.skill_library_dir else None
+    if skill_library_dir is not None and not skill_library_dir.is_dir():
+        print(f"Skill library dir not found: {skill_library_dir} — continuing without it.", file=sys.stderr)
+        skill_library_dir = None
+
+    result = build_domains(
+        agents_dir, registry_path, args.extra_boss_dir, extra_skills_dir,
+        modules_catalog_path, skill_library_dir,
+    )
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

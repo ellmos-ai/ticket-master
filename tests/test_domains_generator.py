@@ -1234,5 +1234,359 @@ description: >
             self.assertEqual(expert["status"], "nicht-portiert")
 
 
+class TestParseProvenanceValue(unittest.TestCase):
+    """T-20260818-137943175: `provenance:` frontmatter is a single-line
+    Python dict repr, not YAML/JSON."""
+
+    def test_parses_python_dict_repr(self):
+        raw = "{'origin': 'bach', 'origin_path': 'system/hub/_services/weather/weather_service.py', 'origin_version': '1.0.0', 'last_sync_to_origin': None, 'local_changes_since_sync': True}"
+        result = dg._parse_provenance_value(raw)
+        self.assertEqual(result["origin"], "bach")
+        self.assertEqual(result["origin_path"], "system/hub/_services/weather/weather_service.py")
+        self.assertIsNone(result["last_sync_to_origin"])
+        self.assertIs(result["local_changes_since_sync"], True)
+
+    def test_malformed_value_returns_empty_dict_not_raise(self):
+        # Observed real-world case: an embedded notes string containing an
+        # unescaped literal newline breaks the single-line dict repr.
+        raw = "{'origin': 'bach', 'notes': 'line one\nline two, unterminated"
+        self.assertEqual(dg._parse_provenance_value(raw), {})
+
+    def test_non_dict_value_returns_empty_dict(self):
+        self.assertEqual(dg._parse_provenance_value("'just a string'"), {})
+        self.assertEqual(dg._parse_provenance_value("[1, 2, 3]"), {})
+
+    def test_empty_or_non_brace_value_returns_empty_dict(self):
+        self.assertEqual(dg._parse_provenance_value(""), {})
+        self.assertEqual(dg._parse_provenance_value("bach"), {})
+
+
+class TestLoadSkillLibrary(unittest.TestCase):
+    """T-20260818-137943175: scans SKILL.md frontmatter across an ellmos
+    skill library directly (bach_origin/provenance.origin_path), the fix for
+    the registry schema drift documented in the Nachanalyse."""
+
+    def _skill(self, tmp, category, name, body):
+        skill_dir = Path(tmp) / "skills" / category / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
+        return Path(tmp) / "skills"
+
+    def test_bach_origin_true_skill_is_returned_with_registry_shaped_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "wetter", """---
+name: wetter
+description: >
+  Fixture weather skill.
+bach_origin: true
+provenance: {'origin': 'bach', 'origin_path': 'system/hub/_services/weather/weather_service.py', 'origin_version': '1.0.0'}
+---
+""")
+            found = dg.load_skill_library(skills_dir)
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0]["id"], "skill:assist:wetter")
+            self.assertEqual(found[0]["category"], "assist")
+            self.assertEqual(
+                found[0]["provenance"]["origin_path"],
+                "system/hub/_services/weather/weather_service.py",
+            )
+
+    def test_bach_origin_false_skill_is_excluded(self):
+        """The transkriptions-service case: a skill that explicitly denies
+        its own BACH lineage must never enter this pool, no matter how
+        similar its name looks to some expert."""
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "transkription", """---
+name: transkription
+description: >
+  Fixture transcription skill, newly conceived, not a direct BACH port.
+bach_origin: false
+provenance: {'origin': None, 'origin_path': None}
+---
+""")
+            self.assertEqual(dg.load_skill_library(skills_dir), [])
+
+    def test_bach_origin_true_without_origin_path_is_excluded(self):
+        """Useless for an exact-match source; this loader's contract is
+        stage-1 exact matches only."""
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "no-path", """---
+name: no-path
+bach_origin: true
+provenance: {'origin': 'bach', 'origin_path': None}
+---
+""")
+            self.assertEqual(dg.load_skill_library(skills_dir), [])
+
+    def test_malformed_provenance_is_skipped_not_fatal(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "broken", """---
+name: broken
+bach_origin: true
+provenance: {'origin': 'bach', 'notes': 'line one
+---
+""")
+            self.assertEqual(dg.load_skill_library(skills_dir), [])
+
+    def test_scans_multiple_categories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "skills"
+            for category, name in [("assist", "wetter"), ("utilities", "decision-briefing")]:
+                skill_dir = base / category / name
+                skill_dir.mkdir(parents=True)
+                (skill_dir / "SKILL.md").write_text(f"""---
+name: {name}
+bach_origin: true
+provenance: {{'origin': 'bach', 'origin_path': 'system/hub/{name}.py'}}
+---
+""", encoding="utf-8")
+            found = dg.load_skill_library(base)
+            ids = {c["id"] for c in found}
+            self.assertEqual(ids, {"skill:assist:wetter", "skill:utilities:decision-briefing"})
+
+    def test_missing_dir_returns_empty_list(self):
+        self.assertEqual(dg.load_skill_library(Path("/nonexistent/skill/library")), [])
+
+
+class TestMatchToolByStem(unittest.TestCase):
+    """T-20260818-137943175 Nachanalyse Teil 3: boss-level dependencies.tools
+    entries (dossier-briefing, location-suche) match a skill's own
+    provenance.origin_path by exact filename stem, not by expert-name-
+    variant heuristics."""
+
+    def test_exact_stem_match(self):
+        components = [{
+            "id": "skill:assist:dossier-briefing",
+            "provenance": {"origin_path": "system/agents/persoenlicher-assistent/tools/dossier_generator.py"},
+        }]
+        match = dg.match_tool_by_stem("dossier_generator.py", components)
+        self.assertEqual(match["id"], "skill:assist:dossier-briefing")
+
+    def test_underscore_stem_does_not_need_hyphen_folding(self):
+        """Regression guard for the bug this function was built to avoid:
+        _expert_name_variants() folds underscores to hyphens, which would
+        make "dossier_generator" != "dossier-generator" and silently miss
+        this exact case if match_standalone_skill() were reused here."""
+        components = [{
+            "id": "skill:assist:location-suche",
+            "provenance": {"origin_path": "system/agents/persoenlicher-assistent/tools/location_search.py"},
+        }]
+        match = dg.match_tool_by_stem("location_search.py", components)
+        self.assertIsNotNone(match)
+
+    def test_no_match_stays_none_not_fuzzy(self):
+        """The route_planner case: no skill has that exact stem -- must NOT
+        fall back to the unrelated "reiseroute" skill via substring/fuzzy
+        bridging, which this function deliberately does not attempt."""
+        components = [{
+            "id": "skill:assist:reiseroute",
+            "provenance": {"origin_path": "system/hub/_services/reiseroute/routing_service.py"},
+        }]
+        self.assertIsNone(dg.match_tool_by_stem("route_planner.py", components))
+
+    def test_empty_components_returns_none(self):
+        self.assertIsNone(dg.match_tool_by_stem("dossier_generator.py", []))
+
+
+class TestBuildDomainsSkillLibrary(unittest.TestCase):
+    """End-to-end coverage for the skill-library primary source and boss-
+    level tool matching (T-20260818-137943175). Regression fixtures shaped
+    after the Nachanalyse's evidenced cases, kept synthetic/portable -- the
+    live corpus itself is verified separately as part of the actual
+    domains.json regeneration, not committed as a unit test."""
+
+    def _boss(self, tmp, dirname, expert_names, tool_files=None):
+        boss_dir = Path(tmp) / "agents" / dirname
+        boss_dir.mkdir(parents=True)
+        experts_literal = "[" + ", ".join(expert_names) + "]"
+        tools_literal = "[" + ", ".join(tool_files or []) + "]"
+        boss_dir.joinpath("SKILL.md").write_text(f"""---
+name: {dirname}
+orchestrates:
+  experts: {experts_literal}
+  services: []
+dependencies:
+  tools: {tools_literal}
+  services: []
+  workflows: []
+description: >
+  Fixture boss agent for skill-library matching tests.
+---
+""", encoding="utf-8")
+        return Path(tmp) / "agents"
+
+    def _skill_library(self, tmp, entries):
+        """entries: list of (category, name, bach_origin_bool, origin_path)."""
+        base = Path(tmp) / "skills"
+        for category, name, bach_origin, origin_path in entries:
+            skill_dir = base / category / name
+            skill_dir.mkdir(parents=True)
+            provenance = "{'origin': 'bach', 'origin_path': %r}" % origin_path if origin_path else "{'origin': None, 'origin_path': None}"
+            skill_dir.joinpath("SKILL.md").write_text(f"""---
+name: {name}
+bach_origin: {"true" if bach_origin else "false"}
+provenance: {provenance}
+---
+""", encoding="utf-8")
+        return base
+
+    def test_default_behaviour_unchanged_when_skill_library_not_provided(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s0", ["foerderplaner"])
+            result = dg.build_domains(agents_dir, None, extra_boss_dirs=["fixture-boss-s0"])
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "nicht-portiert")
+            self.assertFalse(result["source"]["skill_library_provided"])
+            self.assertEqual(result["source"]["skill_library_scanned"], 0)
+            self.assertEqual(result["source"]["skill_library_bach_origin_unattached"], [])
+
+    def test_skill_library_exact_match_reports_portiert(self):
+        """The decision-briefing healing case: a skill whose lineage now
+        only lives in its own SKILL.md frontmatter (registry provenance
+        drifted away) is still found via the library."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s1", ["decision-briefing"])
+            skills_dir = self._skill_library(tmp, [
+                ("utilities", "decision-briefing", True, "system/agents/_experts/decision-briefing/"),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s1"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "portiert")
+            self.assertEqual(expert["match"], "exact")
+            self.assertEqual(expert["standalone_skill"], "skill:utilities:decision-briefing")
+            self.assertTrue(result["source"]["skill_library_provided"])
+            self.assertEqual(result["source"]["skill_library_scanned"], 1)
+
+    def test_skill_library_takes_precedence_over_registry_when_both_match(self):
+        """Primary vs. legacy fallback: when the library AND the (possibly
+        drifted) registry both carry a provenance link for the same expert,
+        the library wins."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s2", ["decision-briefing"])
+            skills_dir = self._skill_library(tmp, [
+                ("utilities", "decision-briefing", True, "system/agents/_experts/decision-briefing/"),
+            ])
+            registry_path = Path(tmp) / "components.json"
+            registry_path.write_text(json.dumps({
+                "components": [{
+                    "id": "skill:legacy:decision-briefing",
+                    "provenance": {"origin": "bach", "origin_path": "system/agents/_experts/decision-briefing/legacy.md"},
+                }],
+            }), encoding="utf-8")
+            result = dg.build_domains(
+                agents_dir, registry_path, extra_boss_dirs=["fixture-boss-s2"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["standalone_skill"], "skill:utilities:decision-briefing")
+
+    def test_registry_fallback_used_when_library_finds_nothing(self):
+        """A system with only a registry checked out (no full library, or
+        the library simply doesn't cover this expert) must still resolve
+        via the legacy path -- this ticket must not regress that case."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s3", ["registry-only-expert"])
+            skills_dir = self._skill_library(tmp, [])
+            registry_path = Path(tmp) / "components.json"
+            registry_path.write_text(json.dumps({
+                "components": [{
+                    "id": "skill:legacy:registry-only-expert",
+                    "provenance": {"origin": "bach", "origin_path": "system/agents/_experts/registry-only-expert/"},
+                }],
+            }), encoding="utf-8")
+            result = dg.build_domains(
+                agents_dir, registry_path, extra_boss_dirs=["fixture-boss-s3"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["standalone_skill"], "skill:legacy:registry-only-expert")
+
+    def test_bach_origin_false_skill_never_promoted_to_exact(self):
+        """The transkriptions-service case: a topically-similar skill that
+        explicitly denies BACH lineage must not surface as an exact stage-1
+        match through this source (it simply never enters the pool -- see
+        TestLoadSkillLibrary)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s4", ["transkriptions-service"])
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "transkription", False, None),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s4"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertNotEqual(expert["status"], "portiert")
+
+    def test_tool_exact_match_produces_synthetic_tool_expert(self):
+        """The dossier-briefing/location-suche case: a boss-level tool file,
+        not a named expert, resolves via exact stem equality into a
+        synthetic __tool__: pseudo-expert."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(
+                tmp, "fixture-boss-s5", ["haushaltsmanagement"],
+                tool_files=["dossier_generator.py", "location_search.py", "route_planner.py"],
+            )
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "dossier-briefing", True, "system/agents/persoenlicher-assistent/tools/dossier_generator.py"),
+                ("assist", "location-suche", True, "system/agents/persoenlicher-assistent/tools/location_search.py"),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s5"],
+                skill_library_dir=skills_dir,
+            )
+            experts_by_name = {e["name"]: e for e in result["domains"][0]["experts"]}
+            self.assertEqual(
+                experts_by_name["__tool__:dossier_generator"]["standalone_skill"],
+                "skill:assist:dossier-briefing",
+            )
+            self.assertEqual(
+                experts_by_name["__tool__:location_search"]["standalone_skill"],
+                "skill:assist:location-suche",
+            )
+            # route_planner.py has no matching skill in this fixture -- must
+            # NOT produce any entry at all (no fuzzy/nicht-portiert filler
+            # for tools, unlike named experts).
+            self.assertNotIn("__tool__:route_planner", experts_by_name)
+            # The named expert itself is untouched by tool matching.
+            self.assertEqual(experts_by_name["haushaltsmanagement"]["status"], "nicht-portiert")
+
+    def test_unattached_bach_origin_skill_is_reported_not_dropped(self):
+        """The wetter/tageszeitung case: a provably bach_origin:true skill
+        that resolves to neither an expert nor a tool anywhere is reported
+        under skill_library_bach_origin_unattached, not force-attached to an
+        unrelated expert and not silently dropped."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s6", ["haushaltsmanagement"])
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "wetter", True, "system/hub/_services/weather/weather_service.py"),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s6"],
+                skill_library_dir=skills_dir,
+            )
+            self.assertEqual(
+                result["source"]["skill_library_bach_origin_unattached"],
+                ["skill:assist:wetter"],
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "nicht-portiert")
+
+    def test_attached_skill_not_listed_as_unattached(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s7", ["decision-briefing"])
+            skills_dir = self._skill_library(tmp, [
+                ("utilities", "decision-briefing", True, "system/agents/_experts/decision-briefing/"),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s7"],
+                skill_library_dir=skills_dir,
+            )
+            self.assertEqual(result["source"]["skill_library_bach_origin_unattached"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
