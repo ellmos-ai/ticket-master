@@ -80,6 +80,19 @@ the gap stays visible rather than silently dropped. Enabled via
 `--skill-library-dir`; default is unset, in which case the generator
 behaves exactly as it did before this source existed.
 
+`load_skill_library_fuzzy()` (same-day follow-up) is the STAGE-2-ONLY
+complement: every library skill NOT already covered by the exact pool
+above -- chiefly `bach_origin: false` skills, mirroring the existing
+`load_bach_components()`/`load_custom_components()` split on the same
+registry file, generalized to this second source. Real-corpus finding
+this closes: several experts (`haushaltsmanagement`, `gesundheitsverwalter`,
+`health_import`, the domain-level `__domain__:versicherungen`) used to
+fuzzy/domain-match against `~/.claude/skills/` entries that no longer
+exist there; topically equivalent library skills DO exist under
+`.TOPICS/.AI/.SKILLS/skills/assist/`, correctly excluded from stage-1
+exact matching (their own frontmatter denies BACH lineage) but legitimate
+stage-2 fuzzy/domain candidates -- never promoted past "teilportiert".
+
 This script is a GENERATOR that runs once on the "origin system" (the machine
 that has BACH installed). Its output, `config/domains.json`, is consumed at
 ticket-master runtime and is itself BACH-free — no BACH path or BACH code is
@@ -459,6 +472,69 @@ def load_skill_library(skills_dir: Path) -> list[dict]:
                 "description": str(frontmatter.get("description", "")),
                 "category": category_dir.name,
                 "provenance": {"origin_path": origin_path},
+            })
+    return found
+
+
+def load_skill_library_fuzzy(skills_dir: Path) -> list[dict]:
+    """STAGE-2-ONLY complement of `load_skill_library()` (follow-up to
+    T-20260818-137943175, real-corpus finding 2026-08-18): mirrors exactly
+    the `load_bach_components()`/`load_custom_components()` split on the
+    SAME registry file -- `load_skill_library()` already answers "was this
+    library skill a confirmed BACH extraction" (stage-1 exact, bach_origin:
+    true + resolvable origin_path only); this function answers the
+    different question "does some OTHER library skill happen to cover the
+    same ground topically" (stage-2 fuzzy only), returning every skill NOT
+    already covered by that pool -- `bach_origin: false` skills (deliberate
+    non-BACH-origin, e.g. `assist/haushalt-manager`, `assist/gesundheit`,
+    `assist/finanz-versicherung` -- all explicitly `provenance.origin:
+    public-neutral`, a 2026-07-30 rewrite generation, not a BACH port) AND
+    `bach_origin: true` skills without a resolvable `origin_path`.
+
+    Concrete real-corpus case this closes: `haushaltsmanagement`,
+    `gesundheitsverwalter`, `health_import` and the domain-level
+    `__domain__:versicherungen` used to fuzzy/domain-match against
+    `~/.claude/skills/` entries (`claude-skill:haushalt-manager` etc.) that
+    no longer exist there -- verified equivalent-named library skills DO
+    exist under `.TOPICS/.AI/.SKILLS/skills/assist/`, just correctly
+    excluded from stage-1 exact matching (their own frontmatter denies
+    BACH lineage). Never promoting a `bach_origin: false` skill past
+    "teilportiert"/fuzzy is the whole point -- exactly the same guarantee
+    `load_custom_components()` already gives the registry-origin ("custom")
+    pool, generalized to this second source. Same id scheme
+    (`skill:<category>:<name>`) as `load_skill_library()`, so a skill that
+    happens to satisfy BOTH functions' criteria (impossible under the
+    current mutually-exclusive filter, but kept id-consistent regardless)
+    would dedupe cleanly rather than appear as two different-looking
+    entries. Missing/unreadable directory or file is skipped silently --
+    same best-effort contract as every other loader here."""
+    skills_dir = Path(skills_dir)
+    found: list[dict] = []
+    if not skills_dir.is_dir():
+        return found
+    for category_dir in sorted(skills_dir.iterdir()):
+        if not category_dir.is_dir():
+            continue
+        for skill_dir in sorted(category_dir.iterdir()):
+            skill_file = skill_dir / "SKILL.md"
+            if not skill_file.is_file():
+                continue
+            try:
+                text = skill_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            frontmatter = parse_frontmatter(text)
+            bach_origin_raw = str(frontmatter.get("bach_origin", "")).strip().lower()
+            if bach_origin_raw == "true":
+                provenance = _parse_provenance_value(str(frontmatter.get("provenance", "")))
+                if str(provenance.get("origin_path") or ""):
+                    continue  # already covered by load_skill_library()'s exact pool
+            name = str(frontmatter.get("name", skill_dir.name))
+            found.append({
+                "id": f"skill:{category_dir.name}:{name}",
+                "name": name,
+                "description": str(frontmatter.get("description", "")),
+                "category": category_dir.name,
             })
     return found
 
@@ -902,8 +978,10 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
         custom_components = load_custom_components(Path(registry_components_path))
 
     skill_library_components: list[dict] = []
+    skill_library_fuzzy_components: list[dict] = []
     if skill_library_dir is not None:
         skill_library_components = load_skill_library(Path(skill_library_dir))
+        skill_library_fuzzy_components = load_skill_library_fuzzy(Path(skill_library_dir))
 
     extra_skills: list[dict] = []
     if extra_skills_dir is not None:
@@ -934,18 +1012,42 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
         if str(c.get("name", "")).strip().lower() not in extra_skill_names
     ]
 
+    # Same dedup, extended to the skill-library fuzzy pool (T-20260818-
+    # 137943175 follow-up): a bach_origin:false library skill can be the
+    # SAME real skill as an extra_skills_dir entry under a different id
+    # (e.g. a skill mirrored both to the library and to a Claude Code
+    # skills tree) -- the extra_skills copy wins, same precedent as the
+    # custom_components dedup immediately above. `load_skill_library()`'s
+    # own bach_origin:true+origin_path stage-1 pool is structurally
+    # disjoint already (the loader itself excludes anything that pool
+    # would claim), so no separate dedup against it is needed here.
+    skill_library_fuzzy_components = [
+        c for c in skill_library_fuzzy_components
+        if str(c.get("name", "")).strip().lower() not in extra_skill_names
+    ]
+
     # Same dedup, extended to the module pool (T-20260818-410274502): if a
-    # capability was already registered as a skill (bach or custom origin)
-    # or an extra_skills_dir entry under the same declared name, the skill
-    # copy wins and the module duplicate is dropped -- an established skill
-    # match should not be silently displaced by a same-named module entry.
-    # No collision exists in the corpus this was built against (verified:
-    # none of the three targeted modules -- foerderplaner, report-forge,
-    # ai-media-editor -- nor worksheet-generator share a name with any
-    # current skill/extra_skills entry), but the guard costs nothing and
-    # protects against future registry drift going the other way.
+    # capability was already registered as a STAGE-1-CAPABLE skill (bach
+    # origin, skill-library exact, or an extra_skills_dir entry) under the
+    # same declared name, the skill copy wins and the module duplicate is
+    # dropped -- an established skill match should not be silently
+    # displaced by a same-named module entry. Deliberately does NOT include
+    # `custom_components` or `skill_library_fuzzy_components` here (both
+    # fuzzy-only, non-lineage pools) -- verified regression (T-20260818-
+    # 137943175 follow-up, real corpus): `.SKILLS/skills/education/
+    # foerderplaner` (bach_origin:false, ~50-entry fuzzy pool) shares its
+    # declared name with the `foerderplaner` MODULE this generator already
+    # correctly resolves as an exact stage-1 match (T-20260818-410274502) --
+    # including the fuzzy-only skill pools here silently dropped that
+    # module from `modules_components` entirely, regressing a
+    # previously-fixed case. A fuzzy-only skill is a weaker signal than an
+    # exact module-name identity, so it must never suppress the module's
+    # own stage-1 eligibility; the original, narrower dedup (T-20260711-06)
+    # only ever needed to protect CONFIRMED-lineage/registered pools, not a
+    # broad "anything topically similar exists somewhere" pool.
     skill_names = extra_skill_names | {
-        str(c.get("name", "")).strip().lower() for c in bach_components + custom_components
+        str(c.get("name", "")).strip().lower()
+        for c in bach_components + custom_components + skill_library_components
     }
     modules_components = [
         m for m in modules_components
@@ -955,11 +1057,17 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     # Stage 2 (fuzzy) only: `custom_components` is deliberately NOT added to
     # `bach_components` and never passed to `match_standalone_skill()` (see
     # `load_custom_components()` docstring) -- it only feeds the fuzzy pool.
-    # `modules_components` DOES also feed stage 1 (via `match_standalone_
-    # module()`, called separately below, T-20260818-410274502) since a
-    # module -- unlike a "custom"-origin skill -- can be a genuine 1:1 name
-    # identity for an expert (see that function's docstring).
-    fuzzy_pool = bach_components + custom_components + extra_skills + modules_components
+    # `skill_library_fuzzy_components` is the same shape of exclusion,
+    # generalized to the skill-library source (T-20260818-137943175
+    # follow-up -- see `load_skill_library_fuzzy()` docstring). `modules_
+    # components` DOES also feed stage 1 (via `match_standalone_module()`,
+    # called separately below, T-20260818-410274502) since a module --
+    # unlike a "custom"-origin skill -- can be a genuine 1:1 name identity
+    # for an expert (see that function's docstring).
+    fuzzy_pool = (
+        bach_components + custom_components + extra_skills
+        + modules_components + skill_library_fuzzy_components
+    )
 
     boss_dirs = discover_boss_dirs(agents_dir, extra_boss_dirs)
 
@@ -1181,6 +1289,7 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
             "modules_scanned": len(modules_components),
             "skill_library_provided": skill_library_dir is not None,
             "skill_library_scanned": len(skill_library_components),
+            "skill_library_fuzzy_scanned": len(skill_library_fuzzy_components),
             "skill_library_bach_origin_unattached": skill_library_unattached,
         },
         "domains": domains,

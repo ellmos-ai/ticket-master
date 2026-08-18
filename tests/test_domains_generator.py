@@ -1348,6 +1348,59 @@ provenance: {{'origin': 'bach', 'origin_path': 'system/hub/{name}.py'}}
         self.assertEqual(dg.load_skill_library(Path("/nonexistent/skill/library")), [])
 
 
+class TestLoadSkillLibraryFuzzy(unittest.TestCase):
+    """T-20260818-137943175 follow-up: the stage-2-only complement of
+    load_skill_library() -- bach_origin:false (or unresolvable) skills,
+    mirroring the load_bach_components()/load_custom_components() split."""
+
+    def _skill(self, tmp, category, name, body):
+        skill_dir = Path(tmp) / "skills" / category / name
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(body, encoding="utf-8")
+        return Path(tmp) / "skills"
+
+    def test_bach_origin_false_skill_is_included(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "haushalt-manager", """---
+name: haushalt-manager
+description: >
+  Fixture household planning skill, not a BACH port.
+bach_origin: false
+provenance: {'origin': 'public-neutral'}
+---
+""")
+            found = dg.load_skill_library_fuzzy(skills_dir)
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0]["id"], "skill:assist:haushalt-manager")
+
+    def test_bach_origin_true_with_resolvable_path_is_excluded(self):
+        """Already covered by load_skill_library()'s exact pool -- must not
+        also appear here, or a single real skill would be double-counted
+        under one id in two different pools."""
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "wetter", """---
+name: wetter
+bach_origin: true
+provenance: {'origin': 'bach', 'origin_path': 'system/hub/_services/weather/weather_service.py'}
+---
+""")
+            self.assertEqual(dg.load_skill_library_fuzzy(skills_dir), [])
+
+    def test_bach_origin_true_without_resolvable_path_is_included(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            skills_dir = self._skill(tmp, "assist", "no-path", """---
+name: no-path
+bach_origin: true
+provenance: {'origin': 'bach', 'origin_path': None}
+---
+""")
+            found = dg.load_skill_library_fuzzy(skills_dir)
+            self.assertEqual(len(found), 1)
+
+    def test_missing_dir_returns_empty_list(self):
+        self.assertEqual(dg.load_skill_library_fuzzy(Path("/nonexistent/skill/library")), [])
+
+
 class TestMatchToolByStem(unittest.TestCase):
     """T-20260818-137943175 Nachanalyse Teil 3: boss-level dependencies.tools
     entries (dossier-briefing, location-suche) match a skill's own
@@ -1586,6 +1639,114 @@ provenance: {provenance}
                 skill_library_dir=skills_dir,
             )
             self.assertEqual(result["source"]["skill_library_bach_origin_unattached"], [])
+
+    def test_bach_origin_false_skill_heals_expert_via_compound_bridge_fuzzy(self):
+        """The haushaltsmanagement real-corpus case: a bach_origin:false
+        library skill (deliberately NOT BACH-origin -- a 2026-07-30 rewrite,
+        not the old ~/.claude/skills/ port) is still a legitimate stage-2
+        fuzzy/compound-bridge candidate, same as a registry "custom"-origin
+        skill always was -- teilportiert, never promoted to portiert."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s8", ["haushaltsmanagement"])
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "haushalt-manager", False, None),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s8"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "teilportiert")
+            self.assertEqual(expert["match"], "fuzzy")
+            self.assertEqual(expert["matched_skills"], ["skill:assist:haushalt-manager"])
+            self.assertIsNone(expert["standalone_skill"])
+            self.assertEqual(result["source"]["skill_library_fuzzy_scanned"], 1)
+
+    def test_bach_origin_false_skill_heals_domain_level_match(self):
+        """The __domain__:versicherungen real-corpus case: whole-token
+        equality against the domain id/label works through the fuzzy pool
+        exactly as it already does for other sources."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "versicherungen", [])
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "finanz-versicherung", False, None),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["versicherungen"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["name"], "__domain__:versicherungen")
+            self.assertEqual(expert["matched_skills"], ["skill:assist:finanz-versicherung"])
+
+    def test_fuzzy_skill_deduped_against_extra_skills_by_name(self):
+        """Same precedent as the existing custom_components dedup: if the
+        same real skill is ALSO present via --extra-skills-dir under the
+        same declared name, the extra_skills copy wins."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s9", ["haushaltsmanagement"])
+            skills_dir = self._skill_library(tmp, [
+                ("assist", "haushalt-manager", False, None),
+            ])
+            extra_dir = Path(tmp) / "extra-skills"
+            extra_skill_dir = extra_dir / "haushalt-manager"
+            extra_skill_dir.mkdir(parents=True)
+            extra_skill_dir.joinpath("SKILL.md").write_text("""---
+name: haushalt-manager
+description: >
+  Extra-skills-dir copy, should win the dedup.
+---
+""", encoding="utf-8")
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s9"],
+                extra_skills_dir=extra_dir, skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["matched_skills"], ["claude-skill:haushalt-manager"])
+
+    def test_fuzzy_skill_name_collision_does_not_suppress_module_exact_match(self):
+        """Regression guard (T-20260818-137943175 follow-up, real-corpus
+        finding): a bach_origin:false library skill sharing a declared name
+        with a module (e.g. education/foerderplaner vs. module
+        foerderplaner) must NOT drop that module from the exact-match pool
+        -- a fuzzy-only skill is a weaker signal than the module's own
+        name-identity match, so it must never suppress it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s11", ["foerderplaner"])
+            skills_dir = self._skill_library(tmp, [
+                ("education", "foerderplaner", False, None),
+            ])
+            catalog = Path(tmp) / "modules.catalog.json"
+            catalog.write_text(json.dumps({"modules": [
+                {"id": "foerderplaner", "display_name": "foerderplaner"},
+            ]}), encoding="utf-8")
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s11"],
+                modules_catalog_path=catalog, skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "portiert")
+            self.assertEqual(expert["match"], "exact")
+            self.assertEqual(expert["standalone_skill"], "module:foerderplaner")
+
+    def test_bach_origin_true_skill_stays_stage1_not_duplicated_into_fuzzy(self):
+        """Regression guard: a skill already resolved via exact stage-1
+        matching must not also surface separately through the fuzzy pool
+        for the SAME expert (the exact-match exclusion already handles
+        this via global_exact_matched_ids -- verifies it still holds once
+        skill_library_fuzzy_components feeds the pool too)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-s10", ["decision-briefing"])
+            skills_dir = self._skill_library(tmp, [
+                ("utilities", "decision-briefing", True, "system/agents/_experts/decision-briefing/"),
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-s10"],
+                skill_library_dir=skills_dir,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "portiert")
+            self.assertEqual(expert["matched_skills"], ["skill:utilities:decision-briefing"])
 
 
 if __name__ == "__main__":
