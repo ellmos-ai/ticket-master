@@ -40,6 +40,21 @@ boss with zero orchestrated experts at all (e.g. `versicherungen`) gets a
 synthetic `"__domain__:<boss>"` pseudo-expert instead, since there is
 otherwise nowhere to attach the match.
 
+Third matching source: the ellmos module catalog (T-20260818, ticket
+T-20260818-410274502). Some experts have since been extracted as standalone
+MODULES rather than standalone skills (e.g. `foerderplaner`, `mediaproduction`
+-> module `ai-media-editor`), invisible to the two skill-registry-only
+sources above. `load_modules_catalog()` normalizes a `modules.catalog.json`
+into the same component shape and feeds it into both an exact tier
+(`match_standalone_module()` -- name-identity, since a module carries no
+BACH provenance link to check) and the existing stage-2 fuzzy pool, plus a
+module-only compound-bridge pass (`fuzzy_match_modules_compound()`) for
+cases token overlap alone can't reach. A resolved module is referenced as
+`"module:<module-id>"` in `standalone_skill`/`matched_skills`, reusing the
+existing status/match vocabulary rather than introducing a new one. Enabled
+via `--modules-catalog`; default is unset, in which case the generator
+behaves exactly as it did before this source existed.
+
 This script is a GENERATOR that runs once on the "origin system" (the machine
 that has BACH installed). Its output, `config/domains.json`, is consumed at
 ticket-master runtime and is itself BACH-free — no BACH path or BACH code is
@@ -537,9 +552,166 @@ def load_extra_skills(extra_skills_dir: Path) -> list[dict]:
     return found
 
 
+def load_modules_catalog(modules_catalog_path: Path) -> list[dict]:
+    """Third matching source (T-20260818, ticket T-20260818-410274502): the
+    ellmos module catalog (`.MODULES/modules.catalog.json`, ~58 entries at
+    the time this was written). Some BACH experts have since been extracted
+    as standalone MODULES rather than standalone SKILLS (evidenced:
+    `foerderplaner` -> module `foerderplaner`, `report_generator` -> module
+    `report-forge`, `mediaproduction` -> module `ai-media-editor`), which
+    `load_bach_components()`/`load_custom_components()` cannot see -- those
+    only read a skill registry's `components.json`. Unlike the skill
+    registry, a module manifest carries no BACH `provenance.origin_path`
+    back-link, so there is no stage-1-equivalent provenance cross-reference
+    available here; `match_standalone_module()` below establishes an exact
+    tier a different way (name-identity, not provenance).
+
+    Each module is normalized into the same id/name/description/category
+    shape the skill pools already use, so it can be dropped straight into
+    `fuzzy_match_skills()`/`match_domain_skill()` unchanged. `id` is prefixed
+    `module:<module-id>` (mirrors `load_extra_skills()`'s `claude-skill:`
+    prefix exactly -- same rationale: keeps a resolved reference
+    self-describing and collision-free against skill ids, at the cost of
+    injecting the token "module" into that entry's own tokenization, which
+    `load_extra_skills()` already accepts for "claude"/"skill"). `category`
+    is deliberately left `None`: the module catalog's own `category` field
+    (`memory`/`control`/`domains`/...) is a taxonomy unrelated to
+    `KEYWORD_CATEGORY_HINTS`'s skill-registry categories (`therapy`/...);
+    reusing it would risk an accidental cross-taxonomy hit. Missing/
+    unreadable file is skipped silently -- best-effort secondary source,
+    same contract as `load_extra_skills()`."""
+    modules_catalog_path = Path(modules_catalog_path)
+    if not modules_catalog_path.is_file():
+        return []
+    try:
+        data = json.loads(modules_catalog_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    found: list[dict] = []
+    for module in data.get("modules", []):
+        module_id = module.get("id")
+        if not module_id:
+            continue
+        found.append({
+            "id": f"module:{module_id}",
+            "name": str(module.get("display_name") or module_id),
+            "description": str(module.get("description", "")),
+            "category": None,
+        })
+    return found
+
+
+def match_standalone_module(expert_name: str, modules: list[dict]) -> dict | None:
+    """Exact-tier module match (T-20260818-410274502) -- the module-catalog
+    analogue of `match_standalone_skill()`, but since a module carries no
+    `provenance.origin_path` to check, this instead requires the RAW,
+    UN-stripped token set of the expert's own name to be exactly equal to
+    the RAW token set of the module's bare id (hyphen/underscore-insensitive,
+    since `_tokenize()` splits on both as non-letter boundaries -- same
+    effect as `_expert_name_variants()`'s hyphen/underscore folding for
+    skills, generalized to full-name equality instead of a single "-agent"
+    suffix).
+
+    Deliberately full-SET equality of the RAW tokens, NOT overlap and NOT
+    `_GENERIC_EXPERT_NAME_TOKENS`-stripped: overlap alone would wrongly
+    promote `report_generator`/`report-forge` (share only the token
+    "report", second token differs: "generator" vs "forge" -- a real match,
+    but not a NAME-identity one, so it must fall through to stage-2 fuzzy
+    token-overlap instead, which already finds it once modules are in the
+    fuzzy pool). Generic-stripping first would be worse, not just
+    unnecessary: `steuer-agent` minus `_GENERIC_EXPERT_NAME_TOKENS` is just
+    `{"steuer"}`, and so is `steuer-assistent` minus generics (`"assistent"`
+    is itself a generic token) -- stripped-set equality would wrongly call
+    that an exact 1:1 identity match and silently drop the second, equally
+    valid candidate `steuer-suite` that stage-2 fuzzy would otherwise still
+    surface for the same expert (stage 1 hits skip stage 2 entirely, see
+    `build_domains()`). Verified empirically against the real 2026-08-18
+    corpus (14 orchestrated experts x 58 catalogued modules): raw full-set
+    equality fires for exactly two pairs, both genuine identity matches
+    (`foerderplaner`<->module `foerderplaner`; `worksheet_generator`<->
+    module `worksheet-generator`), zero false positives, and correctly
+    leaves `steuer-agent` for stage-2 fuzzy to find both `steuer-assistent`
+    and `steuer-suite`."""
+    expert_tokens = _tokenize(expert_name)
+    if not expert_tokens:
+        return None
+    for module in modules:
+        module_id = module["id"].split(":", 1)[-1]
+        module_tokens = _tokenize(module_id)
+        if module_tokens and module_tokens == expert_tokens:
+            return module
+    return None
+
+
+# Module-pool-only compound bridge (T-20260818-410274502). A SEPARATE
+# threshold from `_MIN_COMPOUND_TOKEN_LEN`/`_compound_overlap()` (which stay
+# untouched, still governing skill-pool matching only) -- lowering the
+# shared skill threshold below 6 would resurrect the exact false positive it
+# was raised to fix (T-20260711-04: "work", 4 chars, bridging
+# "worksheet_generator" to the unrelated skill "genogram-work"). The module
+# catalog is a much smaller (~58 entries), curated, human-authored pool with
+# a materially lower noise floor, so a lower threshold there does not carry
+# the same risk -- but it still needs its own empirical check, not an
+# assumption. Verified against the real 2026-08-18 corpus (14 experts x 58
+# modules) at threshold 5: exactly three pairs bridge, two of them the
+# targeted ticket cases (`mediaproduction`<->module `ai-media-editor`,
+# `mediaproduction`<->module `media-editor-core` -- both genuinely
+# media-production-related, a legitimate double match, not noise) and one
+# plausible bonus (`transkriptions-service`<->module `doc-services`, bridged
+# on "service"/"services", a singular/plural variant of the same word). Zero
+# incidental noise at threshold 5 on the real corpus.
+_MIN_MODULE_COMPOUND_TOKEN_LEN = 5
+
+
+def _module_compound_overlap(expert_tokens: set[str], module_tokens: set[str]) -> bool:
+    """Module-pool compound bridge, see `_MIN_MODULE_COMPOUND_TOKEN_LEN`
+    above for the threshold rationale. Same substring-either-way shape as
+    `_compound_overlap()`, intentionally NOT shared code with it: the two
+    thresholds must be free to diverge without one accidentally dragging the
+    other along in a future edit."""
+    for et in expert_tokens:
+        if len(et) < _MIN_MODULE_COMPOUND_TOKEN_LEN:
+            continue
+        for mt in module_tokens:
+            if len(mt) < _MIN_MODULE_COMPOUND_TOKEN_LEN:
+                continue
+            if mt in et or et in mt:
+                return True
+    return False
+
+
+def fuzzy_match_modules_compound(expert_name: str, modules: list[dict]) -> list[dict]:
+    """Module-pool-only compound-bridge pass (T-20260818-410274502), run IN
+    ADDITION to `fuzzy_match_skills()` -- that function already covers
+    modules for ordinary whole-token overlap once they are in the shared
+    fuzzy pool (e.g. `report_generator`<->module `report-forge` via the
+    shared token "report"), but it only ever calls `_compound_overlap()` at
+    the shared skill threshold of 6, which excludes the 5-character token
+    "media" the ticket's targeted `mediaproduction`<->`ai-media-editor` case
+    needs. This function closes exactly that gap using the module-only
+    threshold (`_MIN_MODULE_COMPOUND_TOKEN_LEN`) without touching the shared
+    skill one. Caller merges the result into whatever `fuzzy_match_skills()`
+    already found for the same expert (see `build_domains()`)."""
+    expert_tokens = _tokenize(expert_name) - _GENERIC_EXPERT_NAME_TOKENS
+    if not expert_tokens:
+        return []
+    matches: list[dict] = []
+    seen_ids: set[str] = set()
+    for module in modules:
+        module_id_bare = module["id"].split(":", 1)[-1]
+        module_tokens = _tokenize(module_id_bare) - _GENERIC_EXPERT_NAME_TOKENS
+        if not module_tokens or module["id"] in seen_ids:
+            continue
+        if _module_compound_overlap(expert_tokens, module_tokens):
+            matches.append(module)
+            seen_ids.add(module["id"])
+    return matches
+
+
 def build_domains(agents_dir: Path, registry_components_path: Path | None,
                    extra_boss_dirs: list[str] | None = None,
-                   extra_skills_dir: Path | None = None) -> dict:
+                   extra_skills_dir: Path | None = None,
+                   modules_catalog_path: Path | None = None) -> dict:
     agents_dir = Path(agents_dir)
     if not agents_dir.is_dir():
         raise FileNotFoundError(f"BACH agents dir not found: {agents_dir}")
@@ -553,6 +725,10 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     extra_skills: list[dict] = []
     if extra_skills_dir is not None:
         extra_skills = load_extra_skills(Path(extra_skills_dir))
+
+    modules_components: list[dict] = []
+    if modules_catalog_path is not None:
+        modules_components = load_modules_catalog(Path(modules_catalog_path))
 
     # Dedup BEFORE merging (T-20260711-06, team-lead condition: solve dedup
     # first or don't expand the pool at all). A "custom"-origin registry
@@ -575,10 +751,32 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
         if str(c.get("name", "")).strip().lower() not in extra_skill_names
     ]
 
+    # Same dedup, extended to the module pool (T-20260818-410274502): if a
+    # capability was already registered as a skill (bach or custom origin)
+    # or an extra_skills_dir entry under the same declared name, the skill
+    # copy wins and the module duplicate is dropped -- an established skill
+    # match should not be silently displaced by a same-named module entry.
+    # No collision exists in the corpus this was built against (verified:
+    # none of the three targeted modules -- foerderplaner, report-forge,
+    # ai-media-editor -- nor worksheet-generator share a name with any
+    # current skill/extra_skills entry), but the guard costs nothing and
+    # protects against future registry drift going the other way.
+    skill_names = extra_skill_names | {
+        str(c.get("name", "")).strip().lower() for c in bach_components + custom_components
+    }
+    modules_components = [
+        m for m in modules_components
+        if str(m.get("name", "")).strip().lower() not in skill_names
+    ]
+
     # Stage 2 (fuzzy) only: `custom_components` is deliberately NOT added to
     # `bach_components` and never passed to `match_standalone_skill()` (see
     # `load_custom_components()` docstring) -- it only feeds the fuzzy pool.
-    fuzzy_pool = bach_components + custom_components + extra_skills
+    # `modules_components` DOES also feed stage 1 (via `match_standalone_
+    # module()`, called separately below, T-20260818-410274502) since a
+    # module -- unlike a "custom"-origin skill -- can be a genuine 1:1 name
+    # identity for an expert (see that function's docstring).
+    fuzzy_pool = bach_components + custom_components + extra_skills + modules_components
 
     boss_dirs = discover_boss_dirs(agents_dir, extra_boss_dirs)
 
@@ -607,10 +805,22 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
     for dirname, _domain_id, _label, _description, expert_names, _services in boss_data:
         for expert_name in expert_names:
             match = match_standalone_skill(expert_name, bach_components)
+            if match is None and modules_components:
+                # T-20260818-410274502: module-catalog exact tier, tried
+                # only when the skill registry found nothing -- a skill-
+                # registry provenance link is a stronger signal (an actual
+                # BACH extraction record) than a bare name-identity match,
+                # so it takes precedence whenever both happen to exist.
+                match = match_standalone_module(expert_name, modules_components)
             if match:
                 global_exact_matches[(dirname, expert_name)] = match
     global_exact_matched_ids = {m["id"] for m in global_exact_matches.values()}
     fuzzy_pool_available = [c for c in fuzzy_pool if c.get("id") not in global_exact_matched_ids]
+    # Module-only subset of the same exact-excluded pool, for the module
+    # compound-bridge pass below (T-20260818-410274502) -- reuses the exact-
+    # match exclusion `fuzzy_pool_available` already computed rather than
+    # filtering `modules_components` a second, independent way.
+    modules_pool_available = [c for c in fuzzy_pool_available if c["id"].startswith("module:")]
 
     domains = []
     for dirname, domain_id, label, description, expert_names, services in boss_data:
@@ -632,6 +842,20 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
             # expert governs a skill FAMILY, so this can yield several
             # matches, not just one.
             fuzzy_matches = fuzzy_match_skills(expert_name, description, fuzzy_pool_available) if fuzzy_pool_available else []
+            # Module compound-bridge pass (T-20260818-410274502), merged
+            # additively into the same fuzzy result -- see
+            # `fuzzy_match_modules_compound()` for why this needs its own
+            # pass instead of being folded into `fuzzy_match_skills()`.
+            # Dedup by id: a module can already be present in `fuzzy_matches`
+            # via ordinary token overlap (e.g. `report-forge`), in which case
+            # the bridge pass would just rediscover the same entry.
+            if modules_pool_available:
+                already_matched_ids = {c["id"] for c in fuzzy_matches}
+                bridge_matches = [
+                    m for m in fuzzy_match_modules_compound(expert_name, modules_pool_available)
+                    if m["id"] not in already_matched_ids
+                ]
+                fuzzy_matches = fuzzy_matches + bridge_matches
             if fuzzy_matches:
                 experts.append({
                     "name": expert_name,
@@ -707,6 +931,8 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
             "custom_components_scanned": len(custom_components),
             "extra_skills_dir_provided": extra_skills_dir is not None,
             "extra_skills_scanned": len(extra_skills),
+            "modules_catalog_provided": modules_catalog_path is not None,
+            "modules_scanned": len(modules_components),
         },
         "domains": domains,
     }
@@ -739,6 +965,16 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--modules-catalog",
+        default=os.environ.get("TICKET_MASTER_MODULES_CATALOG"),
+        help=(
+            "Optional path to an ellmos modules.catalog.json (T-20260818-410274502) "
+            "-- a third matching source for experts that were extracted as a "
+            "standalone MODULE rather than a standalone skill. Default: none "
+            "(behaves exactly as before this option existed)."
+        ),
+    )
+    parser.add_argument(
         "--output",
         default=str(Path(__file__).resolve().parent.parent / "config" / "domains.json"),
         help="Output path for the generated domains.json.",
@@ -768,7 +1004,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Extra skills dir not found: {extra_skills_dir} — continuing without it.", file=sys.stderr)
         extra_skills_dir = None
 
-    result = build_domains(agents_dir, registry_path, args.extra_boss_dir, extra_skills_dir)
+    modules_catalog_path = Path(args.modules_catalog) if args.modules_catalog else None
+    if modules_catalog_path is not None and not modules_catalog_path.is_file():
+        print(f"Modules catalog not found: {modules_catalog_path} — continuing without it.", file=sys.stderr)
+        modules_catalog_path = None
+
+    result = build_domains(agents_dir, registry_path, args.extra_boss_dir, extra_skills_dir, modules_catalog_path)
 
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

@@ -971,5 +971,268 @@ description: >
             self.assertEqual(experts_by_name["health_import"]["matched_skills"], ["claude-skill:gesundheit"])
 
 
+class TestLoadModulesCatalog(unittest.TestCase):
+    """T-20260818-410274502: third matching source, the ellmos module
+    catalog."""
+
+    def _write_catalog(self, tmp, modules):
+        path = Path(tmp) / "modules.catalog.json"
+        path.write_text(json.dumps({"modules": modules}), encoding="utf-8")
+        return path
+
+    def test_normalizes_module_entries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_catalog(tmp, [
+                {"id": "foerderplaner", "display_name": "foerderplaner",
+                 "description": "Foerderplanung und ICF."},
+            ])
+            found = dg.load_modules_catalog(path)
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0]["id"], "module:foerderplaner")
+            self.assertEqual(found[0]["name"], "foerderplaner")
+            self.assertIn("Foerderplanung", found[0]["description"])
+            self.assertIsNone(found[0]["category"])
+
+    def test_falls_back_to_bare_id_when_display_name_missing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write_catalog(tmp, [{"id": "report-forge"}])
+            found = dg.load_modules_catalog(path)
+            self.assertEqual(found[0]["name"], "report-forge")
+
+    def test_missing_file_returns_empty_list(self):
+        self.assertEqual(dg.load_modules_catalog(Path("/nonexistent/modules.catalog.json")), [])
+
+    def test_malformed_json_returns_empty_list_not_a_crash(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "modules.catalog.json"
+            path.write_text("{not valid json", encoding="utf-8")
+            self.assertEqual(dg.load_modules_catalog(path), [])
+
+
+class TestMatchStandaloneModule(unittest.TestCase):
+    """Exact-tier module matching (T-20260818-410274502): raw full-token-set
+    equality, no `_GENERIC_EXPERT_NAME_TOKENS` stripping."""
+
+    def test_exact_name_identity_matches(self):
+        modules = [{"id": "module:foerderplaner", "name": "foerderplaner"}]
+        match = dg.match_standalone_module("foerderplaner", modules)
+        self.assertIsNotNone(match)
+        self.assertEqual(match["id"], "module:foerderplaner")
+
+    def test_hyphen_underscore_insensitive(self):
+        modules = [{"id": "module:worksheet-generator", "name": "worksheet-generator"}]
+        match = dg.match_standalone_module("worksheet_generator", modules)
+        self.assertIsNotNone(match)
+
+    def test_partial_token_overlap_is_not_an_exact_match(self):
+        """report_generator/report-forge share only the token "report" --
+        this must stay fuzzy (T-20260818-410274502), not be promoted to
+        exact just because one token overlaps."""
+        modules = [{"id": "module:report-forge", "name": "report-forge"}]
+        self.assertIsNone(dg.match_standalone_module("report_generator", modules))
+
+    def test_generic_suffix_stripping_would_have_caused_a_false_positive(self):
+        """Regression guard for the design this function deliberately avoids:
+        "steuer-agent" and "steuer-assistent" reduce to the same token set
+        ({"steuer"}) if generic suffixes are stripped first -- match_
+        standalone_module() must NOT do that, or it would silently claim an
+        exact 1:1 identity between two different names and drop the sibling
+        candidate "steuer-suite" that stage-2 fuzzy should still surface."""
+        modules = [{"id": "module:steuer-assistent", "name": "steuer-assistent"}]
+        self.assertIsNone(dg.match_standalone_module("steuer-agent", modules))
+
+    def test_no_match_returns_none(self):
+        modules = [{"id": "module:unrelated-thing", "name": "unrelated-thing"}]
+        self.assertIsNone(dg.match_standalone_module("foerderplaner", modules))
+
+
+class TestFuzzyMatchModulesCompound(unittest.TestCase):
+    """Module-only compound bridge (T-20260818-410274502): the targeted
+    `mediaproduction`/`ai-media-editor` case, which needs a 5-character
+    bridge ("media") the shared skill threshold of 6 deliberately excludes."""
+
+    def test_media_bridges_mediaproduction_to_ai_media_editor(self):
+        modules = [{"id": "module:ai-media-editor", "name": "ai-media-editor"}]
+        matches = dg.fuzzy_match_modules_compound("mediaproduction", modules)
+        self.assertEqual([m["id"] for m in matches], ["module:ai-media-editor"])
+
+    def test_matches_multiple_modules_for_one_expert(self):
+        """Both ai-media-editor and media-editor-core are legitimately
+        media-production-related (T-20260813 core/app split) -- a double
+        match here is correct, not noise."""
+        modules = [
+            {"id": "module:ai-media-editor", "name": "ai-media-editor"},
+            {"id": "module:media-editor-core", "name": "media-editor-core"},
+        ]
+        matches = dg.fuzzy_match_modules_compound("mediaproduction", modules)
+        self.assertEqual(sorted(m["id"] for m in matches), ["module:ai-media-editor", "module:media-editor-core"])
+
+    def test_four_character_fragment_does_not_bridge(self):
+        """"work" (4 chars) must stay below the module threshold too -- same
+        false-positive class as T-20260711-04's skill-pool regression, this
+        time verified against the module-only threshold of 5."""
+        modules = [{"id": "module:network-tool", "name": "network-tool"}]
+        self.assertEqual(dg.fuzzy_match_modules_compound("worksheet-generator", modules), [])
+
+    def test_no_expert_tokens_returns_empty(self):
+        modules = [{"id": "module:ai-media-editor", "name": "ai-media-editor"}]
+        self.assertEqual(dg.fuzzy_match_modules_compound("", modules), [])
+
+
+class TestBuildDomainsModulesCatalog(unittest.TestCase):
+    """End-to-end coverage for the module-catalog third source inside
+    `build_domains()` (T-20260818-410274502). Regression fixtures shaped
+    after the ticket's three evidenced cases, kept synthetic/portable --
+    the live corpus itself is verified separately as part of the actual
+    domains.json regeneration, not committed as a unit test."""
+
+    def _boss(self, tmp, dirname, expert_names):
+        boss_dir = Path(tmp) / "agents" / dirname
+        boss_dir.mkdir(parents=True)
+        experts_literal = "[" + ", ".join(expert_names) + "]"
+        boss_dir.joinpath("SKILL.md").write_text(f"""---
+name: {dirname}
+orchestrates:
+  experts: {experts_literal}
+  services: []
+description: >
+  Fixture boss agent for module-catalog matching tests.
+---
+""", encoding="utf-8")
+        return Path(tmp) / "agents"
+
+    def _modules_catalog(self, tmp, modules):
+        path = Path(tmp) / "modules.catalog.json"
+        path.write_text(json.dumps({"modules": modules}), encoding="utf-8")
+        return path
+
+    def test_default_behaviour_unchanged_when_modules_catalog_not_provided(self):
+        """Regression guard: build_domains() without modules_catalog_path
+        (the default) must behave identically to before this ticket."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m0", ["foerderplaner"])
+            result = dg.build_domains(agents_dir, None, extra_boss_dirs=["fixture-boss-m0"])
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "nicht-portiert")
+            self.assertFalse(result["source"]["modules_catalog_provided"])
+            self.assertEqual(result["source"]["modules_scanned"], 0)
+
+    def test_exact_name_match_reports_portiert_with_module_reference(self):
+        """The foerderplaner case: exact name identity -> "portiert" tier,
+        target is "module:<id>"."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m1", ["foerderplaner"])
+            catalog = self._modules_catalog(tmp, [
+                {"id": "foerderplaner", "display_name": "foerderplaner",
+                 "description": "Foerderplanung."},
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-m1"],
+                modules_catalog_path=catalog,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "portiert")
+            self.assertEqual(expert["match"], "exact")
+            self.assertEqual(expert["standalone_skill"], "module:foerderplaner")
+            self.assertEqual(expert["matched_skills"], ["module:foerderplaner"])
+            self.assertTrue(result["source"]["modules_catalog_provided"])
+            self.assertEqual(result["source"]["modules_scanned"], 1)
+
+    def test_token_overlap_reports_teilportiert(self):
+        """The report_generator/report-forge case: shared token "report",
+        differing second token -> stays fuzzy, found via the existing
+        fuzzy_match_skills() token-overlap case once modules are pooled."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m2", ["report_generator"])
+            catalog = self._modules_catalog(tmp, [
+                {"id": "report-forge", "display_name": "report-forge"},
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-m2"],
+                modules_catalog_path=catalog,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "teilportiert")
+            self.assertEqual(expert["match"], "fuzzy")
+            self.assertEqual(expert["matched_skills"], ["module:report-forge"])
+            self.assertIsNone(expert["standalone_skill"])
+
+    def test_compound_bridge_reports_teilportiert(self):
+        """The mediaproduction/ai-media-editor case: no token overlap at
+        all, found only via the module-only compound bridge."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m3", ["mediaproduction"])
+            catalog = self._modules_catalog(tmp, [
+                {"id": "ai-media-editor", "display_name": "ai-media-editor"},
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-m3"],
+                modules_catalog_path=catalog,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "teilportiert")
+            self.assertEqual(expert["matched_skills"], ["module:ai-media-editor"])
+
+    def test_skill_registry_exact_match_takes_precedence_over_module(self):
+        """If both a skill-registry provenance link and a module name-
+        identity match exist for the same expert, the skill (a real BACH
+        extraction record) wins -- module exact matching is only tried when
+        the skill registry found nothing."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m4", ["foerderplaner"])
+            registry_path = Path(tmp) / "components.json"
+            registry_path.write_text(json.dumps({
+                "components": [{
+                    "id": "skill:buero:foerderplaner",
+                    "provenance": {"origin": "bach", "origin_path": "system/agents/_experts/foerderplaner/CONCEPT.md"},
+                }],
+            }), encoding="utf-8")
+            catalog = self._modules_catalog(tmp, [
+                {"id": "foerderplaner", "display_name": "foerderplaner"},
+            ])
+            result = dg.build_domains(
+                agents_dir, registry_path, extra_boss_dirs=["fixture-boss-m4"],
+                modules_catalog_path=catalog,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["standalone_skill"], "skill:buero:foerderplaner")
+
+    def test_module_dropped_when_name_collides_with_existing_skill(self):
+        """Dedup guard: a module sharing a declared name with an existing
+        skill/extra_skills entry is dropped from the module pool -- the
+        skill copy wins, matching the same-shaped custom-component dedup
+        this ticket extended (T-20260711-06 precedent)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m5", ["some-expert"])
+            registry_path = Path(tmp) / "components.json"
+            registry_path.write_text(json.dumps({
+                "components": [{
+                    "id": "skill:custom:shared-name", "name": "shared-name",
+                    "provenance": {"origin": "custom"},
+                }],
+            }), encoding="utf-8")
+            catalog = self._modules_catalog(tmp, [
+                {"id": "shared-name", "display_name": "shared-name"},
+            ])
+            result = dg.build_domains(
+                agents_dir, registry_path, extra_boss_dirs=["fixture-boss-m5"],
+                modules_catalog_path=catalog,
+            )
+            self.assertEqual(result["source"]["modules_scanned"], 0)
+
+    def test_no_module_match_still_reports_nicht_portiert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents_dir = self._boss(tmp, "fixture-boss-m6", ["totally-unrelated-expert"])
+            catalog = self._modules_catalog(tmp, [
+                {"id": "ai-media-editor", "display_name": "ai-media-editor"},
+            ])
+            result = dg.build_domains(
+                agents_dir, None, extra_boss_dirs=["fixture-boss-m6"],
+                modules_catalog_path=catalog,
+            )
+            expert = result["domains"][0]["experts"][0]
+            self.assertEqual(expert["status"], "nicht-portiert")
+
+
 if __name__ == "__main__":
     unittest.main()
