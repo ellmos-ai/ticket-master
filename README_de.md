@@ -501,8 +501,9 @@ python tests/test_smoke.py
 ```
 
 Prüft: Verzeichnisstruktur vollständig, Config-JSON valide, Prompt enthält
-keine verbotenen absoluten Pfade oder systemspezifischen Begriffe und lokale
-Datenschutzartefakte bleiben durch `.gitignore` abgedeckt.
+keine verbotenen absoluten Pfade oder systemspezifischen Begriffe und — in
+einem Git-Checkout — lokale Datenschutzartefakte bleiben durch `.gitignore`
+abgedeckt.
 
 ---
 

@@ -485,8 +485,8 @@ python tests/test_smoke.py
 ```
 
 Checks: directory structure complete, config JSON valid, prompt contains no
-forbidden absolute paths or system-specific terms, and local privacy artifacts
-remain covered by `.gitignore`.
+forbidden absolute paths or system-specific terms, and — inside a Git checkout —
+local privacy artifacts remain covered by `.gitignore`.
 
 ---
 

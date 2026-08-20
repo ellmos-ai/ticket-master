@@ -114,6 +114,17 @@ def check_gitignore_privacy_defaults():
         print("WARN gitignore — git not found; skipping ignore-rule check")
         return True
 
+    worktree = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=REPO_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if worktree.returncode != 0 or worktree.stdout.strip() != "true":
+        print("WARN gitignore — not a Git worktree; skipping ignore-rule check")
+        return True
+
     should_ignore = [
         "config/ticket-master.config.json",
         "tickets/BUG-123.txt",

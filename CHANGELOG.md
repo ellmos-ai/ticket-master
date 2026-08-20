@@ -17,7 +17,9 @@ All notable changes to ticket-master are documented here.
   matching source. Unattached BACH-origin skills remain explicitly reported.
 - Closed a repository-local privacy gap: runtime tickets in all six additional
   categories-v1 lifecycle directories are now ignored while their `.gitkeep`
-  placeholders remain trackable; the smoke suite covers both sides.
+  placeholders remain trackable; the smoke suite covers both sides. Its
+  Git-specific check now reports a controlled skip in non-Git module projections
+  instead of failing merely because `git` is installed globally.
 
 ### Bug fixes
 
