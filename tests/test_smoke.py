@@ -117,7 +117,13 @@ def check_gitignore_privacy_defaults():
     should_ignore = [
         "config/ticket-master.config.json",
         "tickets/BUG-123.txt",
+        "tickets/INBOX/private.txt",
+        "tickets/ACTIONABLE/private.txt",
         "tickets/QUEUED/work.txt",
+        "tickets/BLOCKED/private.txt",
+        "tickets/WAITING/private.txt",
+        "tickets/USER/private.txt",
+        "tickets/PARKED/private.txt",
         "tickets/.USER/manual.txt",
         ".env",
         ".env.local",
@@ -138,6 +144,12 @@ def check_gitignore_privacy_defaults():
         "config/ticket-master.config.example.json",
         "tickets/_logs/INTAKE-TRIAGE-LOG.txt",
         "tickets/_templates/TICKET.txt",
+        "tickets/INBOX/.gitkeep",
+        "tickets/ACTIONABLE/.gitkeep",
+        "tickets/BLOCKED/.gitkeep",
+        "tickets/WAITING/.gitkeep",
+        "tickets/USER/.gitkeep",
+        "tickets/PARKED/.gitkeep",
     ]
 
     ok = True

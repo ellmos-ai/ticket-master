@@ -15,7 +15,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-139%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-199%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -405,10 +405,10 @@ CHECKPOINT ALPHA:
 
 ## Personal-Assistant Expansion (optional): Domain Map, Urgency & Delegation
 
-Three optional layers turn the plain ticket router into a small personal-
+Four optional layers turn the plain ticket router into a small personal-
 assistant triage console, on top of a BACH-style personal-assistant install:
 
-- **Domain map (1.6.0, extended 1.8.0):** `lib/domains_generator.py` generates
+- **Domain map (1.6.0, extended 1.8.0 and Unreleased):** `lib/domains_generator.py` generates
   `config/domains.json` — a domain → expert map, cross-referenced against a
   skill registry to flag which experts already exist as standalone skills. It
   only needs BACH at generation time; `config/domains.json` itself is a
@@ -424,7 +424,12 @@ assistant triage console, on top of a BACH-style personal-assistant install:
   (`"match": "domain"`); a boss with zero orchestrated experts gets a
   synthetic `"__domain__:<boss>"` pseudo-expert instead, since there is
   otherwise nowhere to attach the match. See `config/domains.example.json`
-  for the schema.
+  for the schema. The current generator can also read a module catalog via
+  `--modules-catalog` and the skill library's own frontmatter via
+  `--skill-library-dir`. Skill-library provenance is the primary exact source,
+  the old registry remains a fallback, standalone modules form a third source,
+  and unresolved BACH-origin skills are reported instead of silently attached
+  to an unrelated expert.
 - **Urgency axis (1.7.0):** `config/urgency.json` (schema:
   `config/urgency.example.json`) maps each domain to a default deadline
   (`sofort` / `heute` / `woche` / `backlog`) plus escalation rules (e.g.
@@ -455,12 +460,12 @@ assistant triage console, on top of a BACH-style personal-assistant install:
   maps over memory — on a conflict, regenerate the map rather than trusting
   what you recall.
 
-See `CHANGELOG.md` (1.6.0–1.9.0) for details.
+See `CHANGELOG.md` (1.6.0–1.9.0 and Unreleased) for details.
 
 ## Requirements
 
 - A CLI-based LLM provider (at least one of: `claude`, `codex`, `agy`)
-- Python 3.10+ (for tests only; the router itself runs inside the LLM session)
+- Python 3.10+ (for the shared launcher/CLI, generators, helpers, and tests)
 - No additional Python dependencies
 
 ### Provider Installation
@@ -480,7 +485,8 @@ python tests/test_smoke.py
 ```
 
 Checks: directory structure complete, config JSON valid, prompt contains no
-forbidden absolute paths or system-specific terms.
+forbidden absolute paths or system-specific terms, and local privacy artifacts
+remain covered by `.gitignore`.
 
 ---
 

@@ -4,6 +4,21 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Documentation and maintenance (2026-08-20)
+
+- One-time project tidy-up closed the already-completed Pytest-integration
+  TODO, synchronized the current 199-test result across both README badges and
+  `llms.txt`, restored byte-identical code/Mermaid examples in the bilingual
+  READMEs, and corrected their Python runtime and smoke-check descriptions.
+- Documented the already-implemented domain-generator sources that were still
+  missing from the current README/Changelog surface: skill-library frontmatter
+  (`--skill-library-dir`) is the primary exact source, the legacy registry is a
+  fallback, and `--modules-catalog` supplies standalone modules as a third
+  matching source. Unattached BACH-origin skills remain explicitly reported.
+- Closed a repository-local privacy gap: runtime tickets in all six additional
+  categories-v1 lifecycle directories are now ignored while their `.gitkeep`
+  placeholders remain trackable; the smoke suite covers both sides.
+
 ### Bug fixes
 
 - **Ticket templates and current documentation now enforce random IDs

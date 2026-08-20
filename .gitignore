@@ -44,8 +44,20 @@ tickets/*.txt
 !tickets/_templates/TICKET.txt
 
 # Ticket lifecycle directories — keep .gitkeep, ignore everything else
+tickets/INBOX/*
+!tickets/INBOX/.gitkeep
+tickets/ACTIONABLE/*
+!tickets/ACTIONABLE/.gitkeep
 tickets/QUEUED/*
 !tickets/QUEUED/.gitkeep
+tickets/BLOCKED/*
+!tickets/BLOCKED/.gitkeep
+tickets/WAITING/*
+!tickets/WAITING/.gitkeep
+tickets/USER/*
+!tickets/USER/.gitkeep
+tickets/PARKED/*
+!tickets/PARKED/.gitkeep
 tickets/PENDING/*
 !tickets/PENDING/.gitkeep
 tickets/SOLVED/*

@@ -1,4 +1,4 @@
-## Last-checked: 2026-08-16
+## Last-checked: 2026-08-20
 
 # ticket-master
 
@@ -19,7 +19,10 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.10.0` (tagged in Git; no separate publication such as PyPI/npm is claimed)
 - Version: `1.10.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-08-16: `139 passed` via `python -m pytest -q`.
+- Local verification on 2026-08-20: `199 passed` via `python -m pytest -q`.
+- New ticket IDs use a 9-digit random value and must be minted through
+  `lib/ticket_writer.py` (or the shared `--intake` CLI), never by copying the
+  template or incrementing a number manually.
 - 2026-08-16: the TICKET-WRITER (SIG-TU) role moved out to
   `ellmos-ai/system-auditor`; `prompts/TICKET-WRITER.*.md` remain in this
   repository only as a record of origin.
@@ -39,6 +42,9 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 - `config/domains.example.json` / `config/urgency.example.json`: optional
   personal-assistant expansion — domain→endpoint map and domain→deadline default
   matrix (`sofort`/`heute`/`woche`/`backlog`, decoupled from the 5-dimension score).
+- `lib/domains_generator.py`: builds the optional domain map from skill-library
+  frontmatter, a legacy skill registry, and an optional module catalog; unresolved
+  BACH-origin skills remain explicitly visible.
 - `tickets/_templates/TICKET.txt`: structured ticket template (includes `DOMAIN`,
   `ENDPOINT`, `URGENCY` fields).
 - `tickets/_logs/INTAKE-TRIAGE-LOG.txt`: DEPRECATED shared intake log (pre-1.5.0); the audit trail lives per ticket.

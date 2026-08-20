@@ -163,7 +163,9 @@
 - [ ] GitHub Issues bridge: pull open issues from a repo into `tickets/` as `.txt`
       files automatically.
 - [ ] Webhook receiver: accept tickets via HTTP POST (e.g. from n8n or a CI system).
-- [ ] pytest integration: convert `tests/test_smoke.py` to proper pytest suite.
+- [x] pytest integration: `tests/test_smoke.py` exposes all four smoke checks
+      as echte `test_*`-Funktionen mit Assertions; der direkte CLI-Lauf bleibt
+      zusätzlich erhalten.
 
 ## Long-term / Ideas
 

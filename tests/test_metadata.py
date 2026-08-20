@@ -6,6 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_TEST_COUNT = 199
+LAST_CHECKED = "2026-08-20"
 
 
 def test_version_consistency():
@@ -47,6 +49,10 @@ def test_badge_parity_and_links():
         assert keyword in readme_en, f"Badge keyword '{keyword}' missing in README.md"
         assert keyword in readme_de, f"Badge keyword '{keyword}' missing in README_de.md"
 
+    test_badge = f"pytest-{EXPECTED_TEST_COUNT}%20passed"
+    assert test_badge in readme_en
+    assert test_badge in readme_de
+
 
 def test_llms_txt_integrity():
     """Verify llms.txt exists, contains required context, entry points, and has up-to-date timestamp."""
@@ -54,7 +60,8 @@ def test_llms_txt_integrity():
     assert llms_path.is_file()
     content = llms_path.read_text(encoding="utf-8")
 
-    assert "Last-checked: 2026-08-16" in content
+    assert f"Last-checked: {LAST_CHECKED}" in content
+    assert f"`{EXPECTED_TEST_COUNT} passed`" in content
     assert "https://github.com/ellmos-ai/ticket-master" in content
     assert "prompts/TICKET-MASTER.en.md" in content or "prompts_dir/TICKET-MASTER.en.md" in content
     assert "config/ticket-master.config.example.json" in content

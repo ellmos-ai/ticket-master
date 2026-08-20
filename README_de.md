@@ -16,7 +16,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
-[![Tests](https://img.shields.io/badge/pytest-139%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-199%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -66,7 +66,7 @@ Position 0 — waiting for next ticket
 graph TD
     User([User reports bug / change request]) --> Position0[Triage Console: Position 0]
     Position0 --> GATE1{GATE 1: Intake}
-    GATE1 -->|Über ticket_writer.py erzeugen| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
+    GATE1 -->|Create via ticket_writer.py| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
     TxtFile --> GATE2{GATE 2: Characterise & Score}
     GATE2 -->|Calculate Score| Score[Score = 10-Clarity + Complexity + Creativity + Context + Criticality]
     Score --> Router{Router Decision}
@@ -268,7 +268,7 @@ Windows, macOS und Linux gleich:
 ```bash
 python bin/ticket_master.py --list
 python bin/ticket_master.py --list --json
-python bin/ticket_master.py --intake "Neue Aufgabe beschreiben" --project my-app
+python bin/ticket_master.py --intake "Describe the new issue" --project my-app
 ```
 
 `--list` gibt deterministische Metadaten `STATUS / ID / TITEL / PFAD` für
@@ -415,11 +415,11 @@ CHECKPOINT ALPHA:
 
 ## Personal-Assistant-Ausbau (optional): Domänen-Map, Dringlichkeit & Delegation
 
-Drei optionale Schichten machen aus dem reinen Ticket-Router eine kleine
+Vier optionale Schichten machen aus dem reinen Ticket-Router eine kleine
 persönliche Assistenz-Triage-Konsole, aufbauend auf einem BACH-artigen
 Personal-Assistant-Install:
 
-- **Domänen-Map (1.6.0, erweitert 1.8.0):** `lib/domains_generator.py`
+- **Domänen-Map (1.6.0, erweitert 1.8.0 und Unreleased):** `lib/domains_generator.py`
   generiert `config/domains.json` — eine Domäne→Experten-Map, gegen eine
   Skill-Registry abgeglichen, um bereits als Standalone-Skill existierende
   Experten zu markieren. Nur zur Generierungszeit wird BACH gebraucht;
@@ -436,7 +436,13 @@ Personal-Assistant-Install:
   Experten (`"match": "domain"`); ein Boss ohne orchestrierte Experten
   bekommt stattdessen einen synthetischen `"__domain__:<boss>"`-
   Pseudo-Experten, da es sonst keinen Ort gibt, an dem der Treffer hängen
-  könnte. Schema: `config/domains.example.json`.
+  könnte. Schema: `config/domains.example.json`. Der aktuelle Generator kann
+  zusätzlich einen Modulkatalog über `--modules-catalog` und die Frontmatter
+  der Skill-Bibliothek über `--skill-library-dir` lesen. Die Herkunftsdaten der
+  Skill-Bibliothek sind die primäre exakte Quelle, die alte Registry bleibt
+  Fallback, Standalone-Module bilden eine dritte Quelle, und nicht aufgelöste
+  Skills mit BACH-Herkunft werden gemeldet statt still einem unpassenden
+  Experten zugeordnet.
 - **Dringlichkeitsachse (1.7.0):** `config/urgency.json` (Schema:
   `config/urgency.example.json`) ordnet jeder Domäne eine Default-Frist zu
   (`sofort` / `heute` / `woche` / `backlog`) plus Eskalationsregeln (z.B.
@@ -468,14 +474,14 @@ Personal-Assistant-Install:
   Karten vertrauen, nicht dem Gedächtnis — bei Widerspruch die Karte neu
   generieren lassen statt der Erinnerung zu vertrauen.
 
-Details siehe `CHANGELOG.md` (1.6.0–1.9.0).
+Details siehe `CHANGELOG.md` (1.6.0–1.9.0 und Unreleased).
 
 ---
 
 ## Voraussetzungen
 
 - Mindestens ein CLI-basierter LLM-Provider (`claude`, `codex` oder `agy`)
-- Python 3.10+ (nur für Tests; der Router selbst läuft in der LLM-Session)
+- Python 3.10+ (für gemeinsamen Starter/CLI, Generatoren, Helfer und Tests)
 - Keine zusätzlichen Python-Abhängigkeiten
 
 ### Provider-Installation
@@ -495,7 +501,8 @@ python tests/test_smoke.py
 ```
 
 Prüft: Verzeichnisstruktur vollständig, Config-JSON valide, Prompt enthält
-keine verbotenen absoluten Pfade oder systemspezifischen Begriffe.
+keine verbotenen absoluten Pfade oder systemspezifischen Begriffe und lokale
+Datenschutzartefakte bleiben durch `.gitignore` abgedeckt.
 
 ---
 
