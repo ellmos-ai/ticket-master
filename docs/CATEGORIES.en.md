@@ -166,8 +166,10 @@ Operation without constant user round-trips:
 ## Multi-Host Note
 
 In cloud-synced multi-host setups (OneDrive, Dropbox, Google Drive) the
-claim convention via filename (`T-YYYYMMDD-NN.<HOST>.txt`) applies
-unchanged; the cluster folders are shared across hosts.
+claim convention via filename (`T-YYYYMMDD-#########.<HOST>.txt`) applies
+unchanged. The 9-digit random component is minted exclusively by
+`lib/ticket_writer.py`; it must never be chosen or incremented manually. The
+cluster folders are shared across hosts.
 
 - Hosts on the old layout keep reading `PENDING/` and `.USER/` as legacy
   aliases — old content is not an error. A one-time migration run per

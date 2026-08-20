@@ -2,9 +2,11 @@ r"""
 ticket_writer.py — Asynchronous ticket creation for the ticket-master queue.
 
 Lets any tool (e.g. a lock watcher GUI) drop a ticket into the queue even when
-no TICKET-MASTER session is running. Writes an unclaimed ticket file
-T-YYYYMMDD-NN.txt (no <HOST> suffix) into <tickets_dir>/INBOX/ using the
-canonical TICKET format (fields ID/TITLE/STATUS/.../LOG/SOLUTION).
+no TICKET-MASTER session is running. Draws the 9-digit random component and
+writes an unclaimed ticket file T-YYYYMMDD-#########.txt (no <HOST> suffix)
+into <tickets_dir>/INBOX/ using the canonical TICKET format
+(fields ID/TITLE/STATUS/.../LOG/SOLUTION). New IDs must only be minted through
+this helper; callers must never count or choose the numeric component manually.
 
 User-neutral module: `tickets_dir` is required (or taken from the
 TICKET_MASTER_TICKETS_DIR environment variable / config). The current date is
@@ -41,7 +43,7 @@ PROJEKT-ZUORDNUNG
 --------------------------------------------------------------
 PIPELINE:      {pipeline}
 PROJEKTORDNER: {project}
-FUEHRUNGSDATEI:<noch offen — beim Triage bestaetigen>
+FUEHRUNGSDATEI:<noch offen — bei der Triage bestätigen>
 
 --------------------------------------------------------------
 PROBLEMBESCHREIBUNG
@@ -52,7 +54,7 @@ PROBLEMBESCHREIBUNG
 AUFGABENCHARAKTERISTIK  (Bearbeitungskette Schritt 2-3)
 --------------------------------------------------------------
 TYP:           <Bug / Feature / Doku / Recherche / Review / Refactor>
-ANFORDERUNGEN: <Klarheit, Komplexitaet, Kreativitaet, Kontext, Kritikalitaet>
+ANFORDERUNGEN: <Klarheit, Komplexität, Kreativität, Kontext, Kritikalität>
 SCORE:         <0-50>
 
 --------------------------------------------------------------
@@ -61,7 +63,7 @@ MODELL-ROUTING  (Bearbeitungskette Schritt 4-5)
 KANDIDAT 1:    <Modell + Aufrufweg>     [LLM-startbar: ja/nein]
 KANDIDAT 2:    <Modell + Aufrufweg>     [LLM-startbar: ja/nein]
 KANDIDAT 3:    <Modell + Aufrufweg>     [LLM-startbar: ja/nein]
-GEWAEHLT:      <Kandidat + Begruendung>
+GEWAEHLT:      <Kandidat + Begründung>
 
 --------------------------------------------------------------
 AUFTRAG / PROMPT
@@ -76,7 +78,7 @@ VERLAUF / LOG
 --------------------------------------------------------------
 LOESUNG / ERGEBNIS
 --------------------------------------------------------------
-<Vor Verschieben nach SOLVED ausfuellen.>
+<Vor Verschieben nach SOLVED ausfüllen.>
 ==============================================================
 """
 
@@ -100,7 +102,7 @@ _LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
                       "USER", "PARKED", "SOLVED", "PENDING", ".USER")
 
 # Ticket-Dateiname:
-#   T-<8-stelliges Datum>-<laufende Nummer>[_<slug>][.<HOST-oder-Suffix>].txt
+#   T-<8-stelliges Datum>-<numerische ID>[_<slug>][.<HOST-oder-Suffix>].txt
 # Gruppen: date, number, slug (optional, beschreibend), suffix (optional, Claim).
 # Von der Nummernvergabe UND vom Audit (lib/ticket_audit.py) genutzt, damit
 # beide garantiert dieselbe Grammatik sehen und nicht auseinanderlaufen.
@@ -121,8 +123,8 @@ _LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
 # sonst waeren "T-20260612-01_alpha.txt" und "T-20260612-01.txt" zwei
 # verschiedene Vorgaenge statt einer Kollision.
 #
-# Die Erweiterung ist bewusst eng: Datumsgruppe und laufende Nummer bleiben
-# Pflicht, die Endung bleibt .txt. Damit gelten die Altlasten unter PENDING/
+# Die Erweiterung ist bewusst eng: Datumsgruppe und numerische ID-Komponente
+# bleiben Pflicht, die Endung bleibt .txt. Damit gelten die Altlasten unter PENDING/
 # (T-41_LOESCH-REPORT.txt, T-41_cleanup.ps1, T-41_gnomad_transfer.sh)
 # weiterhin NICHT als Tickets -- ein Muster, das Reports und Shell-Skripte
 # mitzaehlt, waere schlechter als eines, das ein paar Tickets uebersieht.
@@ -388,7 +390,10 @@ def _cli(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(
         prog="ticket_writer",
-        description="Atomically create an unclaimed ticket (T-YYYYMMDD-NN.txt in INBOX/).",
+        description=(
+            "Atomically create an unclaimed ticket with a 9-digit random ID "
+            "(T-YYYYMMDD-#########.txt in INBOX/)."
+        ),
     )
     parser.add_argument("--title", required=True)
     parser.add_argument("--body", default="")

@@ -165,8 +165,11 @@ Betrieb ohne ständige User-Rückfragen:
 ## Multi-Host-Hinweis
 
 In cloud-synchronisierten Multi-Host-Setups (OneDrive, Dropbox, Google Drive)
-gilt die Claim-Konvention per Dateiname (`T-YYYYMMDD-NN.<HOST>.txt`)
-unverändert; die Cluster-Ordner werden host-übergreifend gemeinsam genutzt.
+gilt die Claim-Konvention per Dateiname
+(`T-YYYYMMDD-#########.<HOST>.txt`) unverändert; die neunstellige
+Zufallskomponente wird ausschließlich durch `lib/ticket_writer.py` erzeugt,
+nie manuell gewählt oder hochgezählt. Die Cluster-Ordner werden
+host-übergreifend gemeinsam genutzt.
 
 - Hosts mit altem Stand lesen `PENDING/` und `.USER/` als Legacy-Aliase
   weiter — alte Inhalte sind keine Fehler. Das Verschieben übernimmt ein

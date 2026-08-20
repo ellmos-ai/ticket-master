@@ -87,8 +87,8 @@ per **Dateiname** signalisiert — kein In-File-Feld nötig:
 
 | Zustand    | Dateiname-Muster               | Beispiel                                |
 |------------|-------------------------------|-----------------------------------------|
-| Unclaimed  | `T-YYYYMMDD-<nr>.txt`         | `T-20260619-483920174.txt`              |
-| Claimed    | `T-YYYYMMDD-<nr>.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
+| Unclaimed  | `T-YYYYMMDD-#########.txt`         | `T-20260619-483920174.txt`              |
+| Claimed    | `T-YYYYMMDD-#########.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
 | Gelöst     | nach `SOLVED/` verschieben    | wie bisher                              |
 
 **Glob-Muster für Agenten:**
@@ -128,8 +128,8 @@ Gegenteil dessen, was am 2026-08-08 einen bereits gelösten Vorgang
 zerstörte. Ebenso: eine NEUE Ticket-ID nie durch Hinsehen/Zählen vergeben,
 sondern über `lib/ticket_writer.py create()` (bzw. `python
 lib/ticket_writer.py --title ... --body ...`) — das legt die Datei atomar
-exklusiv an und zählt bei einer Kollision automatisch hoch, statt zwei
-Agenten dieselbe Nummer ziehen zu lassen.
+exklusiv an und würfelt bei einer Kollision eine neue 9-stellige Zufallszahl,
+statt zwei Agenten dieselbe Nummer ziehen zu lassen.
 
 ### Ticket-Rückgabe — ein Claim ist geliehen, nicht besessen
 

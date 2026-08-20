@@ -11,9 +11,10 @@ Three findings, one scan:
    the standing collisions before that move is attempted, not after.
 2. Claimed tickets sitting in the root/INBOX alias: per the ticket
    conventions the root only ever holds UNCLAIMED tickets
-   (T-YYYYMMDD-NN.txt); a claimed file (T-YYYYMMDD-NN.<HOST>.txt) there is
-   invisible to every status-folder-based triage glob. One such file sat
-   unworked for seven days with same-day urgency before this was noticed.
+   (T-YYYYMMDD-#########.txt); a claimed file
+   (T-YYYYMMDD-#########.<HOST>.txt) there is invisible to every
+   status-folder-based triage glob. One such file sat unworked for seven days
+   with same-day urgency before this was noticed.
 3. Non-ticket files inside the ticket tree's top-level folders (root or any
    lifecycle status folder) — clutter that a naive "everything here is a
    ticket" scan would misclassify.
@@ -37,7 +38,7 @@ _STATUS_SUBDIRS = tuple(sub for sub in _LIFECYCLE_SUBDIRS if sub)
 _CLAIMED_RE = re.compile(r"^T-\d{8}-\d+\.[A-Za-z0-9_-]+\.txt$")
 
 # Broader than TICKET_FILENAME_RE on purpose: the production bestand carries
-# ~100 tickets from before the bare "T-YYYYMMDD-NN[.HOST].txt" convention
+# ~100 tickets from before the bare "T-YYYYMMDD-<number>[.HOST].txt" convention
 # that add a descriptive slug after the number (e.g.
 # "T-20260614-20_ticket-master-modul-repo.txt"). Those are real, legitimate
 # tickets, not clutter -- flagging all of them as "non-ticket" the first

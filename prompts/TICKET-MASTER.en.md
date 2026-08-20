@@ -82,8 +82,8 @@ folder (OneDrive, Dropbox, Google Drive), the claim is signalled via the
 
 | State    | Filename pattern               | Example                                 |
 |----------|--------------------------------|-----------------------------------------|
-| Unclaimed | `T-YYYYMMDD-<nr>.txt`         | `T-20260619-483920174.txt`              |
-| Claimed  | `T-YYYYMMDD-<nr>.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
+| Unclaimed | `T-YYYYMMDD-#########.txt`         | `T-20260619-483920174.txt`              |
+| Claimed  | `T-YYYYMMDD-#########.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
 | Solved   | move to `SOLVED/`              | as usual                                |
 
 **Glob patterns for agents:**
@@ -122,8 +122,8 @@ silently overwriting it — exactly the opposite of what destroyed an
 already-solved ticket on 2026-08-08. Likewise, never assign a NEW ticket ID
 by eyeballing/counting the directory; use `lib/ticket_writer.py create()`
 (or `python lib/ticket_writer.py --title ... --body ...`), which creates the
-file via atomic exclusive-create and auto-increments on collision instead of
-letting two agents pick the same number.
+file via atomic exclusive-create and draws a new 9-digit random number on
+collision instead of letting two agents pick the same number.
 
 ### Returning a ticket — a claim is borrowed, not owned
 

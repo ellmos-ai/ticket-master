@@ -1,7 +1,9 @@
 ==============================================================
 TICKET
 ==============================================================
-ID:            T-YYYYMMDD-NN          (date + sequential number)
+ID:            T-YYYYMMDD-#########   (9-digit random number)
+CREATION:      New tickets MUST be created through `python lib/ticket_writer.py ...`;
+               never copy this file or choose/count an ID manually.
 TITLE:         <short problem title>
 CREATED:       YYYY-MM-DD
 STATUS:        <CLUSTER>[/<subcategory>] (since YYYY-MM-DD) — categories v1:

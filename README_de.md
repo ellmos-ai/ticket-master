@@ -66,7 +66,7 @@ Position 0 — waiting for next ticket
 graph TD
     User([User reports bug / change request]) --> Position0[Triage Console: Position 0]
     Position0 --> GATE1{GATE 1: Intake}
-    GATE1 -->|Create Ticket File| TxtFile[tickets/T-YYYYMMDD-NN.txt]
+    GATE1 -->|Über ticket_writer.py erzeugen| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
     TxtFile --> GATE2{GATE 2: Characterise & Score}
     GATE2 -->|Calculate Score| Score[Score = 10-Clarity + Complexity + Creativity + Context + Criticality]
     Score --> Router{Router Decision}
@@ -367,11 +367,19 @@ kein In-File-Feld, keine Lock-Dateien nötig:
 
 | Zustand    | Dateiname-Muster             | Beispiel                         |
 |------------|------------------------------|----------------------------------|
-| Unclaimed  | `T-YYYYMMDD-NN.txt`         | `T-20260619-01.txt`              |
-| Claimed    | `T-YYYYMMDD-NN.<HOST>.txt`  | `T-20260619-01.WORKSTATION.txt`  |
+| Unclaimed  | `T-YYYYMMDD-#########.txt`         | `T-20260619-483920174.txt`              |
+| Claimed    | `T-YYYYMMDD-#########.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
 | Gelöst     | nach `SOLVED/` verschieben   | wie bisher                       |
 
-**Glob-Muster:** `tickets/T-??????-??.txt` (unclaimed) · `tickets/T-*.LAPTOP.txt` (meine).
+Jede neue ID enthält eine neunstellige Zufallszahl, die ausschließlich durch
+`lib/ticket_writer.py` (direkt oder über `bin/ticket_master.py --intake`)
+erzeugt wird. Die Vorlage darf nicht zum manuellen Anlegen kopiert und die
+Zahlenkomponente niemals selbst gewählt oder hochgezählt werden; exklusives
+lokales Anlegen allein verhindert keine Kollision zweier Hosts, die den
+Cloud-Stand des jeweils anderen noch nicht sehen.
+
+**Glob-Muster:** `tickets/INBOX/T-????????-?????????.txt` (unclaimed) ·
+`tickets/<CLUSTER>/T-*.LAPTOP.txt` (meine).
 
 Ein Rename im selben Verzeichnis ist auf NTFS und den meisten Cloud-Sync-Implementierungen
 atomar. Entsteht eine Konfliktkopie, hat ein System den Claim gewonnen; das andere rollt

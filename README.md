@@ -64,7 +64,7 @@ Position 0 — waiting for next ticket
 graph TD
     User([User reports bug / change request]) --> Position0[Triage Console: Position 0]
     Position0 --> GATE1{GATE 1: Intake}
-    GATE1 -->|Create Ticket File| TxtFile[tickets/T-YYYYMMDD-NN.txt]
+    GATE1 -->|Create via ticket_writer.py| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
     TxtFile --> GATE2{GATE 2: Characterise & Score}
     GATE2 -->|Calculate Score| Score[Score = 10-Clarity + Complexity + Creativity + Context + Criticality]
     Score --> Router{Router Decision}
@@ -358,11 +358,18 @@ fields or lock files needed:
 
 | State     | Filename pattern             | Example                          |
 |-----------|------------------------------|----------------------------------|
-| Unclaimed | `T-YYYYMMDD-NN.txt`         | `T-20260619-01.txt`              |
-| Claimed   | `T-YYYYMMDD-NN.<HOST>.txt`  | `T-20260619-01.WORKSTATION.txt`  |
+| Unclaimed | `T-YYYYMMDD-#########.txt`         | `T-20260619-483920174.txt`              |
+| Claimed   | `T-YYYYMMDD-#########.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
 | Solved    | move to `SOLVED/`            | as usual                         |
 
-**Glob patterns:** `tickets/T-??????-??.txt` (unclaimed) · `tickets/T-*.LAPTOP.txt` (mine).
+Every new ID is a 9-digit random value minted exclusively by
+`lib/ticket_writer.py` (directly or through `bin/ticket_master.py --intake`).
+Never copy the template to create a ticket, and never choose or increment the
+numeric component manually; local exclusive creation alone cannot prevent two
+cloud-disconnected hosts from selecting the same sequential number.
+
+**Glob patterns:** `tickets/INBOX/T-????????-?????????.txt` (unclaimed) ·
+`tickets/<CLUSTER>/T-*.LAPTOP.txt` (mine).
 
 A rename within the same directory is atomic on NTFS and most cloud sync
 implementations. If a conflict copy appears, one system has won the claim;

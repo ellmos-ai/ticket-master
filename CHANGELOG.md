@@ -6,6 +6,14 @@ All notable changes to ticket-master are documented here.
 
 ### Bug fixes
 
+- **Ticket templates and current documentation now enforce random IDs
+  (T-20260820-593301002).** The canonical template, writer help, audit examples,
+  categories-v1 documentation, and both READMEs now use
+  `T-YYYYMMDD-#########`, require creation through `lib/ticket_writer.py`, and
+  explicitly prohibit copying the template or incrementing IDs manually. A
+  regression test keeps these active surfaces synchronized; historical
+  changelog entries and legacy filename-grammar fixtures remain readable.
+
 - **`ticket_mover.move_ticket()` refuses a dest_dir that is itself a ticket file path
   (T-20260818-427750316).** Passing the full destination FILE path instead of the
   destination FOLDER (`.../SOLVED/T-....txt` instead of `.../SOLVED`) was not caught by
