@@ -16,10 +16,12 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
@@ -38,6 +40,7 @@ requires-python = ">=3.10"
 
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/ticket-master"
+Documentation = "https://github.com/ellmos-ai/ticket-master#readme"
 Repository = "https://github.com/ellmos-ai/ticket-master.git"
 "Bug Tracker" = "https://github.com/ellmos-ai/ticket-master/issues"
 
@@ -52,4 +55,3 @@ line-length = 120
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 ignore = ["E501"]
-

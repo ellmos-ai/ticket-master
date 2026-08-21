@@ -4,6 +4,13 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Technical Hygiene, CI Matrix & Metadata Parity (2026-08-21)
+
+- **GitHub Actions CI Hardening:** Workflow `.github/workflows/tests.yml` um Multi-OS Matrix (Ubuntu + Windows), Python 3.13 Matrix-Support (`["3.10", "3.11", "3.12", "3.13"]`), pip Dependency-Caching und automatisiertes `ruff check .` Linting gehärtet.
+- **PEP 621 Metadata & Classifiers:** `pyproject.toml` um PEP 621 Standard Classifiers (`Operating System :: OS Independent`, `Programming Language :: Python :: 3.13`) und Dokumentations-URL (`Documentation`) erweitert.
+- **Automatisierte Paritätstests:** `tests/test_metadata.py` um `test_ci_workflow_integrity()` und `test_pyproject_pep621_metadata()` auf 8 Contract-Tests erweitert (8/8 passed, Gesamt-Suite 201/201 passed, 100% grün).
+- **Badges & Discovery:** CI Badge und aktualisierte Python- / Test-Badges in `README.md` und `README_de.md` integriert; `llms.txt` auf Stand 2026-08-21 und 201 verifizierte Tests synchronisiert.
+
 ### Documentation and maintenance (2026-08-20)
 
 - One-time project tidy-up closed the already-completed Pytest-integration

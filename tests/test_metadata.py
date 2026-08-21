@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 199
-LAST_CHECKED = "2026-08-20"
+EXPECTED_TEST_COUNT = 201
+LAST_CHECKED = "2026-08-21"
 
 
 def test_version_consistency():
@@ -41,6 +41,7 @@ def test_badge_parity_and_links():
 
     for keyword in [
         "License-MIT",
+        "actions/workflows/tests.yml",
         "python-3.10",
         "Ecosystem-ellmos--ai",
         "Umbrella-open--bricks",
@@ -52,6 +53,39 @@ def test_badge_parity_and_links():
     test_badge = f"pytest-{EXPECTED_TEST_COUNT}%20passed"
     assert test_badge in readme_en
     assert test_badge in readme_de
+
+
+def test_ci_workflow_integrity():
+    """Verify GitHub Actions CI workflow exists, tests across Python 3.10-3.13 on ubuntu and windows, and includes ruff."""
+    ci_path = REPO_ROOT / ".github" / "workflows" / "tests.yml"
+    assert ci_path.is_file(), "CI workflow .github/workflows/tests.yml missing"
+    content = ci_path.read_text(encoding="utf-8")
+
+    assert "actions/checkout@v4" in content
+    assert "actions/setup-python@v5" in content
+    assert "3.10" in content and "3.11" in content and "3.12" in content and "3.13" in content
+    assert "ubuntu-latest" in content and "windows-latest" in content
+    assert "ruff check ." in content
+    assert "pytest" in content
+
+
+def test_pyproject_pep621_metadata():
+    """Verify pyproject.toml PEP 621 compliance, standard classifiers, Python 3.13 support, and URLs."""
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    assert pyproject_path.is_file()
+    content = pyproject_path.read_text(encoding="utf-8")
+
+    for classifier in [
+        "Operating System :: OS Independent",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
+    ]:
+        assert classifier in content, f"Classifier '{classifier}' missing in pyproject.toml"
+
+    assert 'Homepage = "https://github.com/ellmos-ai/ticket-master"' in content
+    assert 'Repository = "https://github.com/ellmos-ai/ticket-master.git"' in content
 
 
 def test_llms_txt_integrity():
