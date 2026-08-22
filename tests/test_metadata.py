@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 201
-LAST_CHECKED = "2026-08-21"
+EXPECTED_TEST_COUNT = 227
+LAST_CHECKED = "2026-08-22"
 
 
 def test_version_consistency():
@@ -53,6 +53,13 @@ def test_badge_parity_and_links():
     test_badge = f"pytest-{EXPECTED_TEST_COUNT}%20passed"
     assert test_badge in readme_en
     assert test_badge in readme_de
+    for contract_token in (
+        "ROUTING_SCHEMA", ".to-", ".via-", ".claim-", "SYSTEM_LEDGER",
+        "route_intent", "create_routed_ticket", "Clutch", ".SYNC",
+    ):
+        assert contract_token in readme_en, contract_token
+        assert contract_token in readme_de, contract_token
+    assert "Ausführungsauflösung" in readme_de
 
 
 def test_ci_workflow_integrity():
@@ -86,6 +93,12 @@ def test_pyproject_pep621_metadata():
 
     assert 'Homepage = "https://github.com/ellmos-ai/ticket-master"' in content
     assert 'Repository = "https://github.com/ellmos-ai/ticket-master.git"' in content
+    config = json.loads(
+        (REPO_ROOT / "config" / "ticket-master.config.example.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert config["execution_binding"]["default_ttl_days"] == 7
 
 
 def test_llms_txt_integrity():

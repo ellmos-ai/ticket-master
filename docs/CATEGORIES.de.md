@@ -92,6 +92,10 @@ Beispiele: `STATUS: ACTIONABLE (seit 2026-07-31)`,
 - Ordner und STATUS müssen kongruent sein.
 - Jedes Verschieben zwischen Clustern aktualisiert STATUS und fügt eine
   `VERLAUF`/`LOG`-Zeile mit Grund hinzu.
+- Die Ordnerstruktur bleibt flach: `USER/decision`, `BLOCKED/dependency` und
+  ähnliche Unterordner sind ungültig. Die Unterkategorie steht ausschließlich
+  im `STATUS`-Feld; `ticket_mover.py` weist solche Ziele fail-closed ab und
+  `ticket_audit.py` meldet vorhandene verschachtelte Tickets read-only.
 
 ---
 
@@ -177,3 +181,32 @@ host-übergreifend gemeinsam genutzt.
 - `BLOCKED/host-receipt` ist der kanonische Ort für Tickets, die auf einen
   anderen Host warten; Receipt-Pfad im Ticket benennen, damit der Re-Check
   des Autonomie-Loops belegt arbeiten kann.
+
+### Routing-Schema v2 und umlaufende Vertragsakten
+
+Schema v2 trennt Ziel-, Ausführungs- und Besitzachse im Dateinamen:
+`T-ID[.to-<ziel>][.via-<Clutch-Selektor>][.claim-<HOST>].txt`. Nur Tickets mit
+`ROUTING_SCHEMA: 2` dürfen diese reservierten Segmente tragen. Ein altes
+`T-ID.<HOST>.txt` bleibt immer ein Legacy-Claim und wird niemals als Ziel oder
+Hostmenge umgedeutet.
+
+Transfer- und Forktickets enthalten einen beim Erstellen belegten
+`TARGET_SYSTEMS`-Snapshot und genau eine `SYSTEM_LEDGER`-Zeile je Ziel. Ein
+berechtigtes System setzt nur seine Zeile von `pending` auf `claimed` und nach
+einem empirischen Receipt auf `done` oder `blocked`. Danach gibt es
+`.claim-…` frei; `.to-…` und eine noch aktive `.via-…`-Bindung bleiben stehen.
+Solange mindestens eine erforderliche Zeile nicht `done` ist, ist `SOLVED`
+unzulässig. Ein Transportzustand wie `delivered` ist kein Ledger-Zustand und
+kann niemals fachlichen Abschluss belegen.
+
+Eine abgelaufene Ausführungsbindung wird vor dem nächsten erfolgreichen Claim
+als `expired-unbound` protokolliert. Das entfernt ausschließlich `.via-…` und
+verändert weder Ziel-Snapshot noch Ledger oder aktiven Claim. Ein blockierter
+Systemanteil kann je nach Gesamtzustand weiter als umlaufende Akte sichtbar
+bleiben oder mit belegtem Grund nach `BLOCKED/host-receipt` wechseln.
+
+`.SYNC` ist weiterhin nur Transport- und Receipt-Fläche. ticket-master besitzt
+Vertrag, Claim, Ledger und Abschlussprädikat; Clutch besitzt die
+Ausführungsauflösung; system-gap-master besitzt das Cross-System-Protokoll. Es
+gibt keinen zweiten Ticket-Lebenszyklus, keine Retry-Schleife und keine
+Transport-Inbox im ticket-master.

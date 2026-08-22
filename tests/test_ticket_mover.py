@@ -109,6 +109,21 @@ class TestMoveTicket(unittest.TestCase):
             self.assertTrue(target.is_file())
             self.assertFalse(source.exists())
 
+    def test_nested_lifecycle_subcategory_destination_is_refused(self):
+        """T-20260822-116395676: USER/decision is STATUS metadata, not a folder."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source_dir = base / "ACTIONABLE"
+            source_dir.mkdir()
+            source = source_dir / "T-20260822-123456789.txt"
+            source.write_text("STATUS: ACTIONABLE\n", encoding="utf-8")
+
+            with self.assertRaises(ticket_mover.NestedLifecycleDestinationError):
+                ticket_mover.move_ticket(source, base / "USER" / "decision")
+
+            self.assertTrue(source.is_file())
+            self.assertFalse((base / "USER").exists())
+
     def test_source_changed_during_move_aborts_without_deleting(self):
         """Schuetzt gegen einen fremden Schreiber, der die Quelle waehrend des
         Verschiebens noch aendert: Move bricht ab, Quelle bleibt (im neuen,

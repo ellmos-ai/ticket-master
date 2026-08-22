@@ -31,6 +31,43 @@ ENDPOINT:      <standalone skill/module(s) the domain resolved to (a single
 URGENCY:       <sofort | heute | woche | backlog — see config/urgency.json>
 
 --------------------------------------------------------------
+ROUTING CONTRACT v2  (omit this block for legacy schema-v1 tickets)
+--------------------------------------------------------------
+ROUTING_SCHEMA: 2
+CREATE_IDEMPOTENCY_KEY:<stable caller key; optional for humans, required for retry-safe integrations>
+CREATE_REQUEST_FINGERPRINT:<sha256 of the normalized creation request>
+TICKET_KIND:   <normal | transfer | fork>
+TARGET_KIND:   <any | all | grouped | exact>
+TARGET_SYSTEMS:<JSON snapshot of canonical system IDs; never invent hosts>
+TARGET_SYSTEM_DETAILS:<JSON public slot/host/capability projection>
+TARGET_SNAPSHOT_AT: <absolute UTC contract-creation timestamp>
+TARGET_REGISTRY_CHECKED_AT:<absolute UTC source-check timestamp>
+TARGET_SNAPSHOT_SOURCE: <canonical inventory source>
+TARGET_SNAPSHOT_FINGERPRINT: <sha256 evidence>
+PRIMARY_TICKET:<ticket ID>
+ORIGINAL_OWNER:<origin system/actor; not automatically a completed target>
+RECEIPT_TO:   <ticket ID or canonical receipt reference>
+EXECUTOR:     <any | registered runner | mixed>
+MODEL_SELECTION: <self | family | exact | mixed>
+MODEL_SELECTOR: <canonical Clutch selector; empty when unbound>
+BINDING_MODE: <required | preferred>
+BINDING_EXPIRES_AT: <absolute UTC timestamp | never>
+BINDING_STATE:<unbound | active | unresolved | expired-unbound>
+RESOLUTION_NOTE:<JSON from the public Clutch resolver, including fingerprint/time>
+EXECUTION_MATRIX:<JSON object; required with via-mixed>
+CLAIMED_BY_HOST:<temporary lease host; never infer from target>
+CLAIMED_BY_ACTOR:<actual lease actor>
+CLAIMED_AT:   <absolute UTC timestamp>
+CLAIM_LEASE_UNTIL:<absolute UTC timestamp>
+SYSTEM_LEDGER:<JSON rows, exactly one per target: pending|claimed|done|blocked>
+
+Canonical v2 filename:
+`T-ID[.to-<target>][.via-<Clutch selector>][.claim-<HOST>].txt`.
+The axes are independent and ordered. Existing `T-ID.<HOST>.txt` files remain
+legacy claims. Create v2 contracts through `create_routed_ticket()` or the
+`ticket_writer.py` CLI; never copy this template or mint an ID manually.
+
+--------------------------------------------------------------
 PROBLEM DESCRIPTION
 --------------------------------------------------------------
 <What is the problem or change request?

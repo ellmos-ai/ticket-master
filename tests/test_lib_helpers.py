@@ -177,6 +177,8 @@ class TestTicketWriter(unittest.TestCase):
             with self.subTest(relative=relative):
                 text = (root / relative).read_text(encoding="utf-8")
                 self.assertIn("USER/marker", text)
+                self.assertIn(".to-", text)
+                self.assertIn("SYSTEM_LEDGER", text)
         for relative in ("docs/CATEGORIES.de.md", "docs/CATEGORIES.en.md"):
             with self.subTest(marker_boundary=relative):
                 text = (root / relative).read_text(encoding="utf-8")

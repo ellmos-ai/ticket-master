@@ -17,7 +17,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-201%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-227%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -362,9 +362,8 @@ anhängen, fressen Konfliktkopien Log-Zeilen.
 
 ### Cloud-Ready: Multi-System Claim-Konvention
 
-Wenn das `tickets/`-Verzeichnis in einem cloud-synced Ordner liegt, der von
-mehreren Maschinen geteilt wird, werden Claims per **Dateiname** signalisiert —
-kein In-File-Feld, keine Lock-Dateien nötig:
+Bei Legacy-Tickets nach Schema v1 in einem cloud-synchronisierten Ordner werden
+Claims per **Dateiname** signalisiert; eine getrennte Lock-Datei ist nicht nötig:
 
 | Zustand    | Dateiname-Muster             | Beispiel                         |
 |------------|------------------------------|----------------------------------|
@@ -385,6 +384,58 @@ Cloud-Stand des jeweils anderen noch nicht sehen.
 Ein Rename im selben Verzeichnis ist auf NTFS und den meisten Cloud-Sync-Implementierungen
 atomar. Entsteht eine Konfliktkopie, hat ein System den Claim gewonnen; das andere rollt
 zurück und nimmt das nächste unclaimed Ticket.
+
+### Routingvertrag v2: Ziel, Ausführung und Claim sind getrennt
+
+Mehrsystemarbeit verwendet eine umlaufende Vertragsakte und keine kopierten
+Kindtickets pro Host. Nur Dateien mit `ROUTING_SCHEMA: 2` dürfen die
+reservierten v2-Segmente verwenden. Der kanonische Dateiname lautet
+`T-ID[.to-<ziel>][.via-<Clutch-Selektor>][.claim-<HOST>].txt`; die Reihenfolge
+ist fest und jedes Segment kommt höchstens einmal vor. Die drei Achsen sind
+orthogonal:
+
+- `.to-…` ist der unveränderliche Ziel-Snapshot (`any`, `all`, `grouped` oder
+  ein exaktes, durch die Systemregistry belegtes System). `.all` wird genau
+  einmal beim Erstellen aufgelöst.
+- `.via-…` ist eine erforderliche oder bevorzugte Ausführungsbindung.
+  ticket-master ruft ausschließlich den öffentlichen Clutch-Resolver auf und
+  speichert Fingerprint und Zeitpunkt; eine eigene Modell-, Familien-,
+  Runner- oder Aliasliste existiert nicht.
+- `.claim-…` ist nur die temporäre Schreiblease. Sie verändert weder Ziel noch
+  Ausführungsbindung. Bestehende `T-ID.<HOST>.txt` bleiben undurchsichtige
+  Legacy-Claims, auch historische Kombinationen wie `LAPTOP-WORKSTATION-LG`.
+
+Nutzernahe Aliase wie `.all.claude`, `.WORKSTATION-LG.claude-opus` und `.gpt`
+werden über die Systemregistry und Clutch in die v2-Grammatik normalisiert. Die
+Standardlaufzeit einer Ausführungsbindung beträgt sieben Tage und wird als
+absoluter UTC-Zeitpunkt gespeichert; `never` erfordert eine ausdrückliche
+Abweichung. Ein Ablauf entfernt nur die Ausführungsbindung vor dem nächsten
+erfolgreichen Claim. Er löst kein Ticket, markiert keine Ledger-Zeile als
+erledigt und gibt keinen aktiven fremden Claim frei.
+
+Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`,
+`done` oder `blocked`). Receipts erfassen tatsächlichen Runner, Provider,
+Modell, Zeitpunkt und Beleg und werden unter Lease idempotent übernommen. Nur
+der Inhaber des letzten Claims darf die Akte nach `SOLVED` verschieben, und nur
+wenn jede erforderliche Zeile empirisch `done` ist. `ticket_audit.py` meldet
+Namens-/Metadaten-, Zielclaim-, Ledger-, Receipt-Signatur- und verfrühte
+SOLVED-Verstöße.
+
+Zuständigkeitsgrenze: ticket-master besitzt Vertrag und Lebenszyklus; Clutch
+besitzt die Ausführungsauflösung; `.SYNC` transportiert Aufträge und Receipts;
+system-gap-master besitzt systemübergreifende Erkennung und Abgleich. Der
+ticket-master gibt ausschließlich einen idempotenten `route_intent` mit
+Ticket-ID, festem Ziel-Snapshot und Receipt-Ziel aus. Er implementiert keine
+Inbox/Outbox, Drop-Zone, Offline-Warteschlange, Retry-Schleife oder
+Transportzustände.
+Integrationen rufen
+`ticket_writer.create_routed_ticket(..., idempotency_key=...)` auf. Eine
+Wiederholung desselben normalisierten Auftrags liefert die bestehende Akte;
+dieselbe Kennung mit abweichendem Inhalt wird fail-closed abgewiesen.
+Lebenszyklusordner bleiben flach: Unterkategorien gehören in `STATUS`, niemals
+in Pfade wie `USER/decision`. Der Mover weist solche Ziele vor jeder
+Schreibaktion ab; das Audit meldet vorhandene verschachtelte Tickets, ohne sie
+zu migrieren.
 
 ### Companion-Muster
 
