@@ -71,13 +71,25 @@ def collect_ids(base: Path) -> dict[str, list[Path]]:
 
 
 def audit(base: Path | str) -> dict:
-    """Runs all three checks. Returns a JSON-serializable report:
+    """Runs all structural checks. Returns a JSON-serializable report:
 
     {
       "collisions": {ticket_id: [path, ...]},   # only entries with len > 1
       "claimed_in_root": [path, ...],
       "non_ticket_files": [path, ...],
+      "nested_lifecycle_tickets": [path, ...],  # backwards-compatible list
+      "nested_lifecycle_details": [
+        {
+          "source": path,
+          "expected_target": flat_cluster_path,
+          "target_collision": bool,
+        },
+      ],
     }
+
+    ``expected_target`` is derived structurally by removing every path segment
+    below the lifecycle cluster. STATUS congruence is a separate migration
+    concern: the read-only audit must not silently reinterpret ticket content.
     """
     base = Path(base)
 
@@ -138,6 +150,7 @@ def audit(base: Path | str) -> dict:
                     routing_errors[str(entry)] = errors
 
     nested_lifecycle_tickets: list[str] = []
+    nested_lifecycle_details: list[dict[str, str | bool]] = []
     for subdir in _STATUS_SUBDIRS:
         directory = base / subdir
         if not directory.is_dir():
@@ -149,7 +162,16 @@ def audit(base: Path | str) -> dict:
                 parse_ticket_name(entry.name)
             except RoutingContractError:
                 continue
-            nested_lifecycle_tickets.append(str(entry))
+            source = str(entry)
+            expected_target = directory / entry.name
+            nested_lifecycle_tickets.append(source)
+            nested_lifecycle_details.append(
+                {
+                    "source": source,
+                    "expected_target": str(expected_target),
+                    "target_collision": expected_target.exists(),
+                }
+            )
 
     return {
         "collisions": collisions,
@@ -157,6 +179,9 @@ def audit(base: Path | str) -> dict:
         "non_ticket_files": sorted(non_ticket_files),
         "routing_errors": dict(sorted(routing_errors.items())),
         "nested_lifecycle_tickets": sorted(nested_lifecycle_tickets),
+        "nested_lifecycle_details": sorted(
+            nested_lifecycle_details, key=lambda detail: str(detail["source"])
+        ),
     }
 
 
@@ -166,6 +191,7 @@ def _print_human(report: dict) -> None:
     non_ticket_files = report["non_ticket_files"]
     routing_errors = report.get("routing_errors", {})
     nested_lifecycle_tickets = report.get("nested_lifecycle_tickets", [])
+    nested_lifecycle_details = report.get("nested_lifecycle_details", [])
 
     if collisions:
         print(f"COLLISIONS ({len(collisions)} ID(s) with more than one file):")
@@ -201,8 +227,17 @@ def _print_human(report: dict) -> None:
 
     if nested_lifecycle_tickets:
         print(f"NESTED-LIFECYCLE-TICKETS ({len(nested_lifecycle_tickets)}):")
+        details_by_source = {
+            detail["source"]: detail for detail in nested_lifecycle_details
+        }
         for path in nested_lifecycle_tickets:
-            print(f"  {path}")
+            detail = details_by_source.get(path)
+            if detail is None:  # backwards-compatible third-party report
+                print(f"  {path}")
+                continue
+            print(f"  SOURCE: {path}")
+            print(f"    EXPECTED-TARGET: {detail['expected_target']}")
+            print(f"    TARGET-COLLISION: {str(detail['target_collision']).lower()}")
     else:
         print("NESTED-LIFECYCLE-TICKETS: none")
 
