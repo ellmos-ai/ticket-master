@@ -236,7 +236,8 @@ def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
 
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
-                new_name: str | None = None) -> Path:
+                new_name: str | None = None,
+                dry_run: bool = False) -> Path:
     """Move a ticket file into dest_dir, by default under its current filename.
 
     Fails closed: if dest_dir already contains a file with that name, nothing
@@ -272,6 +273,11 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     reiner, fail-closed Rename. new_name schlaegt release_claim, damit der
     uebergebene Name wirklich der Zielname ist und nicht nachtraeglich
     verkuerzt wird.
+
+    dry_run fuehrt dieselben Pfad-, Lebenszyklus-, Quellen- und
+    Kollisionspruefungen aus, gibt aber nur den geplanten Zielpfad zurueck.
+    Weder Zielordner noch Zieldatei werden angelegt und die Quelle bleibt
+    unveraendert.
     """
     source = Path(source)
     if not source.is_file():
@@ -323,8 +329,6 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
             "put the subcategory in STATUS and move to the flat cluster folder"
         )
 
-    dest_dir.mkdir(parents=True, exist_ok=True)
-
     if new_name:
         target_name = new_name
     else:
@@ -341,6 +345,10 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
         )
 
     data = source.read_bytes()
+    if dry_run:
+        return target
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
     try:
         fd = os.open(str(target), flags, 0o644)
@@ -555,7 +563,8 @@ def _cli(argv: list[str] | None = None) -> int:
                               "Still never releases an actively delegated ticket "
                               "(fresh DELEGIERT_AN marker)."))
     parser.add_argument("--dry-run", action="store_true",
-                        help="Show what --release-session would free, change nothing.")
+                        help=("Preview a single-ticket move or show what "
+                              "--release-session would free; change nothing."))
     parser.add_argument("--mark-delegated", metavar="TICKET",
                         help="Write a DELEGIERT_AN marker into TICKET. Requires --agent.")
     parser.add_argument("--agent",
@@ -563,6 +572,8 @@ def _cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.mark_delegated:
+        if args.dry_run:
+            parser.error("--dry-run cannot be combined with --mark-delegated")
         if not args.agent:
             parser.error("--mark-delegated requires --agent")
         try:
@@ -598,12 +609,13 @@ def _cli(argv: list[str] | None = None) -> int:
         parser.error("source and dest_dir are required unless --release-session "
                       "or --mark-delegated is given")
     try:
-        target = move_ticket(args.source, args.dest_dir)
+        target = move_ticket(args.source, args.dest_dir, dry_run=args.dry_run)
     except (TicketCollisionError, FileNotFoundError, RuntimeError,
             DestinationLooksLikeFileError, NestedLifecycleDestinationError) as exc:
         print(f"REFUSED: {exc}")
         return 1
-    print(f"MOVED: {target}")
+    label = "WOULD MOVE" if args.dry_run else "MOVED"
+    print(f"{label}: {target}")
     return 0
 
 

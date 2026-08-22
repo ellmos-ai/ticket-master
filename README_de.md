@@ -15,9 +15,9 @@ Delegation nicht sinnvoll ist. Plattformübergreifend (Windows/macOS/Linux),
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.11.2-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-231%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-233%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -31,8 +31,9 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > KI-Agenten und RAG-Indexer finden maschinenlesbare Kontextinformationen, Suchbegriffe und Einstiegspunkte in [llms.txt](llms.txt).
 
-**Release-Status:** `v1.11.1` — `VERSION` und `pyproject.toml` melden beide
-`1.11.1`; dieser rückwärtskompatible Audit-Patch folgt auf das Routing-v2-
+**Release-Status:** `v1.11.2` — `VERSION` und `pyproject.toml` melden beide
+`1.11.2`; dieser rückwärtskompatible Sicherheits-Patch ergänzt eine echte,
+nicht mutierende Einzelticket-`--dry-run`-Vorschau. Er folgt auf das Routing-v2-
 Release `v1.11.0` und die mit `v1.10.0` getaggte
 Auskapselung von TICKET-WRITER/SIG-TU nach `ellmos-ai/system-auditor`. Eine
 gesonderte Veröffentlichung (PyPI, npm, …) wird nicht behauptet.
@@ -385,6 +386,12 @@ Cloud-Stand des jeweils anderen noch nicht sehen.
 Ein Rename im selben Verzeichnis ist auf NTFS und den meisten Cloud-Sync-Implementierungen
 atomar. Entsteht eine Konfliktkopie, hat ein System den Claim gewonnen; das andere rollt
 zurück und nimmt das nächste unclaimed Ticket.
+
+Lebenszykluswechsel erfolgen fail-closed über `lib/ticket_mover.py`. Mit
+`python lib/ticket_mover.py <quelle> <zielordner> --dry-run` lässt sich auch
+ein einzelner Move vollständig ohne Mutation vorprüfen; die Ausgabe beginnt
+mit `WOULD MOVE`, Quelle und Ziel bleiben unverändert und ein fehlender
+Zielordner wird nicht angelegt.
 
 ### Routingvertrag v2: Ziel, Ausführung und Claim sind getrennt
 

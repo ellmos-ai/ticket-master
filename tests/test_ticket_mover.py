@@ -6,6 +6,8 @@ dieser Beleg."""
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 
 LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
@@ -15,6 +17,57 @@ import ticket_mover  # noqa: E402
 
 
 class TestMoveTicket(unittest.TestCase):
+    def test_cli_single_move_dry_run_reports_without_mutation(self):
+        """T-20260822-797239249: --dry-run muss auch beim Einzelticket
+        eine echte Vorschau sein und darf nicht einmal den Zielordner anlegen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
+            source.parent.mkdir()
+            original = b"DRY-RUN-SOURCE\n"
+            source.write_bytes(original)
+            dest_dir = base / "USER"
+            output = StringIO()
+
+            with redirect_stdout(output):
+                result = ticket_mover._cli(
+                    [str(source), str(dest_dir), "--dry-run"])
+
+            target = dest_dir / source.name
+            self.assertEqual(result, 0)
+            self.assertEqual(output.getvalue(), f"WOULD MOVE: {target}\n")
+            self.assertTrue(source.is_file())
+            self.assertEqual(source.read_bytes(), original)
+            self.assertFalse(dest_dir.exists())
+            self.assertFalse(target.exists())
+
+    def test_cli_single_move_dry_run_refuses_collision_without_mutation(self):
+        """Die Vorschau behält die fail-closed Kollisionsprüfung bei und
+        verändert weder die Quelle noch ein bereits vorhandenes Ziel."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
+            source.parent.mkdir()
+            source_before = b"SOURCE-BEFORE\n"
+            source.write_bytes(source_before)
+            dest_dir = base / "USER"
+            dest_dir.mkdir()
+            target = dest_dir / source.name
+            target_before = b"TARGET-BEFORE\n"
+            target.write_bytes(target_before)
+            output = StringIO()
+
+            with redirect_stdout(output):
+                result = ticket_mover._cli(
+                    [str(source), str(dest_dir), "--dry-run"])
+
+            self.assertEqual(result, 1)
+            self.assertIn("REFUSED:", output.getvalue())
+            self.assertTrue(source.is_file())
+            self.assertEqual(source.read_bytes(), source_before)
+            self.assertTrue(target.is_file())
+            self.assertEqual(target.read_bytes(), target_before)
+
     def test_move_relocates_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

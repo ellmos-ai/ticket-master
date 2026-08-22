@@ -4,6 +4,19 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.11.2] — 2026-08-22
+
+### Single-ticket move dry-run
+
+- `python lib/ticket_mover.py <source> <dest-dir> --dry-run` now performs a
+  real, non-mutating preview instead of silently executing the move. It keeps
+  the same source, lifecycle-path and collision validation, reports
+  `WOULD MOVE`, and does not even create the destination directory.
+- `--dry-run` is rejected fail-closed with the mutating `--mark-delegated`
+  operation. Regression tests prove unchanged source and destination bytes for
+  both the normal preview and an occupied target (T-20260822-797239249).
+- Full verification: 233 tests plus 13 subtests.
+
 ## [1.11.1] — 2026-08-22
 
 ### Nested lifecycle audit details
