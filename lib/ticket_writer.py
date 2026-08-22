@@ -437,6 +437,7 @@ def create_routed_ticket(
     priority: str = "mittel",
     pipeline: str = "<offen>",
     today: str | None = None,
+    created_at: datetime | str | None = None,
     rng=None,
 ) -> str:
     """Create one schema-v2 contract through the canonical ID authority.
@@ -478,6 +479,7 @@ def create_routed_ticket(
         "original_owner": original_owner, "receipt_to": receipt_to,
         "execution_matrix": execution_matrix or {}, "project": project,
         "priority": priority, "pipeline": pipeline,
+        "created_at": str(created_at) if created_at is not None else None,
     }
     request_fingerprint = "sha256:" + hashlib.sha256(
         json.dumps(request_payload, ensure_ascii=False, sort_keys=True,
@@ -523,7 +525,11 @@ def create_routed_ticket(
             binding_ttl=binding_ttl,
             resolver=resolver,
             execution_matrix=execution_matrix,
-            created_at=f"{date_iso}T00:00:00Z",
+            created_at=(
+                created_at
+                if created_at is not None
+                else (f"{date_iso}T00:00:00Z" if today else None)
+            ),
         )
         metadata["CREATE_IDEMPOTENCY_KEY"] = idempotency_key or ""
         metadata["CREATE_REQUEST_FINGERPRINT"] = request_fingerprint

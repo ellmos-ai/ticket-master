@@ -447,7 +447,15 @@ def contract_errors(path: Path | str, *, now: datetime | str | None = None) -> l
     if view.target_kind != "any" and (not systems or len(systems) != len(set(systems))):
         errors.append("TARGET_SYSTEMS must be non-empty and unique")
     ledger_systems = [str(row.get("system", "")) for row in view.ledger]
-    if ledger_systems != systems:
+    if view.target_kind == "any":
+        # ``any`` starts without a fixed target. The first successful claim
+        # materialises exactly one execution row, so a systemless
+        # ``.via-...`` contract can use the same receipt/completion path as a
+        # targeted contract without pretending that a target was known at
+        # creation time.
+        if len(ledger_systems) > 1 or any(not system for system in ledger_systems):
+            errors.append("TARGET_KIND any permits at most one materialized ledger row")
+    elif ledger_systems != systems:
         errors.append("SYSTEM_LEDGER must contain exactly one ordered row per target")
     details = _json_value(view.fields, "TARGET_SYSTEM_DETAILS", {})
     if not isinstance(details, dict) or set(details) != set(systems):
@@ -474,7 +482,7 @@ def contract_errors(path: Path | str, *, now: datetime | str | None = None) -> l
         claimed_row = next((row for row in claimed_rows if row.get("system") == name.claim), None)
         if view.target_kind != "any" and name.claim not in systems:
             errors.append("claimed host is outside the target snapshot")
-        if view.target_kind != "any" and claimed_row is None:
+        if claimed_row is None:
             errors.append("claimed host lacks a claimed ledger row")
     elif claimed_rows:
         errors.append("ledger contains a claimed row without a filename claim")
@@ -496,6 +504,7 @@ def contract_errors(path: Path | str, *, now: datetime | str | None = None) -> l
     if path.parent.name == "SOLVED" and not completion_ready(view):
         errors.append("SOLVED is forbidden before every required ledger row is done")
     if (view.binding_expires_at and view.binding_expires_at != "never" and name.via
+            and not name.claim
             and _utc(view.binding_expires_at) <= _utc(now)):
         errors.append("expired binding still has a physical via segment")
     return errors
@@ -703,6 +712,20 @@ def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | Non
     row = next((item for item in rows if item.get("system") == host), None)
     if view.target_kind != "any" and row is None:
         raise ClaimDeniedError("host is outside the target snapshot")
+    if view.target_kind == "any" and row is None:
+        if not rows:
+            row = {
+                "system": host, "status": "pending", "actor": None,
+                "claimed_at": None, "receipt": None, "variant": None,
+            }
+            rows.append(row)
+        elif len(rows) == 1 and rows[0].get("status") == "pending" and not rows[0].get("receipt"):
+            # A released, evidence-free attempt may be picked up elsewhere;
+            # ``any`` never becomes a hidden persistent target binding.
+            rows[0].update(system=host, actor=None, claimed_at=None)
+            row = rows[0]
+        else:
+            raise ClaimDeniedError("any-target contract has no open execution row")
     if row is not None and row.get("status") != "pending":
         raise ClaimDeniedError(f"target ledger state is {row.get('status')}, not pending")
 

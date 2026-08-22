@@ -4,6 +4,8 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-08-22
+
 ### Routing contract v2: transfer and multi-system tickets (2026-08-22)
 
 - Added one provider-neutral contract for `normal`, `transfer` and `fork`
@@ -26,11 +28,18 @@ All notable changes to ticket-master are documented here.
   target snapshot and receipt destination. No inbox/outbox, offline queue,
   retry loop, drop-zone, transport deduplication or transport lifecycle was
   added to ticket-master.
-- Added 26 routing/lifecycle regressions (227 tests total) covering aliases, negative
+- Added 29 routing/lifecycle regressions (230 tests total) covering aliases, negative
   grammar cases, wrong-target and double claims, crash recovery, partial and
   duplicate receipts, final completion, TTL/expiry, Required/Preferred
   behavior, registry outage/recovery, execution matrices, audit findings,
   route-intent boundaries and the legacy multi-host suffix.
+- Systemless `.via-...` contracts now materialize one execution ledger row on
+  their first claim, so they can produce a receipt and reach the normal
+  completion predicate. An evidence-free release may move that `any` contract
+  to another host without turning it into a hidden target binding.
+- The published wheel now contains the stable `lib` API package; the
+  `routing-v2` extra pins the compatible Clutch feature line to
+  `clutch-router>=0.5,<0.6`.
 - Lifecycle moves now reject nested destinations such as `USER/decision`
   before creating a directory; subcategories remain STATUS metadata in the
   flat categories-v1 layout. The read-only audit reports pre-existing nested

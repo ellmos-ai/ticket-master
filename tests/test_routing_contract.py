@@ -316,6 +316,37 @@ def test_claim_release_preserves_routing_suffix_and_rejects_double_claim(tmp_pat
     assert released.name.endswith(".to-grouped.via-claude.txt")
 
 
+def test_systemless_via_contract_materializes_one_any_target_ledger_row(tmp_path):
+    path = make_contract(
+        tmp_path, target_kind="any", targets=[], ticket_kind="normal", via="claude"
+    )
+    assert path.name.endswith(".via-claude.txt")
+    assert rc.load_contract(path).ledger == ()
+
+    claimed = rc.claim_contract(
+        path, host="ASUS-GEI", actor="claude", runner="claude",
+        resolver=resolver, now="2026-08-22T09:00:00Z",
+    )
+    view = rc.load_contract(claimed)
+    assert [row["system"] for row in view.ledger] == ["ASUS-GEI"]
+    assert rc.contract_errors(claimed, now="2026-08-22T09:30:00Z") == []
+    rc.record_receipt(
+        claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-any")
+    )
+    solved = rc.complete_contract(
+        claimed, host="ASUS-GEI", solved_dir=tmp_path / "SOLVED"
+    )
+    assert solved.parent.name == "SOLVED"
+
+
+def test_any_target_released_without_receipt_can_move_to_another_host(tmp_path):
+    path = make_contract(tmp_path, target_kind="any", targets=[], ticket_kind="normal")
+    first = rc.claim_contract(path, host="ASUS-GEI", actor="first")
+    released = rc.release_contract(first, host="ASUS-GEI")
+    second = rc.claim_contract(released, host="WORKSTATION-LG", actor="second")
+    assert [row["system"] for row in rc.load_contract(second).ledger] == ["WORKSTATION-LG"]
+
+
 def test_crash_recovery_waits_for_lease_and_preserves_signatures(tmp_path):
     path = make_contract(tmp_path)
     claimed = rc.claim_contract(
@@ -414,6 +445,7 @@ def test_binding_expiry_during_active_claim_does_not_change_that_claim(tmp_path)
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
     assert ".via-claude.claim-ASUS-GEI" in claimed.name
+    assert rc.contract_errors(claimed, now="2026-08-24T00:00:00Z") == []
     released = rc.release_contract(claimed, host="ASUS-GEI", now="2026-08-24T00:00:00Z")
     next_claim = rc.claim_contract(
         released, host="WORKSTATION-LG", actor="codex", runner="codex",
@@ -539,6 +571,16 @@ def test_route_intent_boundary_is_stable_and_contains_no_transport_machine(tmp_p
     serialized = json.dumps(first)
     for forbidden in ("queued", "delivered", "retry", "inbox", "outbox", "drop-zone"):
         assert forbidden not in serialized.lower()
+
+
+def test_real_creation_time_drives_binding_expiry_when_today_is_not_injected(tmp_path):
+    created = "2026-08-22T18:45:12Z"
+    path = ticket_writer.create_routed_ticket(
+        "Timed", "Use the actual absolute creation instant.", tickets_dir=tmp_path,
+        registry_snapshot=REGISTRY, ticket_kind="normal", target_kind="any",
+        via="claude", resolver=resolver, created_at=created, rng=FixedRandom(),
+    )
+    assert rc.load_contract(path).fields["BINDING_EXPIRES_AT"] == "2026-08-29T18:45:12Z"
 
 
 def test_v2_release_helper_and_legacy_multi_host_release_stay_distinct(tmp_path):

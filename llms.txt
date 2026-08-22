@@ -17,9 +17,9 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 ## Release and verification status
 
-- Status: `v1.10.0` (tagged in Git; no separate publication such as PyPI/npm is claimed)
-- Version: `1.10.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-08-22: `227 passed` plus 13 subtests via
+- Status: `v1.11.0` (Git release line; no separate publication such as PyPI/npm is claimed)
+- Version: `1.11.0` (`VERSION` and `pyproject.toml`)
+- Local verification on 2026-08-22: `230 passed` plus 13 subtests via
   `python -m pytest -q`.
 - Unreleased routing schema v2 separates `.to-…`, `.via-…` and `.claim-…`,
   uses fixed system-registry snapshots and a per-system ledger, and consumes
