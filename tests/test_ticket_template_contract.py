@@ -52,6 +52,13 @@ def test_template_requires_writer_only_creation_and_categories_v1():
         assert cluster in template
         for subcategory in subcategories:
             assert subcategory in template
+    for field in (
+        "ROUTING_SCHEMA", "TICKET_KIND", "TARGET_KIND", "TARGET_SYSTEMS",
+        "RESOLUTION_NOTE", "EXECUTION_MATRIX", "CLAIMED_BY_HOST", "SYSTEM_LEDGER",
+    ):
+        assert f"{field}:" in template
+    assert "create_routed_ticket()" in template
+    assert ".to-<target>" in template
 
 
 def test_cli_help_advertises_a_nine_digit_random_id():

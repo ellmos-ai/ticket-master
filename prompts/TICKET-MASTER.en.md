@@ -333,6 +333,44 @@ exists.
 Without `config/knowledge.json`: this step is skipped, GATE 1/model
 selection run as before with the directly referenced files/configs.
 
+### (c4) Routing contract v2 for transfer, fork and target-system tickets
+
+Check three independent axes before a claim. **Target** answers which systems
+must execute the work. **Execution** answers which Clutch selector is required
+or preferred. **Claim** answers only who currently owns the exclusive write
+lease. Never infer one axis from another.
+
+- Persistent grammar: `T-ID[.to-<target>][.via-<Clutch selector>]
+  [.claim-<HOST>].txt`, in exactly that order. An existing `T-ID.<HOST>.txt`
+  always remains a legacy claim.
+- Normalize user aliases (`.all.claude`, `.WORKSTATION-LG.claude-opus`,
+  `.gpt`) only through `ticket_writer.create_routed_ticket()` or its CLI.
+  Targets must come from an evidenced system-registry snapshot; runner,
+  family, model and alias resolution comes exclusively from Clutch's public
+  resolver. Keep no model list and perform no silent exact substitution.
+- Resolve `.all` and `.grouped` into a fixed target set at creation time.
+  Transfer and fork tickets are one circulating contract with exactly one
+  `SYSTEM_LEDGER` row per target, not copied child tickets per host.
+- A system claims only when it is an open target and the active Required or
+  Preferred binding permits it. After its receipt it releases only
+  `.claim-…`. Only the final eligible claim holder may move to SOLVED, and
+  only when every required ledger row is `done`.
+- Receipts must contain the actual runner, provider, model, time and evidence.
+  An idempotent retry is allowed; signature collisions, partial imports,
+  target/claim mismatches and conflict copies fail closed. `delivered` or any
+  other transport success is never `done`.
+- A binding expires after seven days by default. Before the next successful
+  claim, only `.via-…` is removed and `expired-unbound` is logged. This never
+  changes an active claim, target, ledger or ticket status.
+
+**Responsibility boundary:** ticket-master owns the contract, lease, ledger
+and completion predicate. Clutch owns execution resolution. The configured
+shared-sync surface transports requests and receipts; the responsible
+cross-system service owns the transport protocol. Pass
+only the idempotent `route_intent` (ticket ID, target snapshot, receipt target).
+Do not implement a second inbox/outbox, retry loop, drop-zone or transport
+deduplication.
+
 ### (d) Go to POSITION 0
 
 **POSITION 0** = inactive waiting state. The session is open; the agent does

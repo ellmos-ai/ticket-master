@@ -346,6 +346,48 @@ deines Harness, falls eines für genau diesen Fall existiert.
 Ohne `config/knowledge.json`: dieser Schritt entfällt, GATE 1/Modellwahl
 laufen wie bisher mit den direkt referenzierten Dateien/Configs.
 
+### (c4) Routingvertrag v2 für Transfer-, Fork- und Zielsystem-Tickets
+
+Prüfe vor einem Claim drei unabhängige Achsen. **Ziel** beantwortet, auf
+welchen Systemen gearbeitet werden muss. **Ausführung** beantwortet, welcher
+Clutch-Selektor erforderlich oder bevorzugt ist. **Claim** beantwortet nur,
+wer gerade die exklusive Schreiblease besitzt. Leite niemals eine Achse aus
+einer anderen ab.
+
+- Persistente Grammatik: `T-ID[.to-<ziel>][.via-<Clutch-Selektor>]
+  [.claim-<HOST>].txt`, in genau dieser Reihenfolge. Ein bestehendes
+  `T-ID.<HOST>.txt` bleibt immer ein Legacy-Claim.
+- Nutzeraliase (`.all.claude`, `.WORKSTATION-LG.claude-opus`, `.gpt`) nur
+  über `ticket_writer.create_routed_ticket()` beziehungsweise dessen CLI
+  normalisieren. Ziele müssen aus einem belegten Systemregister-Snapshot
+  stammen; Runner-, Familien-, Modell- und Aliasauflösung kommt ausschließlich
+  aus dem öffentlichen Clutch-Resolver. Keine eigene Modellliste und keine
+  stille exakte Substitution.
+- `.all` und `.grouped` werden beim Erstellen in eine feste Zielmenge
+  aufgelöst. Transfer- und Forktickets sind eine gemeinsame umlaufende
+  Vertragsakte mit genau einer `SYSTEM_LEDGER`-Zeile je Ziel, keine kopierten
+  Kindtickets pro Host.
+- Ein System claimt nur, wenn es ein offenes Ziel ist und die aktive
+  Required-/Preferred-Bindung dies erlaubt. Nach seinem Receipt gibt es nur
+  `.claim-…` frei. Nur der letzte berechtigte Claim-Inhaber darf bei vollständig
+  `done` gesetztem Ledger nach SOLVED verschieben.
+- Receipts müssen tatsächlichen Runner, Provider, Modell, Zeit und Beleg
+  enthalten. Idempotente Wiederholung ist zulässig; kollidierende Signaturen,
+  Teilübernahmen, Ziel-/Claim-Widersprüche und Konfliktkopien bleiben
+  fail-closed. `delivered` oder anderer Transporterfolg ist niemals `done`.
+- Eine Bindung läuft standardmäßig nach sieben Tagen ab. Vor dem nächsten
+  erfolgreichen Claim wird ausschließlich `.via-…` entfernt und
+  `expired-unbound` protokolliert. Ein aktiver Claim, Ziel, Ledger oder
+  Ticketstatus wird dadurch nicht verändert.
+
+**Zuständigkeitsgrenze:** ticket-master besitzt Vertragsakte, Lease, Ledger und
+Abschlussprädikat. Clutch besitzt die Ausführungsauflösung. Die konfigurierte
+gemeinsame Sync-Fläche transportiert Aufträge und Receipts; der zuständige
+Cross-System-Dienst besitzt das Transportprotokoll.
+Übergebe nur den idempotenten `route_intent` (Ticket-ID, Ziel-Snapshot,
+Receipt-Ziel). Implementiere keine zweite Inbox/Outbox, Retry-Schleife,
+Drop-Zone oder Transportdeduplizierung.
+
 ### (d) Auf POSITION 0 gehen
 
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut

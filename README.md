@@ -14,9 +14,9 @@ management when delegation is not appropriate. Cross-platform (Windows/macOS/Lin
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.10.0-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.11.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-201%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-230%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -30,9 +30,10 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
 
-**Release status:** `v1.10.0` — `VERSION` and `pyproject.toml` both report
-`1.10.0`; tagged `v1.10.0` in Git (TICKET-WRITER/SIG-TU extraction into
-`ellmos-ai/system-auditor`). No separate publication (PyPI, npm, …) is claimed.
+**Release status:** `v1.11.0` — `VERSION` and `pyproject.toml` both report
+`1.11.0`; the routing-v2 release follows the earlier `v1.10.0` extraction of
+TICKET-WRITER/SIG-TU into `ellmos-ai/system-auditor`. No separate publication
+(PyPI, npm, …) is claimed.
 
 ---
 
@@ -353,9 +354,8 @@ conflict copies ate log lines.
 
 ### Cloud-Ready: Multi-System Claim Convention
 
-When the `tickets/` directory lives in a cloud-synced folder shared across
-multiple machines, claims are signalled via the **filename** — no in-file
-fields or lock files needed:
+For legacy schema-v1 tickets in a cloud-synced folder, claims are signalled via
+the **filename** — no separate lock file is needed:
 
 | State     | Filename pattern             | Example                          |
 |-----------|------------------------------|----------------------------------|
@@ -375,6 +375,50 @@ cloud-disconnected hosts from selecting the same sequential number.
 A rename within the same directory is atomic on NTFS and most cloud sync
 implementations. If a conflict copy appears, one system has won the claim;
 the other rolls back and picks the next unclaimed ticket.
+
+### Routing contract v2: target, execution and claim are separate
+
+Multi-system work uses one circulating contract, not one copied child ticket
+per host. Only files with `ROUTING_SCHEMA: 2` may use the reserved v2 segments.
+Its canonical filename is
+`T-ID[.to-<target>][.via-<Clutch selector>][.claim-<HOST>].txt`; the order is
+fixed and each segment occurs at most once. The three axes are orthogonal:
+
+- `.to-…` is the immutable target snapshot (`any`, `all`, `grouped`, or one
+  exact registry-backed system). `.all` is resolved once at creation time.
+- `.via-…` is a Required or Preferred execution binding. ticket-master calls
+  Clutch's public resolver and stores its fingerprint and timestamp; it has no
+  model, family, runner, or alias list of its own.
+- `.claim-…` is only the temporary write lease. It never changes the target or
+  execution binding. Existing `T-ID.<HOST>.txt` remains an opaque legacy claim,
+  including historical combined strings such as `LAPTOP-WORKSTATION-LG`.
+
+User aliases such as `.all.claude`, `.WORKSTATION-LG.claude-opus`, and `.gpt`
+are normalized to the v2 grammar through the system registry and Clutch. A
+seven-day execution-binding TTL is stored as an absolute UTC time (`never`
+requires an explicit override). Expiry removes only the execution binding
+before the next successful claim; it never completes a ticket, marks a ledger
+row done, or releases an active foreign claim.
+
+Each target has exactly one `SYSTEM_LEDGER` row (`pending`, `claimed`, `done`,
+or `blocked`). Receipts record the actual runner, provider, model, time and
+evidence and are reconciled idempotently under the lease. Only the holder of
+the last claim may move the contract to `SOLVED`, and only when every required
+row is empirically `done`. `ticket_audit.py` reports filename/metadata,
+target-claim, ledger, receipt-signature and premature-SOLVED violations.
+
+Responsibility boundary: ticket-master owns this contract and its lifecycle;
+Clutch owns execution resolution; `.SYNC` transports requests and receipts;
+system-gap-master owns cross-system discovery/reconciliation. ticket-master
+provides only an idempotent `route_intent` containing the ticket ID, fixed
+target snapshot and receipt destination. It implements no inbox/outbox,
+drop-zone, offline queue, retry loop or transport delivery state.
+Integrations call `ticket_writer.create_routed_ticket(..., idempotency_key=...)`;
+retries with the same normalized request return the existing contract, while
+reuse of the key for different content fails closed.
+Lifecycle directories remain flat: subcategories belong in `STATUS`, never in
+paths such as `USER/decision`. The mover refuses such destinations before any
+write, and the audit reports existing nested tickets without migrating them.
 
 ### Companion Pattern
 

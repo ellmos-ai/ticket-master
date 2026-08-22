@@ -31,7 +31,46 @@ import re
 import time
 from pathlib import Path
 
-from ticket_writer import TICKET_FILENAME_RE
+try:  # package import
+    from .ticket_writer import TICKET_FILENAME_RE
+    from .routing_contract import (
+        ClaimDeniedError,
+        RoutingContractError,
+        claim_contract,
+        complete_contract,
+        parse_ticket_name,
+        normalize_expired_binding,
+        record_receipt,
+        recover_expired_claim,
+        release_contract,
+    )
+except ImportError:  # direct import from lib on sys.path
+    from ticket_writer import TICKET_FILENAME_RE
+    from routing_contract import (
+        ClaimDeniedError,
+        RoutingContractError,
+        claim_contract,
+        complete_contract,
+        parse_ticket_name,
+        normalize_expired_binding,
+        record_receipt,
+        recover_expired_claim,
+        release_contract,
+    )
+
+__all__ = [
+    "ClaimDeniedError",
+    "NestedLifecycleDestinationError",
+    "TicketCollisionError",
+    "claim_contract",
+    "complete_contract",
+    "move_ticket",
+    "normalize_expired_binding",
+    "record_receipt",
+    "recover_expired_claim",
+    "release_claim",
+    "release_contract",
+]
 
 # Ordner, in denen ein Host-Suffix "ich arbeite gerade daran" bedeutet. NUR
 # hier gibt die Sitzungs-Rueckgabe (release_claims) Claims frei.
@@ -104,6 +143,15 @@ class DestinationLooksLikeFileError(ValueError):
     """
 
 
+class NestedLifecycleDestinationError(ValueError):
+    """Raised when a lifecycle subcategory is encoded as a nested folder.
+
+    Categories v1 uses one flat cluster folder.  A subcategory such as
+    ``USER/decision`` belongs only in the ticket's STATUS field; accepting it
+    as ``.../USER/decision/`` hides the ticket from every standard scanner.
+    """
+
+
 def unclaimed_name(filename: str) -> str:
     """Dateiname ohne Claim-Suffix ("T-DATE-NN[_slug].txt").
 
@@ -111,6 +159,12 @@ def unclaimed_name(filename: str) -> str:
     nicht die Benennung. Ist der Name kein Ticketname oder ohnehin schon
     unclaimed, kommt er unveraendert zurueck.
     """
+    try:
+        parsed = parse_ticket_name(filename)
+    except RoutingContractError:
+        parsed = None
+    if parsed and parsed.is_v2:
+        return parsed.unclaimed()
     m = TICKET_FILENAME_RE.match(filename)
     if not m or not m.group("suffix"):
         return filename
@@ -120,6 +174,12 @@ def unclaimed_name(filename: str) -> str:
 
 def claim_suffix(filename: str) -> str | None:
     """Host-/Claim-Suffix eines Ticketnamens, oder None wenn unclaimed."""
+    try:
+        parsed = parse_ticket_name(filename)
+    except RoutingContractError:
+        parsed = None
+    if parsed and parsed.is_v2:
+        return parsed.claim
     m = TICKET_FILENAME_RE.match(filename)
     return m.group("suffix") if m else None
 
@@ -136,7 +196,10 @@ def queue_root(source: Path) -> Path:
     Elternordner; liegt es direkt in der Wurzel (INBOX-Alias), ist sie der
     eigene Elternordner.
     """
-    from ticket_writer import _LIFECYCLE_SUBDIRS
+    try:
+        from .ticket_writer import _LIFECYCLE_SUBDIRS
+    except ImportError:
+        from ticket_writer import _LIFECYCLE_SUBDIRS
     parent = source.parent
     return parent.parent if parent.name in _LIFECYCLE_SUBDIRS else parent
 
@@ -162,7 +225,10 @@ def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
     dest = Path(dest_dir)
     if dest.is_absolute() or len(dest.parts) != 1:
         return dest
-    from ticket_writer import _LIFECYCLE_SUBDIRS
+    try:
+        from .ticket_writer import _LIFECYCLE_SUBDIRS
+    except ImportError:
+        from ticket_writer import _LIFECYCLE_SUBDIRS
     if dest.name not in _LIFECYCLE_SUBDIRS:
         return dest
     return queue_root(source) / dest.name
@@ -218,12 +284,43 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     # verwandelt: dest_dir ist die Zielordner, nicht die Zieldatei. Ein
     # dest_dir, dessen letztes Pfadsegment selbst wie ein Ticketname aussieht,
     # ist so gut wie immer genau dieser Bedienfehler (T-20260818-427750316).
-    if TICKET_FILENAME_RE.match(dest_dir.name):
+    looks_like_ticket = bool(TICKET_FILENAME_RE.match(dest_dir.name))
+    if not looks_like_ticket:
+        try:
+            parse_ticket_name(dest_dir.name)
+            looks_like_ticket = True
+        except RoutingContractError:
+            pass
+    if looks_like_ticket:
         raise DestinationLooksLikeFileError(
             f"dest_dir looks like a ticket FILE path, not a destination "
             f"FOLDER: {dest_dir}. Pass the lifecycle folder only "
             f"(e.g. '.../SOLVED'), not '.../SOLVED/{dest_dir.name}' -- "
             f"move_ticket() appends the filename itself."
+        )
+
+    # Categories v1 is a flat folder contract. STATUS carries a subcategory;
+    # the filesystem never does. Reject both absolute queue-root paths and
+    # relative USER/decision-style paths before mkdir can create them.
+    try:
+        from .ticket_writer import _LIFECYCLE_SUBDIRS
+    except ImportError:
+        from ticket_writer import _LIFECYCLE_SUBDIRS
+    lifecycle = {name for name in _LIFECYCLE_SUBDIRS if name}
+    raw_parts = Path(dest_dir).parts
+    if not Path(dest_dir).is_absolute() and len(raw_parts) > 1 and raw_parts[0] in lifecycle:
+        raise NestedLifecycleDestinationError(
+            f"nested lifecycle destination is forbidden: {dest_dir}; "
+            "put the subcategory in STATUS and move to the flat cluster folder"
+        )
+    try:
+        relative = dest_dir.resolve().relative_to(queue_root(source).resolve())
+    except ValueError:
+        relative = None
+    if relative is not None and len(relative.parts) > 1 and relative.parts[0] in lifecycle:
+        raise NestedLifecycleDestinationError(
+            f"nested lifecycle destination is forbidden: {dest_dir}; "
+            "put the subcategory in STATUS and move to the flat cluster folder"
         )
 
     dest_dir.mkdir(parents=True, exist_ok=True)
@@ -292,6 +389,12 @@ def release_claim(ticket: Path | str) -> Path:
     if not ticket.is_file():
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
 
+    try:
+        parsed = parse_ticket_name(ticket.name)
+    except RoutingContractError:
+        parsed = None
+    if parsed and parsed.is_v2 and parsed.claim:
+        return release_contract(ticket, host=parsed.claim)
     freed = ticket.parent / unclaimed_name(ticket.name)
     if freed == ticket:
         return ticket
@@ -497,7 +600,7 @@ def _cli(argv: list[str] | None = None) -> int:
     try:
         target = move_ticket(args.source, args.dest_dir)
     except (TicketCollisionError, FileNotFoundError, RuntimeError,
-            DestinationLooksLikeFileError) as exc:
+            DestinationLooksLikeFileError, NestedLifecycleDestinationError) as exc:
         print(f"REFUSED: {exc}")
         return 1
     print(f"MOVED: {target}")

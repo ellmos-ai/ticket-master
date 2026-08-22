@@ -94,6 +94,10 @@ Examples: `STATUS: ACTIONABLE (since 2026-07-31)`,
 - Folder and STATUS must be congruent.
 - Every move between clusters updates STATUS and appends a `HISTORY`/`LOG`
   line with the reason.
+- The folder layout stays flat: `USER/decision`, `BLOCKED/dependency` and
+  similar subfolders are invalid. The subcategory exists only in the STATUS
+  field; `ticket_mover.py` rejects such destinations fail-closed and
+  `ticket_audit.py` reports existing nested tickets read-only.
 
 ---
 
@@ -177,3 +181,30 @@ cluster folders are shared across hosts.
 - `BLOCKED/host-receipt` is the canonical place for tickets waiting on
   another host; name the receipt path in the ticket so the autonomy loop's
   re-check can work on evidence.
+
+### Routing schema v2 and circulating contracts
+
+Schema v2 separates target, execution and ownership in the filename:
+`T-ID[.to-<target>][.via-<Clutch selector>][.claim-<HOST>].txt`. Only tickets
+with `ROUTING_SCHEMA: 2` may use these reserved segments. An old
+`T-ID.<HOST>.txt` is always a legacy claim and is never reinterpreted as a
+target or a host set.
+
+Transfer and fork tickets contain an evidence-bearing `TARGET_SYSTEMS`
+snapshot fixed at creation time and exactly one `SYSTEM_LEDGER` row per target.
+An eligible system changes only its own row from `pending` to `claimed`, then
+to `done` or `blocked` after an empirical receipt. It then releases `.claim-…`;
+`.to-…` and an unexpired `.via-…` binding remain. `SOLVED` is forbidden while
+any required row is not `done`. A transport state such as `delivered` is not a
+ledger state and can never prove domain completion.
+
+An expired execution binding is recorded as `expired-unbound` before the next
+successful claim. This removes only `.via-…`; it never changes the target
+snapshot, ledger or an active claim. A blocked system share can remain visible
+in the circulating contract or move to `BLOCKED/host-receipt` with an evidenced
+reason when no executable share remains.
+
+`.SYNC` remains only the transport and receipt surface. ticket-master owns the
+contract, claim, ledger and completion predicate; Clutch owns execution
+resolution; system-gap-master owns the cross-system protocol. ticket-master
+adds no second lifecycle, retry loop or transport inbox.

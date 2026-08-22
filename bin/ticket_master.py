@@ -28,6 +28,7 @@ if str(LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(LIB_ROOT))
 
 from ticket_writer import create as create_ticket  # noqa: E402
+from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
 
 
 class ConfigError(ValueError):
@@ -186,6 +187,11 @@ def _ticket_id(path: Path, text: str) -> str:
     match = _TICKET_NAME_RE.match(path.name)
     if match:
         return f"T-{match.group(1)}-{int(match.group(2)):02d}"
+    try:
+        parsed = parse_ticket_name(path.name)
+        return f"T-{parsed.date}-{parsed.number}"
+    except RoutingContractError:
+        pass
     return path.stem
 
 
@@ -208,8 +214,16 @@ def _iter_ticket_files(base: Path) -> Iterable[tuple[Path, str]]:
         if not directory.is_dir():
             continue
         for path in sorted(directory.iterdir(), key=lambda item: item.name):
-            if path.is_file() and _TICKET_NAME_RE.match(path.name):
+            if not path.is_file():
+                continue
+            if _TICKET_NAME_RE.match(path.name):
                 yield path, subdir or "INBOX"
+                continue
+            try:
+                parse_ticket_name(path.name)
+                yield path, subdir or "INBOX"
+            except RoutingContractError:
+                continue
 
 
 def list_open_tickets(tickets_dir: Path | str) -> list[dict[str, str]]:
@@ -228,14 +242,27 @@ def list_open_tickets(tickets_dir: Path | str) -> list[dict[str, str]]:
             relative = path.relative_to(base).as_posix()
         except ValueError:
             relative = path.name
-        rows.append(
-            {
-                "status": raw_status,
-                "id": _ticket_id(path, text),
-                "title": title,
-                "path": relative,
-            }
-        )
+        row = {
+            "status": raw_status,
+            "id": _ticket_id(path, text),
+            "title": title,
+            "path": relative,
+        }
+        rows.append(row)
+        if "ROUTING_SCHEMA: 2" in text:
+            try:
+                contract = load_contract(path)
+                compact_ledger = ",".join(
+                    f"{item.get('system')}={item.get('status')}" for item in contract.ledger
+                )
+                row.update(
+                    primary=contract.fields.get("PRIMARY_TICKET", ""),
+                    owner=contract.fields.get("ORIGINAL_OWNER", ""),
+                    target=f"{contract.target_kind}:{','.join(contract.target_systems)}",
+                    ledger=compact_ledger,
+                )
+            except (OSError, RoutingContractError):
+                row.update(primary="<invalid>", owner="<invalid>", target="<invalid>", ledger="<invalid>")
     return sorted(rows, key=lambda row: (row["status"], row["id"], row["path"]))
 
 
@@ -243,9 +270,11 @@ def print_open_tickets(rows: list[dict[str, str]], *, as_json: bool = False) -> 
     if as_json:
         print(json.dumps({"count": len(rows), "tickets": rows}, ensure_ascii=False, indent=2))
         return
-    print("STATUS\tID\tTITLE\tPATH")
+    print("STATUS\tID\tTITLE\tPATH\tPRIMARY\tOWNER\tTARGET\tSYSTEM_LEDGER")
     for row in rows:
-        print("\t".join(row[key] for key in ("status", "id", "title", "path")))
+        print("\t".join(row.get(key, "") for key in (
+            "status", "id", "title", "path", "primary", "owner", "target", "ledger"
+        )))
     print(f"TOTAL\t{len(rows)}")
 
 

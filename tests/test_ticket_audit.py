@@ -146,6 +146,21 @@ class TestNonTicketFiles(unittest.TestCase):
                 [str(base / "COMIC-REPORT_2026-07-31.txt")],
             )
 
+    def test_nested_lifecycle_ticket_is_reported_without_mutation(self):
+        """T-20260822-116395676: audit finds but never migrates USER/decision/."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            nested = _write(
+                base / "USER" / "decision" / "T-20260822-123456789.ASUS-GEI.txt",
+                "STATUS: USER/decision\n",
+            )
+            before = nested.read_bytes()
+
+            report = ticket_audit.audit(base)
+
+            self.assertEqual(report["nested_lifecycle_tickets"], [str(nested)])
+            self.assertEqual(nested.read_bytes(), before)
+
 
 class TestCleanBestand(unittest.TestCase):
     def test_fully_clean_bestand_reports_nothing(self):

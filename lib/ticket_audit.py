@@ -1,8 +1,8 @@
 r"""
 ticket_audit.py — Health check for the ticket bestand: ID collisions and
-two structural anomalies discovered while investigating T-20260808-03.
+structural anomalies discovered while investigating production tickets.
 
-Three findings, one scan:
+Four structural findings plus schema-v2 validation in one scan:
 
 1. ID collisions: two files under the same logical ticket ID (e.g. a claimed
    and an unclaimed copy, or the same ID reused on different days' worth of
@@ -18,6 +18,9 @@ Three findings, one scan:
 3. Non-ticket files inside the ticket tree's top-level folders (root or any
    lifecycle status folder) — clutter that a naive "everything here is a
    ticket" scan would misclassify.
+4. Ticket files below a nested lifecycle subfolder (for example
+   ``USER/decision/T-....txt``). Categories v1 stores ``decision`` in STATUS,
+   not in the filesystem; nested tickets are invisible to standard readers.
 
 Read-only: this module never writes, moves or deletes anything.
 """
@@ -27,7 +30,12 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from ticket_writer import _LIFECYCLE_SUBDIRS, iter_lifecycle_files
+try:  # package import
+    from .ticket_writer import _LIFECYCLE_SUBDIRS, iter_lifecycle_files
+    from .routing_contract import RoutingContractError, contract_errors, parse_ticket_name
+except ImportError:  # direct import from lib on sys.path
+    from ticket_writer import _LIFECYCLE_SUBDIRS, iter_lifecycle_files
+    from routing_contract import RoutingContractError, contract_errors, parse_ticket_name
 
 # Status folders only (no "" root entry) -- used for the claimed-in-root and
 # non-ticket-file scans below, which treat the root separately from status
@@ -82,7 +90,14 @@ def audit(base: Path | str) -> dict:
     claimed_in_root: list[str] = []
     if base.is_dir():
         for entry in base.iterdir():
-            if entry.is_file() and _CLAIMED_RE.match(entry.name):
+            if not entry.is_file():
+                continue
+            try:
+                parsed = parse_ticket_name(entry.name)
+                claimed = bool(parsed.claim) if parsed.is_v2 else bool(_CLAIMED_RE.match(entry.name))
+            except RoutingContractError:
+                claimed = bool(_CLAIMED_RE.match(entry.name))
+            if claimed:
                 claimed_in_root.append(str(entry))
 
     non_ticket_files: list[str] = []
@@ -99,12 +114,49 @@ def audit(base: Path | str) -> dict:
                 continue
             if _LOOKS_LIKE_TICKET_RE.match(entry.name):
                 continue
+            try:
+                parse_ticket_name(entry.name)
+                continue
+            except RoutingContractError:
+                pass
             non_ticket_files.append(str(entry))
+
+    routing_errors: dict[str, list[str]] = {}
+    for directory in scan_dirs:
+        if not directory.is_dir():
+            continue
+        for entry in directory.iterdir():
+            if not entry.is_file():
+                continue
+            try:
+                parsed = parse_ticket_name(entry.name)
+            except RoutingContractError:
+                continue
+            if parsed.is_v2:
+                errors = contract_errors(entry)
+                if errors:
+                    routing_errors[str(entry)] = errors
+
+    nested_lifecycle_tickets: list[str] = []
+    for subdir in _STATUS_SUBDIRS:
+        directory = base / subdir
+        if not directory.is_dir():
+            continue
+        for entry in directory.rglob("*"):
+            if not entry.is_file() or len(entry.relative_to(directory).parts) < 2:
+                continue
+            try:
+                parse_ticket_name(entry.name)
+            except RoutingContractError:
+                continue
+            nested_lifecycle_tickets.append(str(entry))
 
     return {
         "collisions": collisions,
         "claimed_in_root": sorted(claimed_in_root),
         "non_ticket_files": sorted(non_ticket_files),
+        "routing_errors": dict(sorted(routing_errors.items())),
+        "nested_lifecycle_tickets": sorted(nested_lifecycle_tickets),
     }
 
 
@@ -112,6 +164,8 @@ def _print_human(report: dict) -> None:
     collisions = report["collisions"]
     claimed_in_root = report["claimed_in_root"]
     non_ticket_files = report["non_ticket_files"]
+    routing_errors = report.get("routing_errors", {})
+    nested_lifecycle_tickets = report.get("nested_lifecycle_tickets", [])
 
     if collisions:
         print(f"COLLISIONS ({len(collisions)} ID(s) with more than one file):")
@@ -135,6 +189,22 @@ def _print_human(report: dict) -> None:
             print(f"  {path}")
     else:
         print("NON-TICKET-FILES: none")
+
+    if routing_errors:
+        print(f"ROUTING-ERRORS ({len(routing_errors)}):")
+        for path, errors in routing_errors.items():
+            print(f"  {path}:")
+            for error in errors:
+                print(f"    {error}")
+    else:
+        print("ROUTING-ERRORS: none")
+
+    if nested_lifecycle_tickets:
+        print(f"NESTED-LIFECYCLE-TICKETS ({len(nested_lifecycle_tickets)}):")
+        for path in nested_lifecycle_tickets:
+            print(f"  {path}")
+    else:
+        print("NESTED-LIFECYCLE-TICKETS: none")
 
 
 def _cli(argv: list[str] | None = None) -> int:
@@ -162,7 +232,11 @@ def _cli(argv: list[str] | None = None) -> int:
     else:
         _print_human(report)
 
-    problems = bool(report["collisions"] or report["claimed_in_root"] or report["non_ticket_files"])
+    problems = bool(
+        report["collisions"] or report["claimed_in_root"]
+        or report["non_ticket_files"] or report["routing_errors"]
+        or report["nested_lifecycle_tickets"]
+    )
     return 1 if problems else 0
 
 

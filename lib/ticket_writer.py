@@ -16,12 +16,33 @@ home of the helper; the running instance lives in the user's _scripts/ mirror.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import random
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
+
+try:  # package import (``from lib import ticket_writer``)
+    from .routing_contract import (
+        canonical_contract_name,
+        contract_metadata,
+        normalize_alias,
+        parse_ticket_name,
+        resolve_targets,
+        update_fields,
+    )
+except ImportError:  # direct script/module import from ``lib`` on sys.path
+    from routing_contract import (
+        canonical_contract_name,
+        contract_metadata,
+        normalize_alias,
+        parse_ticket_name,
+        resolve_targets,
+        update_fields,
+    )
 
 
 def _default_tickets_dir() -> Path | None:
@@ -276,6 +297,17 @@ def iter_lifecycle_files(base: Path):
             if m:
                 yield (entry, m.group("date"), int(m.group("number")),
                        m.group("suffix"))
+                continue
+            # Schema v2 may carry three orthogonal suffix axes and exact
+            # selectors containing dots.  Its parser is deliberately kept
+            # separate from the legacy regex so ``T-ID.<HOST>`` never changes
+            # meaning for old callers.
+            try:
+                parsed = parse_ticket_name(entry.name)
+            except ValueError:
+                continue
+            if parsed.is_v2:
+                yield (entry, parsed.date, int(parsed.number), parsed.claim)
 
 
 # Stellenzahl der Zufallsnummer (Nutzerentscheid 2026-08-15).
@@ -381,6 +413,150 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
         return str(target)
 
 
+def create_routed_ticket(
+    title: str,
+    body: str,
+    *,
+    tickets_dir: Path,
+    registry_snapshot: dict,
+    ticket_kind: str = "normal",
+    target_kind: str = "any",
+    target: str | None = None,
+    targets: tuple[str, ...] | list[str] | None = None,
+    via: str | None = None,
+    route_alias: str | None = None,
+    binding_mode: str = "required",
+    binding_ttl: int | str | None = None,
+    primary_ticket: str | None = None,
+    original_owner: str | None = None,
+    receipt_to: str | None = None,
+    execution_matrix: dict | None = None,
+    idempotency_key: str | None = None,
+    resolver=None,
+    project: str | None = None,
+    priority: str = "mittel",
+    pipeline: str = "<offen>",
+    today: str | None = None,
+    created_at: datetime | str | None = None,
+    rng=None,
+) -> str:
+    """Create one schema-v2 contract through the canonical ID authority.
+
+    ``registry_snapshot`` is an injected, evidence-bearing system inventory;
+    this library contains no host list.  ``route_alias`` accepts user-facing
+    forms such as ``.all.claude`` or ``.WORKSTATION-LG.claude-opus`` and
+    resolves the execution portion only through Clutch's public API.
+    """
+    if tickets_dir is None:
+        raise ValueError("tickets_dir required for routing schema v2")
+    base = Path(tickets_dir)
+    inbox = base / "INBOX"
+    inbox.mkdir(parents=True, exist_ok=True)
+    date_iso = today or datetime.now().strftime("%Y-%m-%d")
+    datestr = date_iso.replace("-", "")
+    if route_alias:
+        aliases = [part for part in route_alias.split(".") if part]
+        alias_name, _alias_note = normalize_alias(
+            "T-00000000-0", aliases,
+            registry_snapshot=registry_snapshot, resolver=resolver,
+        )
+        parsed_alias = parse_ticket_name(alias_name)
+        via = parsed_alias.via
+        if parsed_alias.target in {"all", "grouped"}:
+            target_kind = parsed_alias.target
+        elif parsed_alias.target:
+            target_kind, target = "exact", parsed_alias.target
+        else:
+            target_kind = "any"
+    snapshot = resolve_targets(
+        target_kind, target=target, targets=targets,
+        registry_snapshot=registry_snapshot,
+    )
+    request_payload = {
+        "title": title.strip(), "body": body.strip(), "ticket_kind": ticket_kind,
+        "target_snapshot": snapshot, "via": via, "binding_mode": binding_mode,
+        "binding_ttl": binding_ttl, "primary_ticket": primary_ticket,
+        "original_owner": original_owner, "receipt_to": receipt_to,
+        "execution_matrix": execution_matrix or {}, "project": project,
+        "priority": priority, "pipeline": pipeline,
+        "created_at": str(created_at) if created_at is not None else None,
+    }
+    request_fingerprint = "sha256:" + hashlib.sha256(
+        json.dumps(request_payload, ensure_ascii=False, sort_keys=True,
+                   separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+    if idempotency_key:
+        matches: list[Path] = []
+        for candidate, _date, _number, _suffix in iter_lifecycle_files(base):
+            try:
+                fields = {
+                    match.group(1): match.group(2).strip()
+                    for line in candidate.read_text(encoding="utf-8").splitlines()
+                    if (match := re.match(r"^([A-Z][A-Z0-9_]*):\s*(.*)$", line.strip()))
+                }
+            except (OSError, UnicodeError):
+                continue
+            if fields.get("CREATE_IDEMPOTENCY_KEY") == idempotency_key:
+                if fields.get("CREATE_REQUEST_FINGERPRINT") != request_fingerprint:
+                    raise ValueError("idempotency key already belongs to a different routed request")
+                matches.append(candidate)
+        if len(matches) > 1:
+            raise ValueError("idempotency key resolves to multiple ticket contracts")
+        if matches:
+            return str(matches[0])
+    used = used_numbers(base, datestr)
+    while True:
+        number = draw_number(used, rng)
+        ticket_id = f"T-{datestr}-{number}"
+        if ticket_kind in {"transfer", "fork"}:
+            if not primary_ticket or not original_owner or not receipt_to:
+                raise ValueError(
+                    "transfer/fork requires primary_ticket, original_owner and receipt_to"
+                )
+        metadata = contract_metadata(
+            ticket_id=ticket_id,
+            ticket_kind=ticket_kind,
+            target_snapshot=snapshot,
+            primary_ticket=primary_ticket or ticket_id,
+            original_owner=original_owner or "n/a",
+            receipt_to=receipt_to or ticket_id,
+            via=via,
+            binding_mode=binding_mode,
+            binding_ttl=binding_ttl,
+            resolver=resolver,
+            execution_matrix=execution_matrix,
+            created_at=(
+                created_at
+                if created_at is not None
+                else (f"{date_iso}T00:00:00Z" if today else None)
+            ),
+        )
+        metadata["CREATE_IDEMPOTENCY_KEY"] = idempotency_key or ""
+        metadata["CREATE_REQUEST_FINGERPRINT"] = request_fingerprint
+        target_path = inbox / canonical_contract_name(ticket_id, metadata)
+        content = _TICKET_TEMPLATE.format(
+            ticket_id=ticket_id,
+            title=title.strip() or "<ohne Titel>",
+            date=date_iso,
+            priority=priority,
+            pipeline=pipeline,
+            project=project or "<offen>",
+            body=body.strip() or "<keine Beschreibung>",
+        )
+        content = update_fields(
+            content,
+            metadata,
+            log=f"{date_iso}  Routing schema v2 contract created through ticket_writer.",
+        )
+        try:
+            with target_path.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(content)
+        except FileExistsError:
+            used.add(number)
+            continue
+        return str(target_path)
+
+
 def _cli(argv: list[str] | None = None) -> int:
     """CLI so any agent gets a collision-free ID in one shell call instead of
     picking the next number by eye (T-20260808-03: exactly that manual
@@ -401,13 +577,61 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--priority", default="mittel")
     parser.add_argument("--pipeline", default="<offen>")
     parser.add_argument("--tickets-dir", default=None)
+    parser.add_argument("--ticket-kind", choices=("normal", "transfer", "fork"))
+    parser.add_argument("--target-kind", choices=("any", "all", "grouped", "exact"))
+    parser.add_argument("--target")
+    parser.add_argument("--targets", help="comma-separated explicit grouped targets")
+    parser.add_argument("--via", help="Clutch execution selector")
+    parser.add_argument("--route-alias", help="user alias, e.g. .all.claude")
+    parser.add_argument("--binding-mode", choices=("required", "preferred"), default="required")
+    parser.add_argument("--binding-ttl", default=None, help="days or explicit 'never'")
+    parser.add_argument("--systems-registry", help="JSON system snapshot (required for schema v2)")
+    parser.add_argument("--primary-ticket")
+    parser.add_argument("--original-owner")
+    parser.add_argument("--receipt-to")
+    parser.add_argument("--execution-matrix", help="optional JSON file for via-mixed")
+    parser.add_argument("--idempotency-key", help="stable caller key for retry-safe creation")
     args = parser.parse_args(argv)
     try:
-        path = create(
-            args.title, args.body, project=args.project, priority=args.priority,
-            pipeline=args.pipeline,
-            tickets_dir=Path(args.tickets_dir) if args.tickets_dir else None,
-        )
+        if args.ticket_kind or args.target_kind or args.via or args.route_alias:
+            if not args.systems_registry:
+                raise ValueError("--systems-registry is required for routing schema v2")
+            import json
+
+            registry = json.loads(Path(args.systems_registry).read_text(encoding="utf-8"))
+            matrix = (
+                json.loads(Path(args.execution_matrix).read_text(encoding="utf-8"))
+                if args.execution_matrix else None
+            )
+            raw_ttl = args.binding_ttl
+            ttl = raw_ttl if raw_ttl in {None, "never"} else int(raw_ttl)
+            path = create_routed_ticket(
+                args.title, args.body,
+                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                registry_snapshot=registry,
+                ticket_kind=args.ticket_kind or "normal",
+                target_kind=args.target_kind or "any",
+                target=args.target,
+                targets=args.targets.split(",") if args.targets else None,
+                via=args.via,
+                route_alias=args.route_alias,
+                binding_mode=args.binding_mode,
+                binding_ttl=ttl,
+                primary_ticket=args.primary_ticket,
+                original_owner=args.original_owner,
+                receipt_to=args.receipt_to,
+                execution_matrix=matrix,
+                idempotency_key=args.idempotency_key,
+                project=args.project,
+                priority=args.priority,
+                pipeline=args.pipeline,
+            )
+        else:
+            path = create(
+                args.title, args.body, project=args.project, priority=args.priority,
+                pipeline=args.pipeline,
+                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else None,
+            )
     except ValueError as exc:
         print(f"ERROR: {exc}")
         return 1

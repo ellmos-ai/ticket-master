@@ -4,6 +4,47 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.11.0] — 2026-08-22
+
+### Routing contract v2: transfer and multi-system tickets (2026-08-22)
+
+- Added one provider-neutral contract for `normal`, `transfer` and `fork`
+  tickets with fixed system-registry target snapshots, a per-system ledger,
+  idempotent evidence receipts and an all-targets-done completion predicate.
+- Added the unambiguous filename grammar
+  `T-ID[.to-<target>][.via-<Clutch selector>][.claim-<HOST>].txt`. Legacy
+  `T-ID.<HOST>.txt` files remain opaque legacy claims; target, execution and
+  temporary lease are never inferred from one another.
+- `lib/routing_contract.py` consumes only Clutch's public selector resolver,
+  records its fingerprint/time/evidence and keeps unresolved selectors
+  fail-closed. Required/Preferred bindings, a seven-day default TTL, explicit
+  `never`, expiry-on-next-claim and per-target execution matrices are covered.
+- `ticket_writer.py` now exposes a canonical routed-ticket Library/CLI API;
+  `ticket_mover.py` exposes target-aware claim/release/recovery/receipt/final
+  completion operations; `ticket_audit.py` reports routing, ledger, receipt and
+  premature-SOLVED violations. Open-ticket listings include primary ticket,
+  owner, target snapshot and compact ledger state.
+- The `.SYNC` boundary remains a pure idempotent `route_intent` with ticket ID,
+  target snapshot and receipt destination. No inbox/outbox, offline queue,
+  retry loop, drop-zone, transport deduplication or transport lifecycle was
+  added to ticket-master.
+- Added 29 routing/lifecycle regressions (230 tests total) covering aliases, negative
+  grammar cases, wrong-target and double claims, crash recovery, partial and
+  duplicate receipts, final completion, TTL/expiry, Required/Preferred
+  behavior, registry outage/recovery, execution matrices, audit findings,
+  route-intent boundaries and the legacy multi-host suffix.
+- Systemless `.via-...` contracts now materialize one execution ledger row on
+  their first claim, so they can produce a receipt and reach the normal
+  completion predicate. An evidence-free release may move that `any` contract
+  to another host without turning it into a hidden target binding.
+- The published wheel now contains the stable `lib` API package; the
+  `routing-v2` extra pins the compatible Clutch feature line to
+  `clutch-router>=0.5,<0.6`.
+- Lifecycle moves now reject nested destinations such as `USER/decision`
+  before creating a directory; subcategories remain STATUS metadata in the
+  flat categories-v1 layout. The read-only audit reports pre-existing nested
+  lifecycle tickets without migrating them (T-20260822-116395676).
+
 ### Technical Hygiene, CI Matrix & Metadata Parity (2026-08-21)
 
 - **GitHub Actions CI Hardening:** Workflow `.github/workflows/tests.yml` um Multi-OS Matrix (Ubuntu + Windows), Python 3.13 Matrix-Support (`["3.10", "3.11", "3.12", "3.13"]`), pip Dependency-Caching und automatisiertes `ruff check .` Linting gehärtet.

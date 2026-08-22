@@ -51,6 +51,10 @@
     }
   },
   "default_provider": "claude",
+  "execution_binding": {
+    "_comment": "Schema-v2 execution bindings store an absolute UTC expiry in each ticket. 'never' is allowed only as an explicit ticket override; expiry never completes a ticket or changes its target snapshot.",
+    "default_ttl_days": 7
+  },
   "advisor": {
     "_comment": "Optional: advisor model for high-stakes tickets (score >= 35). Not programmatically configurable in all harnesses — may require manual activation.",
     "enabled": false,
