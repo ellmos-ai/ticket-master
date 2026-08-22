@@ -97,7 +97,11 @@ Examples: `STATUS: ACTIONABLE (since 2026-07-31)`,
 - The folder layout stays flat: `USER/decision`, `BLOCKED/dependency` and
   similar subfolders are invalid. The subcategory exists only in the STATUS
   field; `ticket_mover.py` rejects such destinations fail-closed and
-  `ticket_audit.py` reports existing nested tickets read-only.
+  `ticket_audit.py` reports existing nested tickets read-only. The JSON report
+  retains the backwards-compatible `nested_lifecycle_tickets` path list and
+  adds `nested_lifecycle_details`: each finding contains `source`, the flat
+  `expected_target` derived by removing the subfolders, and
+  `target_collision`. The audit changes no STATUS, claim, or file.
 
 ---
 

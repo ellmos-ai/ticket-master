@@ -4,6 +4,20 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.11.1] — 2026-08-22
+
+### Nested lifecycle audit details
+
+- `ticket_audit.py --json` now adds the structured
+  `nested_lifecycle_details` field for every ticket hidden below a lifecycle
+  subfolder. Each record contains the source path, the expected flat cluster
+  target, and whether that target already exists.
+- The existing `nested_lifecycle_tickets` string list remains unchanged for
+  backwards-compatible API consumers. Human-readable output includes the same
+  source/target/collision evidence, and the audit remains strictly read-only.
+- Added collision and no-mutation regressions plus synchronized English/German
+  lifecycle documentation (T-20260822-116395676).
+
 ## [1.11.0] — 2026-08-22
 
 ### Routing contract v2: transfer and multi-system tickets (2026-08-22)

@@ -159,7 +159,40 @@ class TestNonTicketFiles(unittest.TestCase):
             report = ticket_audit.audit(base)
 
             self.assertEqual(report["nested_lifecycle_tickets"], [str(nested)])
+            self.assertEqual(
+                report["nested_lifecycle_details"],
+                [
+                    {
+                        "source": str(nested),
+                        "expected_target": str(base / "USER" / nested.name),
+                        "target_collision": False,
+                    }
+                ],
+            )
             self.assertEqual(nested.read_bytes(), before)
+
+    def test_nested_lifecycle_detail_reports_flat_target_collision(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            filename = "T-20260822-123456789.ASUS-GEI.txt"
+            target = _write(base / "USER" / filename, "existing flat ticket")
+            nested = _write(
+                base / "USER" / "decision" / filename,
+                "STATUS: USER/decision\n",
+            )
+
+            report = ticket_audit.audit(base)
+
+            self.assertEqual(
+                report["nested_lifecycle_details"],
+                [
+                    {
+                        "source": str(nested),
+                        "expected_target": str(target),
+                        "target_collision": True,
+                    }
+                ],
+            )
 
 
 class TestCleanBestand(unittest.TestCase):

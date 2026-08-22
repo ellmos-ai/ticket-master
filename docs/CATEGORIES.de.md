@@ -95,7 +95,12 @@ Beispiele: `STATUS: ACTIONABLE (seit 2026-07-31)`,
 - Die Ordnerstruktur bleibt flach: `USER/decision`, `BLOCKED/dependency` und
   ähnliche Unterordner sind ungültig. Die Unterkategorie steht ausschließlich
   im `STATUS`-Feld; `ticket_mover.py` weist solche Ziele fail-closed ab und
-  `ticket_audit.py` meldet vorhandene verschachtelte Tickets read-only.
+  `ticket_audit.py` meldet vorhandene verschachtelte Tickets read-only. Der
+  JSON-Bericht behält die rückwärtskompatible Pfadliste
+  `nested_lifecycle_tickets` und ergänzt `nested_lifecycle_details`: pro Fund
+  `source`, das durch Entfernen der Unterordner abgeleitete flache
+  `expected_target` und `target_collision`. Der Audit ändert dabei weder
+  STATUS noch Claim oder Datei.
 
 ---
 
