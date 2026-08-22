@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 231
+EXPECTED_TEST_COUNT = 233
 LAST_CHECKED = "2026-08-22"
 
 

@@ -14,9 +14,9 @@ management when delegation is not appropriate. Cross-platform (Windows/macOS/Lin
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.1-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.11.2-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-231%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-233%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -30,9 +30,10 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
 
-**Release status:** `v1.11.1` — `VERSION` and `pyproject.toml` both report
-`1.11.1`; this backwards-compatible audit patch follows the `v1.11.0`
-routing-v2 release and the earlier `v1.10.0` extraction of
+**Release status:** `v1.11.2` — `VERSION` and `pyproject.toml` both report
+`1.11.2`; this backwards-compatible safety patch adds a real, non-mutating
+single-ticket `--dry-run` preview. It follows the `v1.11.0` routing-v2 release
+and the earlier `v1.10.0` extraction of
 TICKET-WRITER/SIG-TU into `ellmos-ai/system-auditor`. No separate publication
 (PyPI, npm, …) is claimed.
 
@@ -376,6 +377,12 @@ cloud-disconnected hosts from selecting the same sequential number.
 A rename within the same directory is atomic on NTFS and most cloud sync
 implementations. If a conflict copy appears, one system has won the claim;
 the other rolls back and picks the next unclaimed ticket.
+
+Lifecycle transitions use the fail-closed `lib/ticket_mover.py` helper. A
+single move can be previewed without any mutation via
+`python lib/ticket_mover.py <source> <dest-dir> --dry-run`; output starts with
+`WOULD MOVE`, source and target remain unchanged, and a missing destination
+directory is not created.
 
 ### Routing contract v2: target, execution and claim are separate
 
