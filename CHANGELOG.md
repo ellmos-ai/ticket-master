@@ -4,6 +4,20 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.11.3] — 2026-08-22
+
+### PEP 639 / SPDX license metadata
+
+- Migrated `project.license` from the deprecated TOML table to the SPDX
+  expression `MIT`, declared `license-files = ["LICENSE"]`, and removed only
+  the deprecated `License :: OSI Approved :: MIT License` classifier.
+- Raised the isolated build backend floor to `setuptools>=77.0.3`, the first
+  Setuptools line with PEP 639 support. Metadata tests lock the expression,
+  license file and absence of legacy forms (T-20260822-782729681).
+- Built wheel and sdist without either Setuptools deprecation warning; both
+  archives report `License-Expression: MIT`, list `License-File: LICENSE`,
+  contain the license text and omit every `License ::` classifier.
+
 ## [1.11.2] — 2026-08-22
 
 ### Single-ticket move dry-run

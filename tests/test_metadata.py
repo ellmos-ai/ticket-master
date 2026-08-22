@@ -77,7 +77,7 @@ def test_ci_workflow_integrity():
 
 
 def test_pyproject_pep621_metadata():
-    """Verify pyproject.toml PEP 621 compliance, standard classifiers, Python 3.13 support, and URLs."""
+    """Verify current PEP 621/639 metadata, classifiers, runtimes, and URLs."""
     pyproject_path = REPO_ROOT / "pyproject.toml"
     assert pyproject_path.is_file()
     content = pyproject_path.read_text(encoding="utf-8")
@@ -90,6 +90,15 @@ def test_pyproject_pep621_metadata():
         "Programming Language :: Python :: 3.13",
     ]:
         assert classifier in content, f"Classifier '{classifier}' missing in pyproject.toml"
+
+    assert 'requires = ["setuptools>=77.0.3"]' in content
+    assert 'license = "MIT"' in content
+    assert 'license-files = ["LICENSE"]' in content
+    assert "license = {" not in content
+    assert '"License ::' not in content
+    assert (REPO_ROOT / "LICENSE").read_text(encoding="utf-8").startswith(
+        "MIT License\n"
+    )
 
     assert 'Homepage = "https://github.com/ellmos-ai/ticket-master"' in content
     assert 'Repository = "https://github.com/ellmos-ai/ticket-master.git"' in content

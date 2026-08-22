@@ -14,7 +14,7 @@ management when delegation is not appropriate. Cross-platform (Windows/macOS/Lin
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.2-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.11.3-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
 [![Tests](https://img.shields.io/badge/pytest-233%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
@@ -30,9 +30,10 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
 
-**Release status:** `v1.11.2` — `VERSION` and `pyproject.toml` both report
-`1.11.2`; this backwards-compatible safety patch adds a real, non-mutating
-single-ticket `--dry-run` preview. It follows the `v1.11.0` routing-v2 release
+**Release status:** `v1.11.3` — `VERSION` and `pyproject.toml` both report
+`1.11.3`; this metadata patch migrates the unchanged MIT license to the PEP
+639/SPDX contract. It follows the non-mutating single-ticket `--dry-run`
+preview in `v1.11.2` and the `v1.11.0` routing-v2 release
 and the earlier `v1.10.0` extraction of
 TICKET-WRITER/SIG-TU into `ellmos-ai/system-auditor`. No separate publication
 (PyPI, npm, …) is claimed.
