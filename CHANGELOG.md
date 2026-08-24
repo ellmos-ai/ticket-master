@@ -4,6 +4,16 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Fail-closed queue ID gate
+
+- Moves to `QUEUED` now refuse a ticket ID that is already present under any
+  other canonical flat lifecycle path, including legacy host suffixes and
+  routing-v2 filenames. Pre-write and post-write scans preserve the source and
+  remove only the newly written target if a visible race is detected
+  (T-20260824-422995631).
+- Added cross-folder, cross-host, legacy/routing-v2, source-only, non-queue and
+  race-collision regressions. Full verification: 238 tests plus 13 subtests.
+
 ## [1.11.3] — 2026-08-22
 
 ### PEP 639 / SPDX license metadata

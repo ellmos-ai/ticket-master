@@ -109,6 +109,116 @@ class TestMoveTicket(unittest.TestCase):
                 "NEUER VORGANG - darf nicht verloren gehen",
             )
 
+    def test_move_to_queued_refuses_same_id_in_another_lifecycle_folder(self):
+        """A different suffix must not hide an already visible physical copy."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source.parent.mkdir()
+            source.write_text("SOURCE", encoding="utf-8")
+            duplicate = base / "SOLVED" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            duplicate.parent.mkdir()
+            duplicate.write_text("OTHER HOST", encoding="utf-8")
+
+            with self.assertRaises(ticket_mover.DuplicateTicketIdError) as caught:
+                ticket_mover.move_ticket(source, base / "QUEUED")
+
+            message = str(caught.exception)
+            self.assertIn(str(source), message)
+            self.assertIn(str(duplicate), message)
+            self.assertEqual(source.read_text(encoding="utf-8"), "SOURCE")
+            self.assertEqual(duplicate.read_text(encoding="utf-8"), "OTHER HOST")
+            self.assertFalse((base / "QUEUED").exists())
+
+    def test_move_to_queued_matches_legacy_and_v2_names_by_canonical_id(self):
+        """Slug, host claim and routing-v2 axes are not part of the ticket ID."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = (
+                base / "INBOX" /
+                "T-20260824-422995631_legacy.ASUS-GEI.txt"
+            )
+            source.parent.mkdir()
+            source.write_text("LEGACY", encoding="utf-8")
+            duplicate = (
+                base / "USER" /
+                "T-20260824-422995631_routed.to-WORKSTATION-LG."
+                "via-claude.claim-WORKSTATION-LG.txt"
+            )
+            duplicate.parent.mkdir()
+            duplicate.write_text("ROUTING V2", encoding="utf-8")
+
+            with self.assertRaises(ticket_mover.DuplicateTicketIdError):
+                ticket_mover.move_ticket(source, base / "QUEUED")
+
+            self.assertTrue(source.is_file())
+            self.assertTrue(duplicate.is_file())
+            self.assertFalse((base / "QUEUED").exists())
+
+    def test_move_to_queued_succeeds_when_source_is_the_only_id_match(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source.parent.mkdir()
+            source.write_text("ONLY COPY", encoding="utf-8")
+
+            target = ticket_mover.move_ticket(source, base / "QUEUED")
+
+            self.assertEqual(target, base / "QUEUED" / source.name)
+            self.assertFalse(source.exists())
+            self.assertEqual(target.read_text(encoding="utf-8"), "ONLY COPY")
+
+    def test_duplicate_id_does_not_change_non_queued_moves(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source.parent.mkdir()
+            source.write_text("SOURCE", encoding="utf-8")
+            duplicate = base / "WAITING" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            duplicate.parent.mkdir()
+            duplicate.write_text("WAITING COPY", encoding="utf-8")
+
+            target = ticket_mover.move_ticket(source, base / "SOLVED")
+
+            self.assertEqual(target, base / "SOLVED" / source.name)
+            self.assertTrue(target.is_file())
+            self.assertTrue(duplicate.is_file())
+
+    def test_duplicate_arriving_during_queued_move_rolls_back_new_target(self):
+        """A post-write scan narrows the scan/open race without deleting either copy."""
+        import os
+
+        real_open = os.open
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source.parent.mkdir()
+            source.write_text("SOURCE", encoding="utf-8")
+            target = base / "QUEUED" / source.name
+            duplicate = base / "SOLVED" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            injected = False
+
+            def racing_open(path, flags, *args, **kwargs):
+                nonlocal injected
+                if Path(path) == target and not injected:
+                    duplicate.parent.mkdir()
+                    duplicate.write_text("SYNC ARRIVAL", encoding="utf-8")
+                    injected = True
+                return real_open(path, flags, *args, **kwargs)
+
+            try:
+                os.open = racing_open
+                with self.assertRaises(ticket_mover.DuplicateTicketIdError):
+                    ticket_mover.move_ticket(source, base / "QUEUED")
+            finally:
+                os.open = real_open
+
+            self.assertTrue(source.is_file())
+            self.assertEqual(source.read_text(encoding="utf-8"), "SOURCE")
+            self.assertTrue(duplicate.is_file())
+            self.assertEqual(duplicate.read_text(encoding="utf-8"), "SYNC ARRIVAL")
+            self.assertFalse(target.exists())
+
     def test_missing_source_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)

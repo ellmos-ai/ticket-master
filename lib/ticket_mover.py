@@ -15,12 +15,13 @@ write over an existing destination, using the same atomic-exclusive-create
 primitive already proven in ticket_writer.create() (`os.O_EXCL`), so the
 result does not depend on whoever calls it remembering to check first.
 
-Same-host multi-agent races (the actual failure mode here) are a purely
-local filesystem question: two agents on one host both hit the same local
-OneDrive-mirrored folder in real time, so O_EXCL's atomicity is authoritative
-immediately — no cloud sync delay is involved. Sync delay only matters for
-cross-host collisions, which the existing <HOST> filename suffix already
-handles separately.
+Same-host target-name races are a purely local filesystem question, so
+O_EXCL's atomicity is authoritative immediately.  A delayed cloud sync can
+nevertheless reveal a second physical file with the same canonical ticket ID
+under a different host/routing suffix or lifecycle folder.  Before any move
+to QUEUED, move_ticket() therefore scans the canonical flat queue and refuses
+when another visible file owns the same ID.  A second scan after writing but
+before deleting the source narrows the local scan/write race as well.
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ import time
 from pathlib import Path
 
 try:  # package import
-    from .ticket_writer import TICKET_FILENAME_RE
+    from .ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
     from .routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -45,7 +46,7 @@ try:  # package import
         release_contract,
     )
 except ImportError:  # direct import from lib on sys.path
-    from ticket_writer import TICKET_FILENAME_RE
+    from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
     from routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -60,6 +61,7 @@ except ImportError:  # direct import from lib on sys.path
 
 __all__ = [
     "ClaimDeniedError",
+    "DuplicateTicketIdError",
     "NestedLifecycleDestinationError",
     "TicketCollisionError",
     "claim_contract",
@@ -126,6 +128,10 @@ REACTIVATION_TARGET = "ACTIONABLE"
 
 class TicketCollisionError(RuntimeError):
     """Raised when a move target already holds a (different) ticket file."""
+
+
+class DuplicateTicketIdError(TicketCollisionError):
+    """Raised when QUEUED would contain an already visible ticket ID copy."""
 
 
 class DestinationLooksLikeFileError(ValueError):
@@ -234,6 +240,62 @@ def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
     return queue_root(source) / dest.name
 
 
+def _ticket_identity(filename: str) -> tuple[str, int] | None:
+    """Return the canonical date/number identity for legacy or routing-v2 names."""
+    try:
+        parsed = parse_ticket_name(filename)
+    except RoutingContractError:
+        return None
+    return parsed.date, int(parsed.number)
+
+
+def _same_physical_file(left: Path, right: Path) -> bool:
+    """Compare existing files by identity, with a path fallback for I/O races."""
+    try:
+        return left.samefile(right)
+    except OSError:
+        return os.path.normcase(os.path.abspath(left)) == os.path.normcase(
+            os.path.abspath(right)
+        )
+
+
+def _assert_unique_id_for_queued_move(
+    source: Path,
+    queue_base: Path,
+    *,
+    allowed: tuple[Path, ...] = (),
+) -> None:
+    """Fail closed if another visible lifecycle file owns the source ticket ID.
+
+    ``iter_lifecycle_files`` is the shared filename/lifecycle authority used by
+    ticket creation and audit code.  Reusing it keeps this gate aware of both
+    legacy host suffixes and routing-schema-v2 axes without introducing a
+    second ticket-name grammar.
+    """
+    identity = _ticket_identity(source.name)
+    if identity is None:
+        raise TicketCollisionError(
+            f"cannot establish ticket ID before move to QUEUED: {source}"
+        )
+    ignored = (source, *allowed)
+    conflicts: list[Path] = []
+    for entry, datestr, number, _suffix in iter_lifecycle_files(queue_base):
+        if (datestr, number) != identity:
+            continue
+        if any(_same_physical_file(entry, candidate) for candidate in ignored):
+            continue
+        conflicts.append(entry)
+    if not conflicts:
+        return
+    found = sorted((source, *conflicts), key=lambda path: str(path).casefold())
+    rendered = "; ".join(str(path) for path in found)
+    ticket_id = f"T-{identity[0]}-{identity[1]}"
+    raise DuplicateTicketIdError(
+        f"duplicate ticket ID {ticket_id} detected before move to QUEUED; "
+        f"refusing without mutation. Found paths: {rendered}"
+    )
+
+
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
                 new_name: str | None = None,
@@ -339,6 +401,9 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
             target_name = source.name
 
     target = dest_dir / target_name
+    queued_id_gate = dest_dir.name == QUEUED_SUBDIR
+    if queued_id_gate:
+        _assert_unique_id_for_queued_move(source, dest_dir.parent)
     if target.exists():
         raise TicketCollisionError(
             f"move target already exists, refusing to overwrite: {target}"
@@ -370,6 +435,13 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
         if source.read_bytes() != data:
             raise RuntimeError(
                 f"source changed during move, aborting without deleting it: {source}"
+            )
+        if queued_id_gate:
+            # Catch a differently named copy that became visible after the
+            # preflight scan but before source deletion.  The just-written
+            # target is expected during this second scan and is ignored.
+            _assert_unique_id_for_queued_move(
+                source, dest_dir.parent, allowed=(target,)
             )
         written_ok = True
     finally:
