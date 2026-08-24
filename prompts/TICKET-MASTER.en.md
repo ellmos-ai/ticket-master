@@ -555,6 +555,14 @@ may additionally be selected when assigning the task — this is a persona
 choice for the executing worker, not a routing hop; the skills are handed
 over either way.
 
+**Standards-integration clause (P-009):** Pass this to the worker: if a
+ticket's user idea can be improved on, or at least matched, by an established
+standard (internal or external — best practice, protocol, ISO), integrate it
+AND implement the user's good core ideas — instead of either blindly rebuilding
+from scratch or quietly substituting the standard for the idea. If none fits,
+say so openly and offer a solution idea of your own. Full text:
+local policy library, entry P-009 (standards integration).
+
 **(0) Permission check (Phase 3, T-20260704-02):** Before EVERY worker spawn,
 check the target project/endpoint for `LOCK*.txt` and/or a
 `LOCK.permissions.json` (e.g. provided by a lock-master-style lock/permission

@@ -580,6 +580,14 @@ darf bei der Beauftragung zusätzlich zu den Skills die zur Domäne passende
 Rolle gewählt werden — das ist eine Persona-Wahl für den ausführenden Worker,
 kein Routing-Hop; die Skills werden trotzdem mitgegeben.
 
+**Standards-Integrations-Klausel (P-009):** Gib dem Worker mit: lässt sich die
+Nutzeridee im Ticket durch einen etablierten Standard (intern oder extern,
+Best Practice, Protokoll, ISO) verbessern oder mindestens gleichwertig
+abdecken, integriert er ihn UND setzt die guten Kernideen des Nutzers um —
+statt entweder blind nachzubauen oder den Standard stattdessen unterzuschieben.
+Passt keiner, benennt er das offen und liefert eine eigene Lösungsidee.
+Volltext: lokale Policy-Bibliothek, Eintrag P-009 (Standards-Integration).
+
 **(0) Rechteprüfung (Phase 3, T-20260704-02):** Vor JEDEM Worker-Spawn im
 Zielprojekt/-endpunkt prüfen, ob dort `LOCK*.txt` und/oder eine
 `LOCK.permissions.json` liegen (z.B. bereitgestellt von einem lock-master-
