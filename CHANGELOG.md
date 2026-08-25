@@ -4,6 +4,18 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### TM shorthand + boot short-help
+
+- New optional shorthand notation for the user<->ticket-master chat interaction
+  (`in:`/`go:` intake gate, `-> a -> act -> r:<format>` pipeline stages, `-d`
+  decision-shot modifier). Free text remains valid at all times; unknown or
+  malformed notation is treated as free text, never as an error
+  (T-20260825-651477920).
+- `prompts/TICKET-MASTER.de.md` / `.en.md`: new step (c5) prints a short,
+  one-time help block right before POSITION 0 — the shorthand table plus
+  one-liners for `decision-shot`, `work-autonomous`, `/operator` and the
+  `sparmodus`/`auto-spar`/`notaus` token-budget family.
+
 ### Fail-closed queue ID gate
 
 - Moves to `QUEUED` now refuse a ticket ID that is already present under any

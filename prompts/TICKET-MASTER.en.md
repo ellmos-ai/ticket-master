@@ -371,6 +371,35 @@ only the idempotent `route_intent` (ticket ID, target snapshot, receipt target).
 Do not implement a second inbox/outbox, retry loop, drop-zone or transport
 deduplication.
 
+### (c5) Print the short help (TM shorthand + useful skills)
+
+Once, right before reaching POSITION 0, print this short help. Usage is
+**optional**: free text stays valid at all times, text without a prefix
+runs through the existing default logic, and unknown/malformed notation is
+treated as free text — never as an error.
+
+**TM shorthand** (prefix at the start of the line, stages chained with `->`):
+
+| Token | Meaning |
+|---|---|
+| `in: <text>` | intake only (queue, no processing now) |
+| `go: <text>` | intake + tendency toward immediate processing |
+| `-> a` | analysis |
+| `-> act` (synonym: `-> task`) | implementation |
+| `-> r` or `-> r:pdf\|md\|chat\|all` | response, optional target format (empty = config default) |
+| `-d` | also: surface decisions from the analysis directly (`decision-shot`) |
+
+Examples: `go: <text> -> a -> r` (analyze, respond) ·
+`go: <text> -> act -> r:pdf` (implement directly, respond as PDF) ·
+`go: <text> -> a -> act -> r -d` (analyze, implement, respond, surface
+decisions directly).
+
+**Useful skills:**
+- `decision-shot` — short format for one already-analyzed decision (context + pros/cons)
+- `work-autonomous` — stop condition for autonomous loops: only stop once it's evidenced nothing actionable remains
+- `/operator` — break a task into sub-assignments, brief workers, verify results against evidence
+- `sparmodus` / `auto-spar` / `notaus` — token-budget stages for a tight session limit
+
 ### (d) Go to POSITION 0
 
 **POSITION 0** = inactive waiting state. The session is open; the agent does

@@ -388,6 +388,35 @@ Cross-System-Dienst besitzt das Transportprotokoll.
 Receipt-Ziel). Implementiere keine zweite Inbox/Outbox, Retry-Schleife,
 Drop-Zone oder Transportdeduplizierung.
 
+### (c5) Kurzhilfe ausgeben (TM-Kurzsprache + nützliche Skills)
+
+Einmal, bevor POSITION 0 erreicht wird, diese kurze Hilfe ausgeben. Nutzung
+ist **optional**: Freitext bleibt jederzeit gültig, Text ohne Präfix läuft
+über die bestehende Default-Logik, und unbekannte/fehlerhafte Notation wird
+als Freitext behandelt — nie als Fehler.
+
+**TM-Kurzsprache** (Präfix am Zeilenanfang, Stufen mit `->` verkettet):
+
+| Token | Bedeutung |
+|---|---|
+| `in: <text>` | nur aufnehmen (Warteschlange, keine Bearbeitung jetzt) |
+| `go: <text>` | aufnehmen + Tendenz zu sofortiger Bearbeitung |
+| `-> a` | Analyse |
+| `-> act` (Synonym: `-> task`) | Umsetzung |
+| `-> r` bzw. `-> r:pdf\|md\|chat\|all` | Antwort, optional Zielformat (leer = Konfig-Default) |
+| `-d` | zusätzlich: Entscheidungen aus der Analyse direkt vorlegen (`decision-shot`) |
+
+Beispiele: `go: <text> -> a -> r` (analysieren, antworten) ·
+`go: <text> -> act -> r:pdf` (direkt umsetzen, als PDF antworten) ·
+`go: <text> -> a -> act -> r -d` (analysieren, umsetzen, antworten,
+Entscheidungen direkt mit vorlegen).
+
+**Nützliche Skills:**
+- `decision-shot` — Kurzformat für eine fertig analysierte Entscheidung (Kontext + Pro/Contra)
+- `work-autonomous` — Abbruchregel für autonome Loops: erst aufhören, wenn belegt nichts mehr zu tun ist
+- `/operator` — Aufgabe in Teilaufträge zerlegen, Worker beauftragen, Ergebnisse evidenzbasiert prüfen
+- `sparmodus` / `auto-spar` / `notaus` — Token-Budget-Stufen bei knappem Session-Limit
+
 ### (d) Auf POSITION 0 gehen
 
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut
