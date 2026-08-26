@@ -269,3 +269,15 @@ Die Aufgaben 1914, 1917 und 1919 wurden im kanonischen Clone bearbeitet. Der
 Der aktuelle Lauf hatte 95 Pytest-Erfolge; Prompt-Resolver, CLI-Ausgabe und
 Intake-Kollisionen wurden gezielt geprüft. Release- und Tag-Aktionen blieben
 unverändert ausstehend.
+
+## Entscheidungs-Readback vor Eskalation (2026-08-26)
+
+- [ ] **(hoch)** Vor dem Verschieben eines Tickets nach `USER/` oder dem
+      Markieren „Entscheidung offen“ den kanonischen Entscheidungsindex und
+      die dort angegebene Primärquelle nach Ticketbegriffen, F-/E-Kennung und
+      Entscheidungs-ID durchsuchen. Lehrfall T-20260824-857836410: E8/F17
+      wurde am 25.08. als offen gemeldet, obwohl D-20260731-010 den Entscheid
+      seit 31.07. vollständig enthielt und ein Register-Readback vom 22.08.
+      ausdrücklich vor erneuter Vorlage warnte. Gewünschtes Gate: Ohne
+      protokollierten Index- und Primärquellen-Treffer darf der Router nur
+      „nicht gefunden“, nicht „offen“ behaupten.
