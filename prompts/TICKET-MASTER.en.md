@@ -113,6 +113,16 @@ A rename within the same directory is atomic on NTFS/cloud-sync. If a conflict
 copy appears, one system has won the claim; the other must roll back and pick
 the next unclaimed ticket.
 
+**Host verification is mandatory immediately before every first claim, for
+both legacy and routing v2.** The asserted `<HOST>` must match the live system
+hostname and its unique canonical self-slot snapshot plus `repos.json`:
+`python lib/ticket_mover.py --verify-claim-host <HOST> --sync-root
+<canonical-self-slot-root>`. Missing or conflicting evidence fails closed. Legacy
+claims can combine verification and rename with `--claim-current-host <ticket>
+--host <HOST> --sync-root <...>`; routing v2 invokes `claim_contract()` directly
+after the universal preflight. Session context, model memory and environment
+variables are not host authorities.
+
 **REQUIRED (since T-20260808-03): never hand-copy or hand-overwrite.**
 Moving a ticket between lifecycle folders (e.g. into `SOLVED/`) must never be
 done via read+write or a generic `mv`, only through `lib/ticket_mover.py

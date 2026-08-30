@@ -27,8 +27,10 @@ before deleting the source narrows the local scan/write race as well.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
+import socket
 import time
 from pathlib import Path
 
@@ -62,9 +64,12 @@ except ImportError:  # direct import from lib on sys.path
 __all__ = [
     "ClaimDeniedError",
     "DuplicateTicketIdError",
+    "HostIdentityError",
     "NestedLifecycleDestinationError",
     "TicketCollisionError",
     "claim_contract",
+    "claim_current_host",
+    "verify_claim_host",
     "complete_contract",
     "move_ticket",
     "normalize_expired_binding",
@@ -272,6 +277,8 @@ def _assert_unique_id_for_queued_move(
     legacy host suffixes and routing-schema-v2 axes without introducing a
     second ticket-name grammar.
     """
+
+
     identity = _ticket_identity(source.name)
     if identity is None:
         raise TicketCollisionError(
@@ -294,6 +301,93 @@ def _assert_unique_id_for_queued_move(
         f"duplicate ticket ID {ticket_id} detected before move to QUEUED; "
         f"refusing without mutation. Found paths: {rendered}"
     )
+
+
+class HostIdentityError(RuntimeError):
+    """Raised when the live host and its canonical self-slot do not agree."""
+
+
+def resolve_live_host(sync_root: Path | str) -> tuple[str, str, Path]:
+    """Resolve host identity from the live OS plus the canonical self-slot."""
+    root = Path(sync_root).expanduser().resolve()
+    host = socket.gethostname().strip()
+    if not host or not re.fullmatch(r"[A-Za-z0-9_-]+", host):
+        raise HostIdentityError(f"live hostname is empty or unsafe: {host!r}")
+    snapshots = root / "_config-state" / "snapshots"
+    matches: list[tuple[Path, dict]] = []
+    if snapshots.is_dir():
+        for path in sorted(snapshots.glob("*.json")):
+            try:
+                data = json.loads(path.read_text(encoding="utf-8-sig"))
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if isinstance(data, dict) and str(data.get("host", "")).casefold() == host.casefold():
+                matches.append((path, data))
+    if len(matches) != 1:
+        raise HostIdentityError(
+            f"live host {host!r} requires exactly one canonical self-slot snapshot; "
+            f"found {len(matches)} under {snapshots}"
+        )
+    snapshot, data = matches[0]
+    slot = str(data.get("slot", "")).strip()
+    if not slot or snapshot.stem.casefold() != slot.casefold():
+        raise HostIdentityError(f"snapshot/slot mismatch in {snapshot}: slot={slot!r}")
+    manifest = root / slot / "repos.json"
+    try:
+        manifest_data = json.loads(manifest.read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise HostIdentityError(f"canonical self-slot manifest unreadable: {manifest}") from exc
+    if (
+        not isinstance(manifest_data, dict)
+        or str(manifest_data.get("host", "")).casefold() != host.casefold()
+        or str(manifest_data.get("slot", "")).casefold() != slot.casefold()
+    ):
+        raise HostIdentityError(
+            f"live host, snapshot and self-slot manifest disagree: {manifest}"
+        )
+    return host, slot, snapshot
+
+
+def verify_claim_host(claim_host: str, *, sync_root: Path | str) -> tuple[str, str, Path]:
+    """Verify an asserted claim host for legacy and routing-v2 claim paths."""
+    host, slot, snapshot = resolve_live_host(sync_root)
+    if claim_host.casefold() != host.casefold():
+        raise HostIdentityError(
+            f"asserted claim host {claim_host!r} does not match verified live host {host!r}"
+        )
+    return host, slot, snapshot
+
+
+def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path | str,
+                       dry_run: bool = False) -> Path:
+    """Fail-closed legacy claim after verifying the asserted claim host."""
+    source = Path(ticket)
+    if not source.is_file():
+        raise FileNotFoundError(f"ticket does not exist or is not a file: {source}")
+    if source.parent.name not in WORKING_SUBDIRS:
+        raise HostIdentityError(
+            f"current-host claims are allowed only in {WORKING_SUBDIRS}: {source}"
+        )
+    host, _slot, _snapshot = verify_claim_host(claim_host, sync_root=sync_root)
+    try:
+        parsed = parse_ticket_name(source.name)
+    except RoutingContractError as exc:
+        raise HostIdentityError(f"cannot claim invalid ticket name: {source.name}") from exc
+    if parsed.is_v2:
+        raise HostIdentityError("routing-v2 tickets must use claim_contract()")
+    existing = claim_suffix(source.name)
+    if existing:
+        if existing.casefold() == host.casefold():
+            return source
+        raise HostIdentityError(
+            f"ticket is already claimed by {existing!r}; verified live host is {host!r}"
+        )
+    match = TICKET_FILENAME_RE.match(source.name)
+    if not match:
+        raise HostIdentityError(f"cannot build legacy claim name: {source.name}")
+    slug = f"_{match.group('slug')}" if match.group("slug") else ""
+    claimed_name = f"T-{match.group('date')}-{match.group('number')}{slug}.{host}.txt"
+    return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
 
 
 def move_ticket(source: Path | str, dest_dir: Path | str,
@@ -639,9 +733,51 @@ def _cli(argv: list[str] | None = None) -> int:
                               "--release-session would free; change nothing."))
     parser.add_argument("--mark-delegated", metavar="TICKET",
                         help="Write a DELEGIERT_AN marker into TICKET. Requires --agent.")
+    parser.add_argument("--claim-current-host", metavar="TICKET",
+                        help=("Claim TICKET after live host + self-slot verification. "
+                              "Requires --host and --sync-root."))
+    parser.add_argument("--verify-claim-host", metavar="HOST",
+                        help=("Verify an asserted host before any legacy or routing-v2 "
+                              "claim. Requires --sync-root."))
+    parser.add_argument("--sync-root",
+                        help="Canonical .SYNC root for --claim-current-host.")
     parser.add_argument("--agent",
                         help="Agent identity for --mark-delegated, e.g. claude-code@ASUS-GEI.")
     args = parser.parse_args(argv)
+
+    if args.verify_claim_host:
+        if (args.claim_current_host or args.mark_delegated or args.release_session
+                or args.source or args.dest_dir or args.dry_run):
+            parser.error("--verify-claim-host cannot be combined with another operation")
+        if not args.sync_root:
+            parser.error("--verify-claim-host requires --sync-root")
+        try:
+            host, slot, snapshot = verify_claim_host(
+                args.verify_claim_host, sync_root=args.sync_root
+            )
+        except HostIdentityError as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"VERIFIED CLAIM HOST: {host} (slot={slot}, snapshot={snapshot})")
+        return 0
+
+    if args.claim_current_host:
+        if args.mark_delegated or args.release_session or args.source or args.dest_dir:
+            parser.error("--claim-current-host cannot be combined with another operation")
+        if not args.host or not args.sync_root:
+            parser.error("--claim-current-host requires --host and --sync-root")
+        try:
+            target = claim_current_host(
+                args.claim_current_host, claim_host=args.host,
+                sync_root=args.sync_root, dry_run=args.dry_run,
+            )
+        except (HostIdentityError, TicketCollisionError, FileNotFoundError,
+                RuntimeError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        label = "WOULD CLAIM" if args.dry_run else "CLAIMED"
+        print(f"{label}: {target}")
+        return 0
 
     if args.mark_delegated:
         if args.dry_run:

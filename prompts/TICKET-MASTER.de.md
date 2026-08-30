@@ -118,6 +118,17 @@ Ein Rename im selben Verzeichnis ist auf NTFS/Cloud-Sync atomar. Wenn eine
 Konfliktkopie entsteht, hat ein System den Claim gewonnen; das andere muss
 zurückrollen und das nächste unclaimed Ticket nehmen.
 
+**Unmittelbar vor jedem ersten Claim ist die Hostprüfung Pflicht — für Legacy
+und Routing v2.** Der behauptete `<HOST>` muss gegen den Live-Hostnamen und
+den genau dazu passenden kanonischen Self-Slot-Snapshot samt `repos.json`
+geprüft werden: `python lib/ticket_mover.py --verify-claim-host <HOST>
+--sync-root <kanonischer-Self-Slot-Root>`. Bei fehlendem oder widersprüchlichem
+Beleg wird fail-closed abgebrochen. Legacy-Claims können Prüfung und Rename
+atomar mit `--claim-current-host <ticket> --host <HOST> --sync-root <...>`
+ausführen; Routing-v2 ruft direkt nach dem Universal-Preflight seinen
+`claim_contract()`-Pfad auf. Sitzungsverlauf, Modell-Memory und
+Umgebungsvariablen sind keine Host-Autorität.
+
 **PFLICHT (seit T-20260808-03): niemals von Hand kopieren/überschreiben.**
 Ein Ticket zwischen Lebenszyklus-Ordnern verschieben (z. B. nach `SOLVED/`)
 NIE per Lesen+Schreiben oder generischem `mv`, sondern über

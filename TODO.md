@@ -1,5 +1,16 @@
 # TODO — ticket-master
 
+## Host-Provenienz 2026-08-27
+
+- [x] **Claims gegen Live-System und Self-Slot fail-closed absichern
+      (T-20260827-773190540).** `ticket_mover.py --claim-current-host` prüft
+      den ausdrücklich behaupteten Host gegen `socket.gethostname()`, genau
+      einen passenden `_config-state/snapshots/<slot>.json` und das
+      `repos.json` desselben Slots. Session-/Memory-Kontext und
+      Umgebungsvariablen sind keine Host-Autorität; jede Abweichung lässt die
+      Ticketdatei unverändert. Regressionen decken falschen Claimhost,
+      Snapshot- und Manifest-Widerspruch ab.
+
 ## Security Audit 2026-07-16
 
 - [x] `.gitignore` schützt jetzt zusätzliche lokale Credential-/Recovery- und
