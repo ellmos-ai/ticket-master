@@ -292,3 +292,20 @@ unverändert ausstehend.
       ausdrücklich vor erneuter Vorlage warnte. Gewünschtes Gate: Ohne
       protokollierten Index- und Primärquellen-Treffer darf der Router nur
       „nicht gefunden“, nicht „offen“ behaupten.
+
+## Rückspiegelung aus FolderHome (T-20260830-294539438, 2026-08-30)
+
+Quelle: `ellmos-ai/FolderHome` @ `f9fdb6a` (unter Judging-Lock, nur gelesen),
+`src/folderhome/application/master_agent.py::confirm_master_agent_plan`,
+`application/workflow_execution.py`. Herkunft bei Übernahme im Code-Kommentar mitführen.
+
+- [ ] **Hashgebundene Einmal-Freigabe für `USER/freigabe`**: FolderHome erzeugt
+      `plan_id = "plan_" + sha256(plan)[:20]`; eine Freigabe gilt nur bei **exakter**
+      `plan_id`-Übereinstimmung und ist einmalig (`MasterConfirmationReceipt`). Übertragen:
+      Ein Ticket in `USER/freigabe` trägt `FREIGABE_ID: frg_<sha256(freizugebender
+      Auftragstext)[:20]>`; die Nutzerantwort muss diese ID nennen, sonst zählt sie nicht als
+      Freigabe (verhindert, dass eine spätere Textänderung stillschweigend „mitfreigegeben"
+      wird). Kandidat für `ticket_mover.py --mark-released <ticket> --freigabe-id <id>`,
+      fail-closed bei Abweichung. Bezug: TODO-Punkt „Entscheidungs-Readback vor Eskalation".
+- **Verworfen (beitragsspezifisch):** Experten-Routing des Master-Agenten, Domänen-
+  Executor-Adapter (Kalender, Finanzen, Gesundheit) — Fachlogik, nicht Ticket-Routing.
