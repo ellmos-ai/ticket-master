@@ -4,6 +4,21 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Booking duty and STATUS drift audit (T-20260830-517795746)
+- `lib/ticket_audit.py`: new read-only check `status_drift()` and report key
+  `status_drift` — flags `folder-mismatch` (STATUS cluster names another
+  lifecycle folder), `unknown-status` (first token is no cluster, e.g.
+  `GELOEST`, `/REVIEW`) and `missing-status`; root counts as INBOX, `OPEN` is
+  the documented legacy alias. Human output gains a `STATUS-DRIFT` section.
+  First live run against the production queue: 130 findings, almost all
+  historical `SOLVED/` entries left on `QUEUED`/`PENDING`. Reports only,
+  never repairs. Tests: `tests/test_ticket_audit_status_drift.py`.
+- Prompts (DE/EN), section LOGGING: booking duty — a status-quo decision
+  ("keep as is") is booked like any other answer; recovery after an abort
+  is an ID-by-ID reconciliation, not a summary; after every
+  `ticket_mover.py` move the STATUS line is updated by the caller (the mover
+  does not touch it).
+
 ## [1.12.0] — 2026-08-30
 
 ### Auditor bridge (`system-auditor` integration)

@@ -70,6 +70,63 @@ def collect_ids(base: Path) -> dict[str, list[Path]]:
     return ids
 
 
+_STATUS_LINE_RE = re.compile(r"^STATUS:[ \t]*(?P<value>.*)$", re.MULTILINE)
+_STATUS_CLUSTER_RE = re.compile(r"^(\.USER|[A-Z]+)")
+_ROOT_ALIAS = "INBOX"
+# Legacy folders (PENDING/.USER) are read-only; a STATUS naming them is not
+# drift while the file still sits in that legacy folder.
+_KNOWN_STATUS_CLUSTERS = frozenset(_STATUS_SUBDIRS) | {_ROOT_ALIAS, "PENDING", ".USER"}
+_LEGACY_STATUS_ALIASES = {"OPEN": _ROOT_ALIAS}
+
+
+def status_drift(base: Path | str) -> list[dict[str, str | None]]:
+    """STATUS field vs. lifecycle folder (T-20260830-517795746, Befund 3).
+
+    Reports, never repairs: ``folder-mismatch`` (STATUS cluster names another
+    lifecycle folder), ``unknown-status`` (first token is no cluster at all,
+    e.g. ``GELOEST`` or ``/REVIEW``), ``missing-status`` (no STATUS line in
+    the first 4 KB). Only the leading cluster token is compared; the
+    subcategory and free text after it are presentation. A file in the root
+    counts as INBOX; ``OPEN`` is the documented legacy alias for it.
+    """
+    base = Path(base)
+    findings: list[dict[str, str | None]] = []
+    for sub in _LIFECYCLE_SUBDIRS:
+        directory = base / sub if sub else base
+        if not directory.is_dir():
+            continue
+        folder_cluster = sub or _ROOT_ALIAS
+        for entry in directory.iterdir():
+            if not entry.is_file():
+                continue
+            if not _LOOKS_LIKE_TICKET_RE.match(entry.name):
+                try:
+                    parse_ticket_name(entry.name)
+                except RoutingContractError:
+                    continue
+            try:
+                head = entry.read_text(encoding="utf-8", errors="replace")[:4096]
+            except OSError:
+                continue
+            match = _STATUS_LINE_RE.search(head)
+            if match is None:
+                findings.append({"path": str(entry), "folder": folder_cluster,
+                                 "status": None, "kind": "missing-status"})
+                continue
+            value = match.group("value").strip()
+            token = _STATUS_CLUSTER_RE.match(value)
+            cluster = _LEGACY_STATUS_ALIASES.get(token.group(1), token.group(1)) if token else None
+            if cluster not in _KNOWN_STATUS_CLUSTERS:
+                kind = "unknown-status"
+            elif cluster != folder_cluster:
+                kind = "folder-mismatch"
+            else:
+                continue
+            findings.append({"path": str(entry), "folder": folder_cluster,
+                             "status": value[:80], "kind": kind})
+    return sorted(findings, key=lambda f: str(f["path"]))
+
+
 def audit(base: Path | str) -> dict:
     """Runs all structural checks. Returns a JSON-serializable report:
 
@@ -182,6 +239,7 @@ def audit(base: Path | str) -> dict:
         "nested_lifecycle_details": sorted(
             nested_lifecycle_details, key=lambda detail: str(detail["source"])
         ),
+        "status_drift": status_drift(base),
     }
 
 
@@ -240,6 +298,14 @@ def _print_human(report: dict) -> None:
             print(f"    TARGET-COLLISION: {str(detail['target_collision']).lower()}")
     else:
         print("NESTED-LIFECYCLE-TICKETS: none")
+    status_drift_findings = report.get("status_drift", [])
+    if status_drift_findings:
+        print(f"STATUS-DRIFT ({len(status_drift_findings)}):")
+        for finding in status_drift_findings:
+            print(f"  {finding['path']}")
+            print(f"    KIND: {finding['kind']}  FOLDER: {finding['folder']}  STATUS: {finding['status']}")
+    else:
+        print("STATUS-DRIFT: none")
 
 
 def _cli(argv: list[str] | None = None) -> int:

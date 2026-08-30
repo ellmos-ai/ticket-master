@@ -213,6 +213,25 @@ under its claimed name rather than letting the unblocking fail.
 - **Deprecated:** `tickets/_logs/INTAKE-TRIAGE-LOG.txt` (the pre-1.5.0 shared
   intake log). Kept for legacy setups; do not write new lines to it.
 
+### Booking duty: status-quo decisions, ID reconciliation, STATUS drift (T-20260830-517795746)
+
+- **A "no" is booked like a "yes".** Every ID put in front of the user
+  (ticket ID, D-ID, briefing tag) gets a HISTORY entry in the affected ticket
+  after the answer — **also** for "keep the status quo". A status-quo decision
+  otherwise produces nothing (no ticket, no commit) and is indistinguishable
+  from "never asked"; measured: exactly this one of 41 decisions slipped.
+- **Recovery after an abort = ID reconciliation, not a summary.** Whoever
+  books after a notaus/crash lists every presented ID with the place it was
+  booked. "All booked" without that list is not an acceptance.
+- **STATUS vs. folder:** `python lib/ticket_audit.py <tickets_dir>` reports
+  `STATUS-DRIFT` (cluster in the STATUS field ≠ lifecycle folder, unknown
+  STATUS value such as `GELOEST`/`/REVIEW`, missing STATUS). Run it once at
+  boot. Fix a drift either by moving the file with `ticket_mover.py` into the
+  folder its STATUS claims, or by updating STATUS when the folder is right —
+  after every `ticket_mover.py` move **always** update the STATUS line, the
+  mover does not touch it. Old drift in `SOLVED/` is history and is not
+  groomed.
+
 ---
 
 ## STARTUP SEQUENCE

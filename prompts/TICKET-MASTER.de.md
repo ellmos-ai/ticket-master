@@ -224,6 +224,26 @@ seinem geclaimten Namen weiter, statt die Entblockung scheitern zu lassen.
   Intake-Log vor 1.5.0). Bleibt für Alt-Setups liegen; keine neuen Zeilen
   mehr hineinschreiben.
 
+### Buchungspflicht: Status-quo-Entscheide, Kennungsabgleich, STATUS-Drift (T-20260830-517795746)
+
+- **Ein „Nein" wird gebucht wie ein „Ja".** Jede dem User vorgelegte Kennung
+  (Ticket-ID, D-ID, Briefing-Kürzel) bekommt nach seiner Antwort eine
+  VERLAUF-Buchung im betroffenen Ticket — **auch** bei „beim Ist-Zustand
+  bleiben". Ein Status-quo-Entscheid erzeugt sonst nichts (kein Ticket, kein
+  Commit) und ist von „nie gefragt" nicht unterscheidbar; gemessen: genau
+  diese eine von 41 Entscheidungen fiel durch.
+- **Erholung nach Abbruch = Kennungsabgleich, keine Sammelmeldung.** Wer nach
+  Notaus/Absturz nachbucht, listet jede vorgelegte Kennung mit ihrer
+  Buchungsstelle. „Alle gebucht" ohne diese Liste ist keine Abnahme.
+- **STATUS ↔ Ordner:** `python lib/ticket_audit.py <tickets_dir>` meldet
+  `STATUS-DRIFT` (Cluster im STATUS-Feld ≠ Lebenszyklus-Ordner, unbekannter
+  STATUS-Wert wie `GELOEST`/`/REVIEW`, fehlendes STATUS). Beim Boot einmal
+  laufen lassen. Ein Drift wird behoben, indem entweder die Datei per
+  `ticket_mover.py` in den Ordner wandert, den ihr STATUS behauptet, oder der
+  STATUS nachgezogen wird, wenn der Ordner stimmt — nach `ticket_mover.py`
+  **immer** die STATUS-Zeile mitziehen, der Mover ändert sie nicht. Alt-Drift
+  in `SOLVED/` ist Historie und wird nicht nachgepflegt.
+
 ---
 
 ## STARTSEQUENZ

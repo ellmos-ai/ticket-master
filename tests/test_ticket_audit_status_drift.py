@@ -1,0 +1,66 @@
+"""T-20260830-517795746 Befund 3: STATUS-Feld vs. Lebenszyklus-Ordner --
+Drift wird gemeldet, nie repariert."""
+
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
+
+import ticket_audit  # noqa: E402
+
+
+def _ticket(path: Path, status: str | None) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["ID:            T-20260830-000000001", "TITEL:         x"]
+    if status is not None:
+        lines.append(f"STATUS:        {status}")
+    lines.append("PRIORITAET:    mittel")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+class TestStatusDrift(unittest.TestCase):
+    def test_clean_bestand_has_no_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _ticket(base / "ACTIONABLE" / "T-20260830-000000001.txt",
+                    "ACTIONABLE (seit 2026-08-30) — Freitext dahinter ist erlaubt")
+            _ticket(base / "USER" / "T-20260830-000000002.ASUS-GEI.txt",
+                    "USER/decision (seit 2026-08-30)")
+            _ticket(base / "T-20260830-000000003.txt", "INBOX")
+            _ticket(base / "T-20260830-000000004.txt", "OPEN")  # Legacy-Alias fuer INBOX
+            _ticket(base / "PENDING" / "T-20260801-01.txt", "PENDING")
+            self.assertEqual(ticket_audit.status_drift(base), [])
+
+    def test_folder_mismatch_unknown_and_missing_are_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _ticket(base / "WAITING" / "T-20260830-000000001.txt",
+                    "QUEUED (in Arbeit durch Session X)")          # Ordner WAITING, STATUS QUEUED
+            _ticket(base / "WAITING" / "T-20260830-000000002.txt", "/REVIEW — Fix gepusht")
+            _ticket(base / "SOLVED" / "T-20260830-000000003.txt", "GELOEST")
+            _ticket(base / "BLOCKED" / "T-20260830-000000004.txt", None)
+            findings = ticket_audit.status_drift(base)
+            kinds = {Path(f["path"]).name: f["kind"] for f in findings}
+            self.assertEqual(kinds, {
+                "T-20260830-000000001.txt": "folder-mismatch",
+                "T-20260830-000000002.txt": "unknown-status",
+                "T-20260830-000000003.txt": "unknown-status",
+                "T-20260830-000000004.txt": "missing-status",
+            })
+            self.assertEqual(findings[0]["folder"], "BLOCKED")  # sortiert nach Pfad
+
+    def test_audit_report_carries_status_drift_and_ignores_non_tickets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _ticket(base / "QUEUED" / "T-20260830-000000001.txt", "ACTIONABLE (seit 2026-08-30)")
+            (base / "QUEUED" / "notizen.md").write_text("STATUS: SOLVED\n", encoding="utf-8")
+            report = ticket_audit.audit(base)
+            self.assertEqual(len(report["status_drift"]), 1)
+            self.assertEqual(report["status_drift"][0]["kind"], "folder-mismatch")
+
+
+if __name__ == "__main__":
+    unittest.main()
