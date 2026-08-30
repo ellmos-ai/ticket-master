@@ -413,6 +413,76 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
         return str(target)
 
 
+_FORMALIZED_SUBDIR = "_formalisiert"
+
+
+def _archive_informal_source(source: Path, tickets_dir: Path) -> None:
+    """Moves a formalized informal entry out of INBOX/, never deletes it."""
+    if not source.exists():
+        return
+    archive_dir = Path(tickets_dir) / "INBOX" / _FORMALIZED_SUBDIR
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    target = archive_dir / source.name
+    if target.exists():
+        return  # already archived under this name -- leave both alone
+    source.replace(target)
+
+
+def formalize_informal_entry(
+    source: Path, tickets_dir: Path, *, submitter: str | None = None,
+    priority: str = "mittel", pipeline: str = "<offen>", project: str | None = None,
+    today: str | None = None, rng=None,
+) -> str:
+    """Turns one formless INBOX entry (Nutzerentscheid 3A, T-20260830-145228426:
+    a file in INBOX/ without the "T-" ticket prefix) into a regular ticket.
+
+    A header is prepended via create(); TITLE is the first non-empty line of
+    the source (truncated). The original wording is kept byte-identical in an
+    "ORIGINALTEXT (unveraendert, massgeblich)" block -- formalizing means
+    putting a head in front, never rewriting the text (precedent:
+    T-20260830-167725484). The source file is archived to
+    INBOX/_formalisiert/, never deleted.
+
+    Idempotent: if any lifecycle ticket already names this source's filename,
+    no second ticket is created -- the existing ticket's path is returned and
+    the source is (re-)archived.
+    """
+    if tickets_dir is None:
+        raise ValueError(
+            "tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+    source = Path(source)
+    tickets_dir = Path(tickets_dir)
+    text = source.read_text(encoding="utf-8")
+    marker = source.name
+
+    for entry, _date, _number, _suffix in iter_lifecycle_files(tickets_dir):
+        try:
+            existing = entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if marker in existing:
+            _archive_informal_source(source, tickets_dir)
+            return str(entry)
+
+    submitter_name = submitter or source.stem
+    submitted_at = datetime.fromtimestamp(source.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+    first_line = next((line.strip() for line in text.splitlines() if line.strip()), marker)
+    title = first_line[:120]
+    body = (
+        f"Formlos eingereicht von {submitter_name} am {submitted_at} "
+        f"(Quelle: {marker}).\n\n"
+        "--- ORIGINALTEXT (unveraendert, massgeblich) ---\n"
+        f"{text}\n"
+        "--- ENDE ORIGINALTEXT ---\n"
+    )
+    ticket_path = create(
+        title, body, project=project, priority=priority, pipeline=pipeline,
+        tickets_dir=tickets_dir, today=today, rng=rng,
+    )
+    _archive_informal_source(source, tickets_dir)
+    return ticket_path
+
+
 def create_routed_ticket(
     title: str,
     body: str,
@@ -571,12 +641,14 @@ def _cli(argv: list[str] | None = None) -> int:
             "(T-YYYYMMDD-#########.txt in INBOX/)."
         ),
     )
-    parser.add_argument("--title", required=True)
+    parser.add_argument("--title")
     parser.add_argument("--body", default="")
     parser.add_argument("--project", default=None)
     parser.add_argument("--priority", default="mittel")
     parser.add_argument("--pipeline", default="<offen>")
     parser.add_argument("--tickets-dir", default=None)
+    parser.add_argument("--from-file", help="formalize one formless INBOX entry (Entscheid 3A)")
+    parser.add_argument("--submitter", default=None, help="with --from-file: submitter name (default: filename)")
     parser.add_argument("--ticket-kind", choices=("normal", "transfer", "fork"))
     parser.add_argument("--target-kind", choices=("any", "all", "grouped", "exact"))
     parser.add_argument("--target")
@@ -592,8 +664,17 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--execution-matrix", help="optional JSON file for via-mixed")
     parser.add_argument("--idempotency-key", help="stable caller key for retry-safe creation")
     args = parser.parse_args(argv)
+    if not args.from_file and not args.title:
+        parser.error("--title is required unless --from-file is set")
     try:
-        if args.ticket_kind or args.target_kind or args.via or args.route_alias:
+        if args.from_file:
+            path = formalize_informal_entry(
+                Path(args.from_file),
+                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                submitter=args.submitter, project=args.project,
+                priority=args.priority, pipeline=args.pipeline,
+            )
+        elif args.ticket_kind or args.target_kind or args.via or args.route_alias:
             if not args.systems_registry:
                 raise ValueError("--systems-registry is required for routing schema v2")
             import json

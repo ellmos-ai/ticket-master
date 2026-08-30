@@ -19,12 +19,23 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-08-30: `275 passed` plus 13 subtests via
+- Local verification on 2026-08-30: `310 passed` plus 13 subtests via
   `python -m pytest -q`.
 - Optional `system-auditor` bridge (`lib/auditor_bridge.py`): opt-in
   spawn/skip decision for the sibling `ellmos-ai/system-auditor` module,
   gated by a three-valued sparmodus read and never recomputing
   system-auditor's own window/rotation logic. See prompts step (c6).
+- Informal intake (`lib/ticket_writer.py --from-file`, Entscheid 3A): a file
+  dropped into `INBOX/` without the `T-` prefix is formalized with a
+  byte-identical "ORIGINALTEXT" block and archived to
+  `INBOX/_formalisiert/`; `ticket_audit.py` reports it as `informal_entries`
+  and gains `--lint` (required fields, STATUS vocabulary, duplicate
+  blocks). See prompts step (c7).
+- Boot-menu role spawn (`lib/boot_menu.py --offer`, Entscheid 5A):
+  pure-data offer of TASKPLAN roles, `roles:instances` spawn modes
+  (`3:1`/`3:3`/`2:2`/`1:1`), the model list (clutch, else a visible config
+  fallback) and the ticket-master's own `self_model()`. Starts nothing
+  itself. See prompts step (c5)/(c6).
 - Unreleased routing schema v2 separates `.to-…`, `.via-…` and `.claim-…`,
   uses fixed system-registry snapshots and a per-system ledger, and consumes
   execution selectors only through Clutch's public resolver. `.SYNC` receives

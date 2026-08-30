@@ -31,10 +31,16 @@ import re
 from pathlib import Path
 
 try:  # package import
-    from .ticket_writer import _LIFECYCLE_SUBDIRS, iter_lifecycle_files
+    from .ticket_writer import (
+        _LIFECYCLE_SUBDIRS, LifecycleStatusError, iter_lifecycle_files,
+        parse_lifecycle_status,
+    )
     from .routing_contract import RoutingContractError, contract_errors, parse_ticket_name
 except ImportError:  # direct import from lib on sys.path
-    from ticket_writer import _LIFECYCLE_SUBDIRS, iter_lifecycle_files
+    from ticket_writer import (
+        _LIFECYCLE_SUBDIRS, LifecycleStatusError, iter_lifecycle_files,
+        parse_lifecycle_status,
+    )
     from routing_contract import RoutingContractError, contract_errors, parse_ticket_name
 
 # Status folders only (no "" root entry) -- used for the claimed-in-root and
@@ -134,6 +140,8 @@ def audit(base: Path | str) -> dict:
       "collisions": {ticket_id: [path, ...]},   # only entries with len > 1
       "claimed_in_root": [path, ...],
       "non_ticket_files": [path, ...],
+      "informal_entries": [path, ...],  # INBOX/ files without "T-" prefix
+                                         # (Entscheid 3A) -- not clutter
       "nested_lifecycle_tickets": [path, ...],  # backwards-compatible list
       "nested_lifecycle_details": [
         {
@@ -169,6 +177,18 @@ def audit(base: Path | str) -> dict:
             if claimed:
                 claimed_in_root.append(str(entry))
 
+    # Nutzerentscheid 3A (T-20260830-145228426): a file in INBOX/ without the
+    # "T-" ticket prefix is a formless entry awaiting formalization via
+    # ticket_writer.formalize_informal_entry(), not clutter -- it must not be
+    # reported under non_ticket_files.
+    informal_entries: list[str] = []
+    inbox_dir = base / "INBOX"
+    if inbox_dir.is_dir():
+        for entry in inbox_dir.iterdir():
+            if entry.is_file() and entry.name != ".gitkeep" and not entry.name.startswith("T-"):
+                informal_entries.append(str(entry))
+    informal_paths = set(informal_entries)
+
     non_ticket_files: list[str] = []
     scan_dirs = [base] + [base / sub for sub in _STATUS_SUBDIRS]
     for directory in scan_dirs:
@@ -180,6 +200,8 @@ def audit(base: Path | str) -> dict:
             # Lifecycle folders are kept in the repository by .gitkeep when
             # empty; this structural placeholder is not ticket clutter.
             if entry.name == ".gitkeep":
+                continue
+            if str(entry) in informal_paths:
                 continue
             if _LOOKS_LIKE_TICKET_RE.match(entry.name):
                 continue
@@ -234,6 +256,7 @@ def audit(base: Path | str) -> dict:
         "collisions": collisions,
         "claimed_in_root": sorted(claimed_in_root),
         "non_ticket_files": sorted(non_ticket_files),
+        "informal_entries": sorted(informal_entries),
         "routing_errors": dict(sorted(routing_errors.items())),
         "nested_lifecycle_tickets": sorted(nested_lifecycle_tickets),
         "nested_lifecycle_details": sorted(
@@ -241,6 +264,91 @@ def audit(base: Path | str) -> dict:
         ),
         "status_drift": status_drift(base),
     }
+
+
+# Required-field lint (Entscheid 3A, T-20260830-145228426 EMPFEHLUNG A): each
+# canonical field name maps to its accepted aliases (DE/EN template forms).
+_REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
+    "ID": ("ID",),
+    "TITLE": ("TITEL", "TITLE"),
+    "CREATED": ("ERSTELLT", "CREATED"),
+    "STATUS": ("STATUS",),
+}
+_FIELD_LINE_RE_CACHE: dict[str, re.Pattern] = {
+    alias: re.compile(rf"^{re.escape(alias)}:", re.MULTILINE)
+    for aliases in _REQUIRED_FIELDS.values() for alias in aliases
+}
+
+# Duplicate-block headings: the template's own section markers. A heading
+# appearing twice means the template was pasted in twice (T-20260830-145228426
+# measured 3 live cases -- PROJEKT-ZUORDNUNG 2x, PROBLEMBESCHREIBUNG 2x, one
+# LOESUNG 2x).
+_DUPLICATE_HEADING_PATTERNS: dict[str, re.Pattern] = {
+    "PROJEKT-ZUORDNUNG": re.compile(r"^PROJEKT-ZUORDNUNG\s*$", re.MULTILINE),
+    "PROBLEMBESCHREIBUNG": re.compile(r"^PROBLEMBESCHREIBUNG\s*$", re.MULTILINE),
+    "LOESUNG": re.compile(r"^LOESUNG\b.*$", re.MULTILINE),
+}
+
+
+def _lint_ticket(entry: Path, text: str) -> list[dict[str, str | int]]:
+    findings: list[dict[str, str | int]] = []
+    for field, aliases in _REQUIRED_FIELDS.items():
+        if not any(_FIELD_LINE_RE_CACHE[alias].search(text) for alias in aliases):
+            findings.append({"path": str(entry), "kind": "missing-field", "field": field})
+
+    status_match = _STATUS_LINE_RE.search(text[:4096])
+    if status_match:
+        try:
+            parse_lifecycle_status(status_match.group("value").strip())
+        except LifecycleStatusError as exc:
+            findings.append({"path": str(entry), "kind": "invalid-status", "detail": str(exc)})
+
+    for heading, pattern in _DUPLICATE_HEADING_PATTERNS.items():
+        count = len(pattern.findall(text))
+        if count > 1:
+            findings.append({
+                "path": str(entry), "kind": "duplicate-block",
+                "heading": heading, "count": count,
+            })
+    return findings
+
+
+def lint(base: Path | str) -> list[dict[str, str | int]]:
+    """Ticket-content lint beyond audit()'s structural checks: required
+    fields (ID/TITEL|TITLE/ERSTELLT|CREATED/STATUS), STATUS vocabulary (via
+    parse_lifecycle_status), and duplicate section headings (a pasted-twice
+    template). Reports only, never repairs -- same doctrine as audit()."""
+    base = Path(base)
+    findings: list[dict[str, str | int]] = []
+    for sub in _LIFECYCLE_SUBDIRS:
+        directory = base / sub if sub else base
+        if not directory.is_dir():
+            continue
+        for entry in directory.iterdir():
+            if not entry.is_file():
+                continue
+            if not _LOOKS_LIKE_TICKET_RE.match(entry.name):
+                try:
+                    parse_ticket_name(entry.name)
+                except RoutingContractError:
+                    continue
+            try:
+                text = entry.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            findings.extend(_lint_ticket(entry, text))
+    return sorted(findings, key=lambda f: (str(f["path"]), str(f["kind"])))
+
+
+def _print_lint_human(findings: list[dict[str, str | int]]) -> None:
+    if not findings:
+        print("LINT: none")
+        return
+    print(f"LINT ({len(findings)} finding(s)):")
+    for finding in findings:
+        detail = {k: v for k, v in finding.items() if k not in ("path", "kind")}
+        print(f"  {finding['path']}")
+        print(f"    KIND: {finding['kind']}  {detail}")
 
 
 def _print_human(report: dict) -> None:
@@ -266,6 +374,14 @@ def _print_human(report: dict) -> None:
             print(f"  {path}")
     else:
         print("CLAIMED-IN-ROOT: none")
+
+    informal_entries = report.get("informal_entries", [])
+    if informal_entries:
+        print(f"INFORMAL-ENTRIES ({len(informal_entries)}):")
+        for path in informal_entries:
+            print(f"  {path}")
+    else:
+        print("INFORMAL-ENTRIES: none")
 
     if non_ticket_files:
         print(f"NON-TICKET-FILES ({len(non_ticket_files)}):")
@@ -323,9 +439,19 @@ def _cli(argv: list[str] | None = None) -> int:
         help="Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR).",
     )
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--lint", action="store_true",
+                         help="required fields, STATUS vocabulary, duplicate blocks (reports only)")
     args = parser.parse_args(argv)
     if not args.tickets_dir:
         parser.error("tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+
+    if args.lint:
+        findings = lint(args.tickets_dir)
+        if args.as_json:
+            print(json.dumps(findings, ensure_ascii=False, indent=2))
+        else:
+            _print_lint_human(findings)
+        return 1 if findings else 0
 
     report = audit(args.tickets_dir)
     if args.as_json:

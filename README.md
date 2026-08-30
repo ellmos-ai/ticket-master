@@ -16,7 +16,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-275%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-310%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -163,6 +163,35 @@ python lib/auditor_bridge.py --check                       # decide() verdict as
 python lib/auditor_bridge.py --check --manual               # codeword path (bypasses enabled/due)
 python lib/auditor_bridge.py --findings-to-tickets          # dry run: what WOULD be filed
 python lib/auditor_bridge.py --findings-to-tickets --apply  # actually file the draft tickets
+```
+
+### Informal intake (Entscheid 3A)
+
+A file dropped straight into `INBOX/` without the `T-` ticket prefix is a
+**formless entry**, not clutter — `ticket_audit.audit()` reports it under
+`informal_entries`, separate from `non_ticket_files`. STARTUP SEQUENCE step
+**(c7)** formalizes each one via `ticket_writer.py --from-file`: it prepends
+a ticket header, keeps the wording byte-identical in an "ORIGINALTEXT"
+block, and archives the source to `INBOX/_formalisiert/` (never deletes it).
+Idempotent — a source already named by an existing ticket is not re-filed.
+
+```bash
+python lib/ticket_writer.py --from-file tickets/INBOX/some-note.txt --submitter agent-x
+python lib/ticket_audit.py tickets --lint   # required fields, STATUS vocabulary, duplicate blocks
+```
+
+### Boot-menu role spawn (Entscheid 5A)
+
+`lib/boot_menu.py` is a pure-data helper for the role-spawn menu offered at
+the end of the boot sequence (step (c5)/(c6)) — it never starts a process
+itself. `--offer` prints the available roles, spawn modes (`3:1`/`3:3`/
+`2:2`/`1:1`, plus the aliases `3 in 1`/`only1`/`only2`/`3x3`), the model list
+(from `clutch models --json`, else a visible fallback to this config's
+`providers`) and the ticket-master's own `self_model()` (a harness
+self-declaration, or `unknown` — never guessed):
+
+```bash
+python lib/boot_menu.py --offer
 ```
 
 ---

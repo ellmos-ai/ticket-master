@@ -4,6 +4,39 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Informal intake and boot-menu role spawn (T-20260830-145228426, T-20260830-446089912)
+- `lib/ticket_writer.py`: new `formalize_informal_entry()` / CLI
+  `--from-file [--submitter <name>]` (Entscheid 3A) turns a formless
+  `INBOX/` file (no `T-` prefix) into a regular ticket — prepends a header,
+  keeps the wording byte-identical in an "ORIGINALTEXT (unveraendert,
+  massgeblich)" block, archives the source to `INBOX/_formalisiert/` (never
+  deletes it). Idempotent: a source already named by an existing ticket is
+  not re-filed. `--title` is no longer required when `--from-file` is set.
+- `lib/ticket_audit.py`: `audit()` gains report key `informal_entries`
+  (formless `INBOX/` files, no longer counted under `non_ticket_files`) and
+  a new `lint()` / CLI `--lint` — required fields (ID/TITEL|TITLE/
+  ERSTELLT|CREATED/STATUS), STATUS vocabulary (via
+  `parse_lifecycle_status`), and duplicate section headings
+  (PROJEKT-ZUORDNUNG/PROBLEMBESCHREIBUNG/LOESUNG pasted in twice). Reports
+  only, never repairs. Tests: `tests/test_ticket_writer_from_file.py`,
+  `tests/test_ticket_audit_informal_and_lint.py`.
+- New `lib/boot_menu.py` (Entscheid 5A): pure data functions for the
+  role-spawn menu offered at the end of the boot sequence —
+  `parse_mode()` ("<roles>:<instances>" notation plus the aliases
+  `3 in 1`/`3in1`/`3x3`/`only1`/`only2`), `list_models()` (`clutch models
+  --json`, else a visible fallback to this config's `providers`),
+  `self_model()` (a harness self-declaration from `$TM_MODEL`/config, else
+  `unknown` — never guessed), `build_spawn_orders()` (unified N:1 and
+  one-per-role N:N spawn-order data objects; window vs. supervised-companion
+  execution), and `offer()` / CLI `--offer`. Starts no process, window or
+  subagent itself. Tests: `tests/test_boot_menu.py`.
+- Prompts (DE/EN), STARTUP SEQUENCE: new step (c7) counts and formalizes
+  informal entries as part of intake; (c5) gains the role-spawn-menu offer
+  (example: `spawn 3:1 sonnet` / `spawn only1 tasksolver`) plus a
+  companion-pattern note on supervision, alongside the existing auditor
+  codeword. LOGGING section notes that a formless `INBOX/` file awaits
+  formalization, not a log entry.
+
 ### Booking duty and STATUS drift audit (T-20260830-517795746)
 - `lib/ticket_audit.py`: new read-only check `status_drift()` and report key
   `status_drift` — flags `folder-mismatch` (STATUS cluster names another

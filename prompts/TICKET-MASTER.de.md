@@ -223,6 +223,10 @@ seinem geclaimten Namen weiter, statt die Entblockung scheitern zu lassen.
 - **Deprecated:** `tickets/_logs/INTAKE-TRIAGE-LOG.txt` (das geteilte
   Intake-Log vor 1.5.0). Bleibt für Alt-Setups liegen; keine neuen Zeilen
   mehr hineinschreiben.
+- **Formlose Einträge** (Entscheid 3A, T-20260830-145228426): eine Datei in
+  `INBOX/` ohne "T-"-Präfix ist kein Ticket und kein Log-Eintrag, sondern
+  wartet auf Formalisierung über `ticket_writer.py --from-file` (siehe
+  STARTSEQUENZ (c7)).
 
 ### Buchungspflicht: Status-quo-Entscheide, Kennungsabgleich, STATUS-Drift (T-20260830-517795746)
 
@@ -446,6 +450,23 @@ Codewort: `audit!` (bzw. der in `auditor_bridge.codeword` konfigurierte Text)
 startet den system-auditor manuell über die Auditor-Brücke — siehe (c6) —,
 auch wenn der Zeittrigger aus ist oder gerade nichts fällig wäre.
 
+**Rollen-Menue-Angebot** (Entscheid 5A, T-20260830-446089912): Direkt im selben
+Boot-Abschluss `python lib/boot_menu.py --offer` anbieten — liefert als JSON
+die Rollen (`taskwriter`/`tasksolver`/`maintainer`), die Modi (kanonisch
+`3:1`/`3:3`/`2:2`/`1:1`, Aliase `3 in 1`/`3in1`/`3x3`/`only1`/`only2`), die
+Modellliste (`clutch models --json`, sonst sichtbarer Fallback auf
+`config/ticket-master.config.json`s `providers`) und `self_model()`
+(Selbstauskunft aus `$TM_MODEL`/Config, sonst `unknown` — nie geraten).
+Eingabe frei, z. B. `spawn 3:1 sonnet` (drei Rollen, eine Instanz, ein
+Modell) oder `spawn only1 tasksolver claude-sonnet` (eine Rolle, ein
+Fenster). Enter ohne Eingabe = **POSITION 0, nichts starten** (Default).
+
+Betreuung heißt mehr als Spawn: Ergebnis abholen, Ticket-/Task-Nacharbeit
+anstoßen, bei Ausfall melden — das Companion-Muster dieses Prompts. Ein
+eigenes Fenster (`window: y`) läuft über `_control-center/START-<ROLLE>.bat`
+mit frei wählbarem Modell; ein betreuter Subagent (`window: n`) erbt das
+Modell des ticket-master (`self_model()`).
+
 **Nützliche Skills:**
 - `decision-shot` — Kurzformat für eine fertig analysierte Entscheidung (Kontext + Pro/Contra)
 - `work-autonomous` — Abbruchregel für autonome Loops: erst aufhören, wenn belegt nichts mehr zu tun ist
@@ -478,6 +499,21 @@ besitzt) und den bestehenden Sparmodus-Hook, und kombiniert deren Antworten.
 
 Manueller Start über das Codewort (siehe (c5)): `python lib/auditor_bridge.py --check --manual`
 — spawnt auch bei `enabled: false` oder wenn nichts fällig ist, respektiert aber weiterhin den Sparmodus-Gate.
+
+### (c7) Formlose Einträge
+
+Einmal beim Boot: `python lib/ticket_audit.py <tickets_dir>` meldet
+`INFORMAL-ENTRIES` — Dateien in `INBOX/` ohne "T-"-Präfix (Entscheid 3A,
+T-20260830-145228426). Fälligkeit einfach zählen und sichtbar vermerken
+(kein Fehler, kein Blocker). Formalisierung ist Teil des Intake (Schritt
+(b)/GATE1), keine zweite Warteschlange: je Fund
+`python lib/ticket_writer.py --from-file <datei> [--submitter <name>]` —
+setzt einen Ticketkopf davor, hält den Wortlaut bytegleich in einem
+"ORIGINALTEXT (unveraendert, massgeblich)"-Block und verschiebt die Quelle
+nach `INBOX/_formalisiert/` (nie löschen). Ergänzend, als Dauerprüfung statt
+Boot-Pflicht: `python lib/ticket_audit.py <tickets_dir> --lint` meldet
+Pflichtfelder, STATUS-Vokabular und doppelte Block-Überschriften — nur
+melden, nie reparieren.
 
 ### (d) Auf POSITION 0 gehen
 

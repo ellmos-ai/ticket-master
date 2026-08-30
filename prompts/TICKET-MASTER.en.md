@@ -212,6 +212,10 @@ under its claimed name rather than letting the unblocking fail.
   audit-relevant.
 - **Deprecated:** `tickets/_logs/INTAKE-TRIAGE-LOG.txt` (the pre-1.5.0 shared
   intake log). Kept for legacy setups; do not write new lines to it.
+- **Informal entries** (Entscheid 3A, T-20260830-145228426): a file in
+  `INBOX/` without a "T-" prefix is not a ticket and not a log entry — it is
+  waiting to be formalized via `ticket_writer.py --from-file` (see STARTUP
+  SEQUENCE (c7)).
 
 ### Booking duty: status-quo decisions, ID reconciliation, STATUS drift (T-20260830-517795746)
 
@@ -427,6 +431,25 @@ Codeword: `audit!` (or whatever text `auditor_bridge.codeword` configures)
 manually starts system-auditor via the auditor bridge — see (c6) — even when
 the time trigger is off or nothing would otherwise be due.
 
+**Role-spawn menu offer** (Entscheid 5A, T-20260830-446089912): in the same
+boot completion, offer `python lib/boot_menu.py --offer` — prints, as JSON,
+the roles (`taskwriter`/`tasksolver`/`maintainer`), the modes (canonical
+`3:1`/`3:3`/`2:2`/`1:1`, aliases `3 in 1`/`3in1`/`3x3`/`only1`/`only2`), the
+model list (`clutch models --json`, else a visible fallback to
+`config/ticket-master.config.json`'s `providers`) and `self_model()` (a
+harness self-declaration from `$TM_MODEL`/config, else `unknown` — never
+guessed). Input is free text, e.g. `spawn 3:1 sonnet` (three roles, one
+instance, one model) or `spawn only1 tasksolver claude-sonnet` (one role,
+one window). Enter with no input = **POSITION 0, nothing started**
+(default).
+
+Supervision means more than spawning: collect the result, follow up on
+ticket/task work, report a failure — the same companion pattern this prompt
+already uses. A dedicated window (`window: y`) runs via
+`_control-center/START-<ROLE>.bat` with a freely chosen model; a supervised
+sub-agent (`window: n`) inherits the ticket-master's own model
+(`self_model()`).
+
 **Useful skills:**
 - `decision-shot` — short format for one already-analyzed decision (context + pros/cons)
 - `work-autonomous` — stop condition for autonomous loops: only stop once it's evidenced nothing actionable remains
@@ -459,6 +482,22 @@ combines their answers.
 
 Manual start via the codeword (see (c5)): `python lib/auditor_bridge.py --check --manual`
 — spawns even when `enabled: false` or nothing is due, but still respects the sparmodus gate.
+
+### (c7) Informal entries
+
+Once at boot: `python lib/ticket_audit.py <tickets_dir>` reports
+`INFORMAL-ENTRIES` — files in `INBOX/` without a "T-" prefix (Entscheid 3A,
+T-20260830-145228426). Just count and note this visibly (not an error, not a
+blocker). Formalizing is part of intake (step (b)/GATE1), not a second
+queue: for each one, run
+`python lib/ticket_writer.py --from-file <file> [--submitter <name>]` — it
+prepends a ticket header, keeps the wording byte-identical in an
+"ORIGINALTEXT (unveraendert, massgeblich)" block, and moves the source into
+`INBOX/_formalisiert/` (never deletes it). Additionally, as an ongoing check
+rather than a boot requirement:
+`python lib/ticket_audit.py <tickets_dir> --lint` reports required fields,
+STATUS vocabulary and duplicate section headings — reports only, never
+repairs.
 
 ### (d) Go to POSITION 0
 
