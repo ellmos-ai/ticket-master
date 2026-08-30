@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import tempfile
@@ -33,6 +34,8 @@ _BASE_RE = re.compile(
 _FIELD_RE = re.compile(r"^(?P<name>[A-Z][A-Z0-9_]*):\s*(?P<value>.*)$")
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
 _SELECTOR_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
+
+logger = logging.getLogger(__name__)
 
 
 class RoutingContractError(ValueError):
@@ -228,12 +231,7 @@ def _resolution_dict(result: Any, requested: str) -> dict[str, Any]:
 
 def resolve_execution(selector: str, *, runner: str | None = None,
                       resolver: Callable[..., Any] | None = None) -> dict[str, Any]:
-    """Consume Clutch's public resolver and sanitize outages into evidence."""
-    if resolver is None:
-        try:
-            from clutch import resolve_execution_selector as resolver  # type: ignore
-        except (ImportError, OSError):
-            resolver = None
+    """Consume Clutch's public resolver and preserve loud outage evidence."""
     def unavailable(reason: str) -> dict[str, Any]:
         return {
             "requested_selector": selector,
@@ -253,12 +251,37 @@ def resolve_execution(selector: str, *, runner: str | None = None,
             "registry_fingerprint": None,
             "resolved_at": utc_text(),
         }
+
     if resolver is None:
-        return unavailable("registry-unavailable")
+        try:
+            from clutch import resolve_execution_selector as resolver  # type: ignore
+        except (ImportError, OSError) as exc:
+            reason = f"resolver-import-error:{type(exc).__name__}"
+            logger.error(
+                "Clutch execution resolver import failed for selector %r: %s: %s",
+                selector, type(exc).__name__, exc, exc_info=True,
+            )
+            return unavailable(reason)
     try:
-        return _resolution_dict(resolver(selector, runner=runner), selector)
-    except Exception as exc:  # external resolver boundary; do not leak detail
-        return unavailable(f"registry-error:{type(exc).__name__}")
+        result = _resolution_dict(resolver(selector, runner=runner), selector)
+    except Exception as exc:  # persist only the type; keep the cause in the local error log
+        reason = f"registry-error:{type(exc).__name__}"
+        logger.error(
+            "Clutch execution resolver failed for selector %r: %s: %s",
+            selector, type(exc).__name__, exc, exc_info=True,
+        )
+        return unavailable(reason)
+    if not result.get("resolved"):
+        logger.error(
+            "Clutch execution binding is unresolved for selector %r: %s",
+            selector, result.get("reason") or "reason-not-reported",
+        )
+    elif runner and not result.get("claimable"):
+        logger.error(
+            "Clutch execution binding for selector %r is not claimable by runner %r: %s",
+            selector, runner, result.get("reason") or "reason-not-reported",
+        )
+    return result
 
 
 def _registry_systems(snapshot: Mapping[str, Any]) -> tuple[dict[str, dict[str, Any]], str, str]:
@@ -495,7 +518,8 @@ def contract_errors(path: Path | str, *, now: datetime | str | None = None) -> l
     if name.via == "mixed" and set(view.execution_matrix) != set(systems):
         errors.append("via-mixed requires one EXECUTION_MATRIX entry per target")
     if name.via and not view.resolution.get("resolved"):
-        errors.append("execution binding is unresolved")
+        reason = view.resolution.get("reason") or "reason-not-recorded"
+        errors.append(f"execution binding is unresolved ({reason})")
     if name.via:
         if not view.resolution.get("registry_fingerprint"):
             errors.append("execution resolution lacks registry fingerprint")
@@ -705,7 +729,7 @@ def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | Non
         if error != "expired binding still has a physical via segment"
     ]
     if validation:
-        raise ClaimDeniedError("invalid routing contract")
+        raise ClaimDeniedError("invalid routing contract: " + "; ".join(validation))
     if view.name.claim or view.fields.get("CLAIMED_BY_HOST"):
         raise ClaimDeniedError("ticket already has an active claim")
     rows = _ledger_rows(view)

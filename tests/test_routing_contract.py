@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import builtins
 import json
+import logging
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -217,6 +220,69 @@ def test_user_aliases_normalize_through_system_registry_and_clutch_only():
     )
     assert name.endswith(".via-claude-opus-5.txt")
     assert not note["resolved"] and not note["claimable"]
+
+
+def test_public_clutch_resolver_seam_makes_via_ticket_claimable(tmp_path, monkeypatch):
+    fake_clutch = types.ModuleType("clutch")
+    fake_clutch.resolve_execution_selector = resolver
+    monkeypatch.setitem(sys.modules, "clutch", fake_clutch)
+
+    path = Path(ticket_writer.create_routed_ticket(
+        "Public resolver seam",
+        "Claim through the Clutch-owned execution resolver.",
+        tickets_dir=tmp_path,
+        registry_snapshot=REGISTRY,
+        ticket_kind="transfer",
+        target_kind="exact",
+        target="WORKSTATION-LG",
+        via="codex",
+        primary_ticket="T-20260822-100000000",
+        original_owner="ASUS-GEI",
+        receipt_to="T-20260822-100000000",
+        today="2026-08-22",
+        rng=FixedRandom(),
+    ))
+
+    assert rc.contract_errors(path, now="2026-08-22T09:00:00Z") == []
+    claimed = rc.claim_contract(
+        path, host="WORKSTATION-LG", actor="codex", runner="codex",
+        now="2026-08-22T09:00:00Z",
+    )
+    assert claimed.name.endswith(".to-WORKSTATION-LG.via-codex.claim-WORKSTATION-LG.txt")
+
+
+def test_missing_public_resolver_is_loud_and_cause_specific(monkeypatch, caplog):
+    real_import = builtins.__import__
+
+    def missing_clutch(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "clutch":
+            raise ImportError("simulated missing resolve_execution_selector")
+        return real_import(name, globals, locals, fromlist, level)
+
+    monkeypatch.setattr(builtins, "__import__", missing_clutch)
+    with caplog.at_level(logging.ERROR, logger=rc.__name__):
+        note = rc.resolve_execution("codex")
+
+    assert note["reason"] == "resolver-import-error:ImportError"
+    assert "Clutch execution resolver import failed" in caplog.text
+    assert "simulated missing resolve_execution_selector" in caplog.text
+
+
+def test_unresolved_binding_is_distinct_from_unbound_and_denied_loudly(tmp_path, caplog):
+    with caplog.at_level(logging.ERROR, logger=rc.__name__):
+        unresolved = make_contract(tmp_path / "unresolved", via="not-registered")
+    errors = rc.contract_errors(unresolved, now="2026-08-22T09:00:00Z")
+
+    assert "execution binding is unresolved (selector-not-in-registry)" in errors
+    assert "selector-not-in-registry" in caplog.text
+    with pytest.raises(rc.ClaimDeniedError, match="selector-not-in-registry"):
+        rc.claim_contract(
+            unresolved, host="ASUS-GEI", actor="codex", runner="codex",
+            resolver=resolver, now="2026-08-22T09:00:00Z",
+        )
+
+    unbound = make_contract(tmp_path / "unbound", via=None)
+    assert not any("execution binding" in error for error in rc.contract_errors(unbound))
 
 
 def test_target_snapshot_is_fixed_evidence_and_never_a_hardcoded_host_list():
