@@ -4,6 +4,38 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+## [1.12.0] — 2026-08-30
+
+### Auditor bridge (`system-auditor` integration)
+
+- New `lib/auditor_bridge.py`: an opt-in bridge to the sibling
+  `ellmos-ai/system-auditor` module. Four independently testable functions —
+  `detect_auditor()` (presence via CLI-on-PATH or importable package, never a
+  guessed path), `due_check()` (asks system-auditor's own `time-token`/
+  `next-domain`/`reports` for due-ness — never recomputes its window/rotation
+  logic), `spar_gate()` (three-valued sparmodus read: `off`/`on`/`unknown`;
+  `unknown` never collapses to `off`), and `findings_to_tickets()` (turns
+  `findings/*.md` into draft INBOX tickets, deduplicated on the finding's own
+  ID, dry-run by default). Plus a `--check`/`--findings-to-tickets` CLI
+  (T-20260830-948243522).
+- `config/ticket-master.config(.example).json` gain an `auditor_bridge` block
+  (`enabled` defaults to `false`; `min_interval` is cadence documentation
+  only and is deliberately NOT consulted by `decide()` — system-auditor's own
+  time-grid already governs due-ness, a second cadence store would be the
+  parallel standard this ticket's investigation explicitly ruled out).
+- `prompts/TICKET-MASTER.de.md` / `.en.md`: new step (c6) runs the bridge's
+  `--check` once at boot and spawns a *supervised* system-auditor run on
+  `spawn` (collect the result, review findings, `--findings-to-tickets
+  --apply`); one visible note (never silence) on `disabled`/`absent`/
+  `unknown`. Step (c5)'s short help gains one line for the manual codeword
+  (`audit!` by default, `auditor_bridge.codeword`), which spawns regardless
+  of the time trigger or due-ness but still respects the sparmodus gate.
+- Added `tests/test_auditor_bridge.py` (30 tests: three-valued sparmodus gate
+  incl. missing/corrupt state and stale-off override, `due_check()`'s report
+  matching, `decide()`'s combination logic with a mocked auditor, and
+  `findings_to_tickets()`'s dry-run dedup) — no real subprocess/auditor call.
+  Full verification: 275 tests plus 13 subtests.
+
 ### TM shorthand + boot short-help
 
 - New optional shorthand notation for the user<->ticket-master chat interaction

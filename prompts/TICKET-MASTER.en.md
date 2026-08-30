@@ -404,11 +404,42 @@ Examples: `go: <text> -> a -> r` (analyze, respond) ·
 `go: <text> -> a -> act -> r -d` (analyze, implement, respond, surface
 decisions directly).
 
+Codeword: `audit!` (or whatever text `auditor_bridge.codeword` configures)
+manually starts system-auditor via the auditor bridge — see (c6) — even when
+the time trigger is off or nothing would otherwise be due.
+
 **Useful skills:**
 - `decision-shot` — short format for one already-analyzed decision (context + pros/cons)
 - `work-autonomous` — stop condition for autonomous loops: only stop once it's evidenced nothing actionable remains
 - `/operator` — break a task into sub-assignments, brief workers, verify results against evidence
 - `sparmodus` / `auto-spar` / `notaus` — token-budget stages for a tight session limit
+
+### (c6) Auditor bridge
+
+Only relevant when `system-auditor` is installed on this host (see
+`lib/auditor_bridge.py`, T-20260830-948243522). Once at boot, right before
+POSITION 0:
+
+```
+python lib/auditor_bridge.py --check
+```
+
+This returns a JSON verdict `{action, reason, detection, spar_gate, ...}`.
+The bridge recomputes **nothing itself** — no second timestamp/rotation
+store: `decide()` only asks the installed `system-auditor` (which owns its
+own window/rotation/due-ness logic) and the existing sparmodus hook, and
+combines their answers.
+
+| `action` | Behavior |
+|---|---|
+| `spawn` | Start a system-auditor run as a **supervised** sub-agent. "Supervised" means: collect the result, review the newly written `findings/*.md`, then run `python lib/auditor_bridge.py --findings-to-tickets --apply` so open findings land as INBOX tickets — never just fire-and-forget. |
+| `skip` | Do nothing. The reason is in `reason`/`spar_gate` (nothing due, or sparmodus/notaus is active — an audit is a multi-agent run, exactly what sparmodus is meant to stop). |
+| `disabled` | `auditor_bridge.enabled` is `false` (the conservative default). Note it once, visibly, then move on — not an error. |
+| `absent` | `system-auditor` is not installed on this host. Note it once, visibly, then move on — not an error. |
+| `unknown` | A needed signal (sparmodus state, `reports_dir`) could not be determined. Note it visibly; do NOT treat it like `skip` — an unknown state is not a confirmed due-ness/sparmodus answer. |
+
+Manual start via the codeword (see (c5)): `python lib/auditor_bridge.py --check --manual`
+— spawns even when `enabled: false` or nothing is due, but still respects the sparmodus gate.
 
 ### (d) Go to POSITION 0
 

@@ -15,9 +15,9 @@ Delegation nicht sinnvoll ist. Plattformübergreifend (Windows/macOS/Linux),
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.3-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-238%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-275%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
 [![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -31,13 +31,16 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > KI-Agenten und RAG-Indexer finden maschinenlesbare Kontextinformationen, Suchbegriffe und Einstiegspunkte in [llms.txt](llms.txt).
 
-**Release-Status:** `v1.11.3` — `VERSION` und `pyproject.toml` melden beide
-`1.11.3`; dieser Metadaten-Patch migriert die unveränderte MIT-Lizenz auf den
-PEP-639-/SPDX-Vertrag. Er folgt auf die nicht mutierende Einzelticket-
-`--dry-run`-Vorschau aus `v1.11.2` und das Routing-v2-
-Release `v1.11.0` und die mit `v1.10.0` getaggte
-Auskapselung von TICKET-WRITER/SIG-TU nach `ellmos-ai/system-auditor`. Eine
-gesonderte Veröffentlichung (PyPI, npm, …) wird nicht behauptet.
+**Release-Status:** `v1.12.0` — `VERSION` und `pyproject.toml` melden beide
+`1.12.0`; dieses Release ergänzt die optionale `system-auditor`-Brücke
+(`lib/auditor_bridge.py`: Spawn/Skip-Verdikt, Sparmodus-Gate,
+Findings-zu-Tickets-Dedup) sowie die zuvor unversionierte TM-Kurzsprache/
+Boot-Kurzhilfe und das fail-closed Queue-ID-Gate. Es folgt auf den
+PEP-639-/SPDX-Metadaten-Patch `v1.11.3`, die nicht mutierende Einzelticket-
+`--dry-run`-Vorschau aus `v1.11.2`, das Routing-v2-Release `v1.11.0` und die
+mit `v1.10.0` getaggte Auskapselung von TICKET-WRITER/SIG-TU nach
+`ellmos-ai/system-auditor`. Eine gesonderte Veröffentlichung (PyPI, npm, …)
+wird nicht behauptet.
 
 ---
 
@@ -142,6 +145,32 @@ Kategorienbaum nicht. Wo kein Ticketsystem installiert ist, schreibt er stattdes
 
 **Migration.** `prompts/TICKET-WRITER.*.md` bleiben vorerst liegen, als abgelöst markiert
 und auf den neuen Rollen-Prompt verweisend. Nichts in diesem Repository hängt an ihnen.
+
+### Auditor-Brücke (optional, nur falls `system-auditor` installiert ist)
+
+`lib/auditor_bridge.py` ist eine dünne, opt-in Brücke zum Schwestermodul
+[`system-auditor`](https://github.com/ellmos-ai/system-auditor). Sind beide auf einem Host
+installiert, kann Schritt **(c6)** des TICKET-MASTER-Prompts beim Sessionstart einen
+system-auditor-Lauf spawnen und **betreuen** (zeitgesteuert, standardmäßig aus), ihn
+überspringen, solange ein Claude-Code-Sparmodus/Notaus-Stand aktiv ist, und seine
+`findings/*.md` in INBOX-Ticket-Entwürfe verwandeln (`--findings-to-tickets`). Ein Codewort
+(`audit!` per Default, `auditor_bridge.codeword` in der Config) startet einen Lauf manuell,
+unabhängig vom Zeittrigger.
+
+Die Brücke rechnet die eigene Fenster-/Rotations-/Fälligkeitslogik von system-auditor
+niemals nach und führt keinen zweiten Zeitstempel-Speicher — `decide()` fragt nur die
+installierte CLI und den bestehenden Sparmodus-Hook und kombiniert deren Antworten. Alle
+vier Bausteine (`detect_auditor()`/`due_check()`/`spar_gate()`/`findings_to_tickets()`)
+sind reine, unabhängig testbare Funktionen; der vollständige Vertrag steht im
+Moduldocstring von `lib/auditor_bridge.py` sowie im `auditor_bridge`-Block von
+`config/ticket-master.config.example.json`.
+
+```bash
+python lib/auditor_bridge.py --check                       # decide()-Verdikt als JSON
+python lib/auditor_bridge.py --check --manual               # Codewort-Pfad (umgeht enabled/due)
+python lib/auditor_bridge.py --findings-to-tickets          # Trockenlauf: was WÜRDE angelegt
+python lib/auditor_bridge.py --findings-to-tickets --apply  # Ticket-Entwürfe wirklich anlegen
+```
 
 ---
 

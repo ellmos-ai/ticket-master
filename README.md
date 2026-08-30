@@ -14,9 +14,9 @@ management when delegation is not appropriate. Cross-platform (Windows/macOS/Lin
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.11.3-blue.svg)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-238%20passed-brightgreen.svg)](tests/)
+[![Tests](https://img.shields.io/badge/pytest-275%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![LLM-Ready](https://img.shields.io/badge/LLM--Ready-llms.txt-blueviolet)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
@@ -30,13 +30,16 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > AI agents and RAG indexers can find machine-readable context, search phrases, entry points, and discovery metadata in [llms.txt](llms.txt).
 
-**Release status:** `v1.11.3` — `VERSION` and `pyproject.toml` both report
-`1.11.3`; this metadata patch migrates the unchanged MIT license to the PEP
-639/SPDX contract. It follows the non-mutating single-ticket `--dry-run`
-preview in `v1.11.2` and the `v1.11.0` routing-v2 release
-and the earlier `v1.10.0` extraction of
-TICKET-WRITER/SIG-TU into `ellmos-ai/system-auditor`. No separate publication
-(PyPI, npm, …) is claimed.
+**Release status:** `v1.12.0` — `VERSION` and `pyproject.toml` both report
+`1.12.0`; this release adds the optional `system-auditor` bridge
+(`lib/auditor_bridge.py`: spawn/skip verdict, sparmodus gate,
+findings-to-tickets dedup) plus the previously unreleased TM shorthand/boot
+short-help and fail-closed queue-ID gate work. It follows the `v1.11.3`
+PEP 639/SPDX license metadata patch, the non-mutating single-ticket
+`--dry-run` preview in `v1.11.2`, the `v1.11.0` routing-v2 release, and the
+earlier `v1.10.0` extraction of TICKET-WRITER/SIG-TU into
+`ellmos-ai/system-auditor`. No separate publication (PyPI, npm, …) is
+claimed.
 
 ---
 
@@ -137,6 +140,30 @@ Where no ticket system is installed, it writes files instead.
 
 **Migration.** `prompts/TICKET-WRITER.*.md` remain in place for now, marked as superseded
 and pointing at the new role prompt. Nothing in this repository depends on them.
+
+### Auditor bridge (optional, only if `system-auditor` is installed)
+
+`lib/auditor_bridge.py` is a thin, opt-in bridge to the sibling
+[`system-auditor`](https://github.com/ellmos-ai/system-auditor) module. When both are
+installed on a host, the TICKET-MASTER prompt's step **(c6)** can spawn and *supervise* a
+system-auditor run at session start (time-triggered, off by default), skip it while a
+Claude Code sparmodus/notaus token-budget stage is active, and turn its `findings/*.md`
+into draft INBOX tickets (`--findings-to-tickets`). A codeword (`audit!` by default,
+`auditor_bridge.codeword` in config) spawns one manually regardless of the trigger.
+
+The bridge never recomputes system-auditor's own window/rotation/due-ness logic or keeps a
+second timestamp store — `decide()` only asks the installed CLI and the existing sparmodus
+hook, then combines their answers. All four building blocks
+(`detect_auditor()`/`due_check()`/`spar_gate()`/`findings_to_tickets()`) are plain,
+independently testable functions; see `lib/auditor_bridge.py`'s module docstring and
+`config/ticket-master.config.example.json`'s `auditor_bridge` block for the full contract.
+
+```bash
+python lib/auditor_bridge.py --check                       # decide() verdict as JSON
+python lib/auditor_bridge.py --check --manual               # codeword path (bypasses enabled/due)
+python lib/auditor_bridge.py --findings-to-tickets          # dry run: what WOULD be filed
+python lib/auditor_bridge.py --findings-to-tickets --apply  # actually file the draft tickets
+```
 
 ---
 

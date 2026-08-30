@@ -422,11 +422,42 @@ Beispiele: `go: <text> -> a -> r` (analysieren, antworten) ·
 `go: <text> -> a -> act -> r -d` (analysieren, umsetzen, antworten,
 Entscheidungen direkt mit vorlegen).
 
+Codewort: `audit!` (bzw. der in `auditor_bridge.codeword` konfigurierte Text)
+startet den system-auditor manuell über die Auditor-Brücke — siehe (c6) —,
+auch wenn der Zeittrigger aus ist oder gerade nichts fällig wäre.
+
 **Nützliche Skills:**
 - `decision-shot` — Kurzformat für eine fertig analysierte Entscheidung (Kontext + Pro/Contra)
 - `work-autonomous` — Abbruchregel für autonome Loops: erst aufhören, wenn belegt nichts mehr zu tun ist
 - `/operator` — Aufgabe in Teilaufträge zerlegen, Worker beauftragen, Ergebnisse evidenzbasiert prüfen
 - `sparmodus` / `auto-spar` / `notaus` — Token-Budget-Stufen bei knappem Session-Limit
+
+### (c6) Auditor-Brücke
+
+Nur relevant, wenn `system-auditor` auf diesem Host installiert ist (siehe
+`lib/auditor_bridge.py`, T-20260830-948243522). Einmal beim Boot, direkt vor
+POSITION 0:
+
+```
+python lib/auditor_bridge.py --check
+```
+
+Das liefert eine JSON-Entscheidung `{action, reason, detection, spar_gate, ...}`.
+Die Brücke rechnet dabei **nichts selbst nach** — kein zweiter
+Zeitstempel-/Rotations-Speicher: `decide()` fragt nur den installierten
+`system-auditor` (der seine eigene Fenster-/Rotations-/Fälligkeitslogik
+besitzt) und den bestehenden Sparmodus-Hook, und kombiniert deren Antworten.
+
+| `action` | Verhalten |
+|---|---|
+| `spawn` | Einen system-auditor-Lauf als **betreuten** Subagenten starten. "Betreuen" heißt: Ergebnis abholen, die neu entstandenen `findings/*.md` sichten, und danach `python lib/auditor_bridge.py --findings-to-tickets --apply` ausführen, damit offene Findings als INBOX-Tickets landen — nicht nur starten und vergessen. |
+| `skip` | Nichts tun. Grund steht in `reason`/`spar_gate` (nichts fällig, oder Sparmodus/Notaus aktiv — ein Audit ist ein Mehr-Agenten-Lauf, genau das, was der Sparmodus stoppen soll). |
+| `disabled` | `auditor_bridge.enabled` ist `false` (Default, konservativ). Einmal sichtbar vermerken, dann weiter — kein Fehler. |
+| `absent` | `system-auditor` ist auf diesem Host nicht installiert. Einmal sichtbar vermerken, dann weiter — kein Fehler. |
+| `unknown` | Ein nötiges Signal (Sparmodus-Stand, `reports_dir`) war nicht ermittelbar. Sichtbar vermerken; NICHT wie `skip` behandeln — ein unbekannter Zustand ist keine bestätigte Fälligkeits-/Sparmodus-Auskunft. |
+
+Manueller Start über das Codewort (siehe (c5)): `python lib/auditor_bridge.py --check --manual`
+— spawnt auch bei `enabled: false` oder wenn nichts fällig ist, respektiert aber weiterhin den Sparmodus-Gate.
 
 ### (d) Auf POSITION 0 gehen
 

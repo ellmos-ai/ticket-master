@@ -75,5 +75,20 @@
   "usage_limit_warning_percent": 90,
   "logging": {
     "_comment": "Deprecated: intake_log (shared file) removed in 1.5.0 - audit trail lives per ticket (STATUS/LOG/SOLUTION fields)."
-  }
+  },
+  "auditor_bridge": {
+    "_comment": "T-20260830-948243522: bridge to the sibling system-auditor module (lib/auditor_bridge.py). Only relevant if system-auditor is installed -- see prompts/TICKET-MASTER.<lang>.md step (c6). 'enabled' defaults to false so a session start never fires an unattended multi-agent audit run; 'min_interval' is informational cadence documentation only and is NOT consulted by decide() -- system-auditor's own time-grid/period already governs due-ness (asked via due_check()), so a second cadence store here would be exactly the parallel standard this ticket's investigation forbids.",
+    "enabled": false,
+    "min_interval": "7d",
+    "spar_gate": true,
+    "codeword": "audit!"
+  },
+  "reports_dir": null,
+  "_comment_reports_dir": "Optional override for auditor_bridge's due_check(). Left null, lib/auditor_bridge.py resolves it from the installed system_auditor package's own resolved config (reports_dir, <HOME> already expanded) -- never guessed independently.",
+  "findings_dir": null,
+  "_comment_findings_dir": "Optional override for --findings-to-tickets. Left null, resolved the same way as reports_dir above (system_auditor.config.load().findings_dir).",
+  "sparmodus_state_path": null,
+  "token_budget_path": null,
+  "thresholds_path": null,
+  "_comment_sparmodus_paths": "Optional overrides for auditor_bridge.spar_gate(). Left null, defaults to the Claude Code hook state files under ~/.claude/state/ and ~/.claude/hooks/token_budget_config.json (see ~/CLAUDE.md 'sparmodus'/'notaus')."
 }
