@@ -64,3 +64,30 @@ class TestStatusDrift(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLegacyMarkdownStatus(unittest.TestCase):
+    """T-20260901-916096823: '**Status:**'-Legacy-Feld gilt als STATUS-Zeile."""
+
+    def test_legacy_markdown_status_matching_folder_is_no_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            p = base / "BLOCKED" / "T-20260802-01.WORKSTATION-LG.txt"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(
+                "# T-20260802-01.WORKSTATION-LG\n\n"
+                "**Status:** BLOCKED/foreign-state (seit 2026-08-08) - Details\n"
+                "**Typ:** Automation\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(ticket_audit.status_drift(base), [])
+
+    def test_legacy_markdown_status_mismatch_is_still_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            p = base / "USER" / "T-20260802-02.txt"
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("**Status:** QUEUED (seit 2026-08-08)\n", encoding="utf-8")
+            findings = ticket_audit.status_drift(base)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["kind"], "folder-mismatch")

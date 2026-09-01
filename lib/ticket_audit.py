@@ -76,7 +76,13 @@ def collect_ids(base: Path) -> dict[str, list[Path]]:
     return ids
 
 
-_STATUS_LINE_RE = re.compile(r"^STATUS:[ \t]*(?P<value>.*)$", re.MULTILINE)
+# "STATUS:" (Kategorien v1) plus Legacy-Markdown-Feld "**Status:**" (Tickets vom
+# 2026-08-01/02; T-20260901-916096823: sonst Dauer-Fehlalarm missing-status trotz
+# korrektem, ordnerkongruentem Status).
+_STATUS_LINE_RE = re.compile(
+    r"^(?:STATUS:|\*\*Status:\*\*)[ \t]*(?P<value>.*)$",
+    re.MULTILINE,
+)
 _STATUS_CLUSTER_RE = re.compile(r"^(\.USER|[A-Z]+)")
 _ROOT_ALIAS = "INBOX"
 # Legacy folders (PENDING/.USER) are read-only; a STATUS naming them is not
