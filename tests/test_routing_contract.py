@@ -623,6 +623,26 @@ def test_string_receipt_is_reported_not_crashed(tmp_path):
     assert str(healthy) not in report["routing_errors"]
 
 
+def test_unparsable_ledger_json_is_reported_and_rest_of_queue_still_audits(tmp_path):
+    """T-20260902-159332830 test (b): SYSTEM_LEDGER that isn't valid JSON at
+    all must be a reported finding too, and must not stop audit() from
+    covering the rest of the queue."""
+    broken = make_contract(tmp_path)
+    text = broken.read_text(encoding="utf-8")
+    broken.write_text(rc.update_fields(text, {"SYSTEM_LEDGER": "not-json-at-all"}),
+                       encoding="utf-8")
+
+    with pytest.raises(rc.RoutingContractError, match="not valid JSON"):
+        rc.load_contract(broken)
+    errors = rc.contract_errors(broken)  # reported, never raised
+    assert errors and "not valid JSON" in errors[0]
+
+    healthy = make_contract(tmp_path / "unaffected")
+    report = ticket_audit.audit(tmp_path)  # full queue, one broken file
+    assert any("not valid JSON" in e for e in report["routing_errors"][str(broken)])
+    assert str(healthy) not in report["routing_errors"]
+
+
 def test_audit_reports_target_claim_ledger_and_premature_solved_errors(tmp_path):
     path = make_contract(tmp_path)
     root_path = tmp_path / path.name
