@@ -243,7 +243,16 @@ def audit(base: Path | str) -> dict:
             except RoutingContractError:
                 continue
             if parsed.is_v2:
-                errors = contract_errors(entry)
+                # T-20260902-792359826 Nebenbefund: contract_errors() crashed
+                # the whole audit on one malformed v2 ticket (a shape
+                # load_contract() didn't validate). A single broken file must
+                # become a finding, not take down the run for every other
+                # ticket -- defense in depth alongside the load_contract()
+                # shape check itself.
+                try:
+                    errors = contract_errors(entry)
+                except Exception as exc:  # noqa: BLE001 -- reported, never repaired
+                    errors = [f"contract_errors crashed: {exc!r}"]
                 if errors:
                     routing_errors[str(entry)] = errors
 

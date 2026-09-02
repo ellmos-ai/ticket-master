@@ -403,8 +403,16 @@ def load_contract(path: Path | str) -> ContractView:
     if schema != str(ROUTING_SCHEMA):
         raise RoutingContractError("ticket is not routing schema 2")
     ledger = _json_value(fields, "SYSTEM_LEDGER", [])
-    if not isinstance(ledger, list) or not all(isinstance(row, dict) for row in ledger):
-        raise RoutingContractError("SYSTEM_LEDGER must be a JSON row list")
+    # T-20260902-792359826 Nebenbefund: a row with a non-object "receipt"
+    # (e.g. a bare string) used to pass this check and crash contract_errors()
+    # downstream several fields later ('str' object has no attribute 'get').
+    # Reject it here, at the single choke point every caller (contract_errors,
+    # record_receipt, ...) already goes through -- reported, not thrown.
+    if not isinstance(ledger, list) or not all(
+        isinstance(row, dict) and (row.get("receipt") is None or isinstance(row["receipt"], dict))
+        for row in ledger
+    ):
+        raise RoutingContractError("SYSTEM_LEDGER must be a JSON row list with object receipts")
     matrix = _json_value(fields, "EXECUTION_MATRIX", {})
     resolution = _json_value(fields, "RESOLUTION_NOTE", {})
     return ContractView(

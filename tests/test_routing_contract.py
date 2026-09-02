@@ -598,6 +598,31 @@ def test_execution_matrix_is_per_target_and_runner_completion_is_not_global(tmp_
     assert not rc.completion_ready(rc.load_contract(first))
 
 
+def test_string_receipt_is_reported_not_crashed(tmp_path):
+    """T-20260902-792359826 Nebenbefund: a live ticket had a bare string
+    where a SYSTEM_LEDGER row's "receipt" must be an object. load_contract()
+    validated row shape but not receipt shape, so contract_errors()/
+    ticket_audit.audit() crashed with AttributeError on that single
+    malformed file instead of reporting it -- taking the whole queue's audit
+    down with it."""
+    broken = make_contract(tmp_path)
+    text = broken.read_text(encoding="utf-8")
+    fields = rc.parse_fields(text)
+    ledger = json.loads(fields["SYSTEM_LEDGER"])
+    ledger[0]["receipt"] = "not-an-object"
+    broken.write_text(rc.update_fields(text, {"SYSTEM_LEDGER": ledger}), encoding="utf-8")
+
+    with pytest.raises(rc.RoutingContractError, match="object receipts"):
+        rc.load_contract(broken)
+    errors = rc.contract_errors(broken)  # reported, never raised
+    assert errors and "object receipts" in errors[0]
+
+    healthy = make_contract(tmp_path / "unaffected")
+    report = ticket_audit.audit(tmp_path)  # must not crash on the broken sibling
+    assert any("object receipts" in e for e in report["routing_errors"][str(broken)])
+    assert str(healthy) not in report["routing_errors"]
+
+
 def test_audit_reports_target_claim_ledger_and_premature_solved_errors(tmp_path):
     path = make_contract(tmp_path)
     root_path = tmp_path / path.name
