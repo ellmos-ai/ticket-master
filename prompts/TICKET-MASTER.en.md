@@ -64,7 +64,7 @@ context — exactly what the Lean Router principle exists to prevent.
       file reads → **Spawn companion**, assign task, keep for follow-ups.
    c. True one-liner, no file reads, won't recur → **Master fast-lane** +
       a **minimal** solved ticket file directly in `tickets/SOLVED/`
-      (`T-….<HOST>.txt`, STATUS done, one LOG line, result).
+      (`T-….<HOST>.txt`, STATUS SOLVED, one LOG line, result).
 
 4. **Large / parallel / bulk** → Dedicated sub-agent or swarm.
 

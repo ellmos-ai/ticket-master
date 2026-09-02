@@ -68,7 +68,7 @@ soll.
       für Folge-Tickets behalten.
    c. Echter Einzeiler, keine Dateilesungen, wird nicht wiederkehren →
       **Master-Fast-Lane** + **minimale** Solved-Ticketdatei direkt in
-      `tickets/SOLVED/` (`T-….<HOST>.txt`, STATUS done, eine VERLAUF-Zeile,
+      `tickets/SOLVED/` (`T-….<HOST>.txt`, STATUS SOLVED, eine VERLAUF-Zeile,
       Ergebnis).
 
 4. **Groß / parallel / Massen** → Dedizierter Subagent oder Schwarm.

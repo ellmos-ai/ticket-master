@@ -6,7 +6,8 @@ dieser Beleg."""
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
+from datetime import date
 from io import StringIO
 from pathlib import Path
 
@@ -320,6 +321,60 @@ class TestMoveTicket(unittest.TestCase):
             self.assertTrue(source.is_file())
             self.assertEqual(source.read_text(encoding="utf-8"), "VERAENDERT WAEHREND DES MOVES")
             self.assertFalse((dest_dir / source.name).exists())
+
+
+class TestStatusMismatchWarning(unittest.TestCase):
+    """T-20260902-776693293: 97 of 125 live drift findings are a ticket
+    moved to SOLVED whose STATUS line still names its old cluster. The
+    prompt-only warning is routinely missed; move_ticket() now prints a
+    stderr warning with copy-ready replacement text (non-mutating, see
+    ticket_mover._status_mismatch_warning's docstring for why)."""
+
+    def test_move_with_stale_status_warns_with_dated_replacement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260830-000000001.txt"
+            source.write_text(
+                "ID:            T-20260830-000000001\n"
+                "STATUS:        ACTIONABLE (seit 2026-08-27) - Freitext\n",
+                encoding="utf-8",
+            )
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                ticket_mover.move_ticket(source, base / "SOLVED")
+            warning = stderr.getvalue()
+            self.assertIn("STATUS DRIFT", warning)
+            today = date.today().isoformat()
+            self.assertIn(f"STATUS:        SOLVED (seit {today}) - Freitext", warning)
+
+    def test_move_with_matching_status_is_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260830-000000002.txt"
+            source.write_text(
+                "ID:            T-20260830-000000002\n"
+                "STATUS:        SOLVED (seit 2026-08-27)\n",
+                encoding="utf-8",
+            )
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                ticket_mover.move_ticket(source, base / "SOLVED")
+            self.assertEqual(stderr.getvalue(), "")
+
+    def test_move_preserves_subcategory_in_suggested_replacement(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            source = base / "T-20260830-000000003.txt"
+            source.write_text(
+                "ID:            T-20260830-000000003\n"
+                "STATUS:        USER/decision (seit 2026-08-30)\n",
+                encoding="utf-8",
+            )
+            stderr = StringIO()
+            with redirect_stderr(stderr):
+                ticket_mover.move_ticket(source, base / "SOLVED")
+            today = date.today().isoformat()
+            self.assertIn(f"STATUS:        SOLVED/decision (seit {today})", stderr.getvalue())
 
 
 if __name__ == "__main__":

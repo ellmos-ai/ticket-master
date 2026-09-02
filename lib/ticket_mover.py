@@ -31,7 +31,9 @@ import json
 import os
 import re
 import socket
+import sys
 import time
+from datetime import date
 from pathlib import Path
 
 try:  # package import
@@ -47,6 +49,13 @@ try:  # package import
         recover_expired_claim,
         release_contract,
     )
+    from .ticket_audit import (
+        _KNOWN_STATUS_CLUSTERS,
+        _LEGACY_STATUS_ALIASES,
+        _ROOT_ALIAS,
+        _STATUS_CLUSTER_RE,
+        _STATUS_LINE_RE,
+    )
 except ImportError:  # direct import from lib on sys.path
     from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
     from routing_contract import (
@@ -59,6 +68,13 @@ except ImportError:  # direct import from lib on sys.path
         record_receipt,
         recover_expired_claim,
         release_contract,
+    )
+    from ticket_audit import (
+        _KNOWN_STATUS_CLUSTERS,
+        _LEGACY_STATUS_ALIASES,
+        _ROOT_ALIAS,
+        _STATUS_CLUSTER_RE,
+        _STATUS_LINE_RE,
     )
 
 __all__ = [
@@ -390,6 +406,65 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
     return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
 
 
+def _dest_cluster_name(dest_dir: Path) -> str:
+    """Cluster token for a resolved destination dir, mirroring ticket_audit's
+    folder_cluster (root/INBOX-alias vs. a named lifecycle folder)."""
+    try:
+        from .ticket_writer import _LIFECYCLE_SUBDIRS
+    except ImportError:
+        from ticket_writer import _LIFECYCLE_SUBDIRS
+    return dest_dir.name if dest_dir.name in _LIFECYCLE_SUBDIRS else _ROOT_ALIAS
+
+
+def _status_mismatch_warning(target: Path, dest_cluster: str) -> str | None:
+    """T-20260902-776693293: the prompt-only warning ("always pull the
+    STATUS line forward after ticket_mover.py") is routinely missed -- 97 of
+    125 live drift findings are exactly this one miss. move_ticket() is the
+    only place that reliably sees both the old and the new location for
+    every caller, so it checks here instead of relying on discipline.
+
+    Deliberately non-mutating (rung 2 of this ticket's own recommendation,
+    not rung 1): rewriting STATUS in place would need move_ticket()'s
+    byte-for-byte source/target verification to work against two different
+    byte strings instead of one, in the exact function this module exists
+    to make crash-safe. A stderr warning with copy-ready replacement text
+    gets the same 97-cases-prevented outcome without that risk.
+
+    Returns None when there is nothing to warn about (no parsable STATUS
+    line, or its cluster already matches the destination -- both handled
+    identically and silently by ticket_audit.py's own status_drift()).
+    """
+    try:
+        head = target.read_text(encoding="utf-8", errors="replace")[:4096]
+    except OSError:
+        return None
+    match = _STATUS_LINE_RE.search(head)
+    if match is None:
+        return None
+    value = match.group("value").strip()
+    token = _STATUS_CLUSTER_RE.match(value)
+    if not token:
+        return None
+    cluster = _LEGACY_STATUS_ALIASES.get(token.group(1), token.group(1))
+    if cluster not in _KNOWN_STATUS_CLUSTERS or cluster == dest_cluster:
+        return None
+    # Rebuild "<cluster>[/<subcategory>] (seit <today>)<free text>", moving the
+    # date to the move day per the ticket's own request -- not just swapping
+    # the leading cluster token and leaving a stale "(seit ...)" behind.
+    remainder = value[token.end():]
+    subcat_match = re.match(r"(/[\w-]+)?\s*\(seit\s+[\d-]+\)(.*)$", remainder, re.DOTALL)
+    if subcat_match:
+        subcat, free_text = subcat_match.group(1) or "", subcat_match.group(2)
+    else:
+        subcat, free_text = "", remainder
+    suggested = f"{dest_cluster}{subcat} (seit {date.today().isoformat()}){free_text}"
+    return (
+        f"STATUS DRIFT: {target} now lives in {dest_cluster!r} but its STATUS "
+        f"line still says {value!r}. Pull it forward, e.g.:\n"
+        f"  STATUS:        {suggested}"
+    )
+
+
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
                 new_name: str | None = None,
@@ -547,6 +622,9 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
                 target.unlink()
 
     source.unlink()
+    warning = _status_mismatch_warning(target, _dest_cluster_name(dest_dir))
+    if warning:
+        print(warning, file=sys.stderr)
     return target
 
 
