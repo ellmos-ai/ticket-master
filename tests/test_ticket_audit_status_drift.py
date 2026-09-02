@@ -67,9 +67,16 @@ if __name__ == "__main__":
 
 
 class TestLegacyMarkdownStatus(unittest.TestCase):
-    """T-20260901-916096823: '**Status:**'-Legacy-Feld gilt als STATUS-Zeile."""
+    """T-20260901-916096823: '**Status:**'-Legacy-Feld gilt als STATUS-Zeile.
 
-    def test_legacy_markdown_status_matching_folder_is_no_drift(self):
+    T-20260902-792359826: folder-kongruente Legacy-Dateien fielen dadurch
+    komplett aus dem Audit (weder STATUS-DRIFT noch NON-TICKET-FILES) --
+    genau die faile-silent-Luecke, die dieses Ticket fand. Sie muessen als
+    eigener Fund ('legacy-header') erscheinen, ohne erneut als
+    missing-status/folder-mismatch falsch zu alarmieren.
+    """
+
+    def test_legacy_markdown_status_matching_folder_is_reported_as_legacy_header(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             p = base / "BLOCKED" / "T-20260802-01.WORKSTATION-LG.txt"
@@ -80,7 +87,10 @@ class TestLegacyMarkdownStatus(unittest.TestCase):
                 "**Typ:** Automation\n",
                 encoding="utf-8",
             )
-            self.assertEqual(ticket_audit.status_drift(base), [])
+            findings = ticket_audit.status_drift(base)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["kind"], "legacy-header")
+            self.assertEqual(findings[0]["folder"], "BLOCKED")
 
     def test_legacy_markdown_status_mismatch_is_still_reported(self):
         with tempfile.TemporaryDirectory() as tmp:

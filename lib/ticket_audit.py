@@ -97,9 +97,13 @@ def status_drift(base: Path | str) -> list[dict[str, str | None]]:
     Reports, never repairs: ``folder-mismatch`` (STATUS cluster names another
     lifecycle folder), ``unknown-status`` (first token is no cluster at all,
     e.g. ``GELOEST`` or ``/REVIEW``), ``missing-status`` (no STATUS line in
-    the first 4 KB). Only the leading cluster token is compared; the
-    subcategory and free text after it are presentation. A file in the root
-    counts as INBOX; ``OPEN`` is the documented legacy alias for it.
+    the first 4 KB), ``legacy-header`` (STATUS read from the legacy
+    ``**Status:**`` markdown field and folder-congruent -- accepted as a
+    valid field so it isn't also flagged folder-mismatch/missing-status, but
+    still surfaced so it doesn't silently disappear; T-20260902-792359826).
+    Only the leading cluster token is compared; the subcategory and free text
+    after it are presentation. A file in the root counts as INBOX; ``OPEN``
+    is the documented legacy alias for it.
     """
     base = Path(base)
     findings: list[dict[str, str | None]] = []
@@ -128,10 +132,19 @@ def status_drift(base: Path | str) -> list[dict[str, str | None]]:
             value = match.group("value").strip()
             token = _STATUS_CLUSTER_RE.match(value)
             cluster = _LEGACY_STATUS_ALIASES.get(token.group(1), token.group(1)) if token else None
+            # T-20260902-792359826: the legacy '**Status:**' branch (accepted
+            # since T-20260901-916096823 to stop false folder-mismatch/
+            # missing-status alarms) must not fall completely silent even when
+            # folder-congruent -- that is exactly the fail-silent blind spot
+            # this ticket found. It gets its own kind instead of a second,
+            # tacitly-equal STATUS format.
+            is_legacy_header = match.group(0).lstrip().startswith("**")
             if cluster not in _KNOWN_STATUS_CLUSTERS:
                 kind = "unknown-status"
             elif cluster != folder_cluster:
                 kind = "folder-mismatch"
+            elif is_legacy_header:
+                kind = "legacy-header"
             else:
                 continue
             findings.append({"path": str(entry), "folder": folder_cluster,
