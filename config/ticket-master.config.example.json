@@ -1,7 +1,8 @@
 {
   "_comment": "Copy this file to ticket-master.config.json and fill in your own values.",
   "_comment_placeholders": "Optional: if this config lives in a folder synced across several machines (e.g. a cloud-synced parent directory), 'tickets_dir' and any project_roots[].path may use the placeholders <HOME> (current user's home directory) and <USER> (OS user name) instead of a literal, host-specific path -- same convention as config/ticket-writer.config.example.json. The agent following the TICKET-MASTER prompt resolves these to the current host's actual values before any file access; a literal path is still fine for a single-machine setup.",
-  "tickets_dir": "./tickets",
+  "tickets_dir": "<HOME>/ticket-master-data/tickets",
+  "_comment_tickets_dir": "Use an intentional live queue, never the repository's ./tickets fixture. Before first intake, create the directory and a .ticket-master-queue file whose complete content is ticket-master-queue-v1; existing queues with a contract-bearing README.md plus _templates/TICKET.txt are also accepted.",
   "prompts_dir": "./prompts",
   "_comment_prompts_dir": "Repository-local directory containing TICKET-MASTER.<lang>.md. All three starters resolve this field through bin/ticket_master.py; paths escaping the repository root are rejected.",
   "_comment_language": "Prompt language. Override at runtime with TM_LANG; invalid or missing language files fall back to 'en' with a warning.",

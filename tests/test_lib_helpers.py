@@ -11,6 +11,7 @@ sys.path.insert(0, str(LIB_DIR))
 
 import ticket_writer  # noqa: E402
 import doc_scanner  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 class TestTicketWriter(unittest.TestCase):
@@ -18,8 +19,67 @@ class TestTicketWriter(unittest.TestCase):
         with self.assertRaises(ValueError):
             ticket_writer.create("t", "b", today="2026-06-27")  # kein tickets_dir/env
 
+    def test_rejects_unverified_queue_without_creating_directories(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp) / "wrong" / "tickets"
+
+            with self.assertRaisesRegex(ValueError, "verified ticket queue"):
+                ticket_writer.create(
+                    "Titel", "Body", tickets_dir=queue, today="2026-06-27",
+                )
+
+            self.assertFalse(queue.exists())
+
+    def test_rejects_fixture_like_root_with_template_but_no_readme(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp) / "tickets"
+            template = queue / "_templates" / "TICKET.txt"
+            template.parent.mkdir(parents=True)
+            template.write_text("STATUS:        INBOX\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "verified ticket queue"):
+                ticket_writer.create_routed_ticket(
+                    "Titel", "Body", tickets_dir=queue,
+                    registry_snapshot={"systems": []}, today="2026-06-27",
+                )
+
+            self.assertFalse((queue / "INBOX").exists())
+
+    def test_rejects_marker_with_noncanonical_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp)
+            (queue / ".ticket-master-queue").write_text(
+                " ticket-master-queue-v1\n", encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(ValueError, "verified ticket queue"):
+                ticket_writer.create(
+                    "Titel", "Body", tickets_dir=queue, today="2026-06-27",
+                )
+
+            self.assertFalse((queue / "INBOX").exists())
+
+    def test_accepts_existing_readme_and_template_queue_contract(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp)
+            (queue / "README.md").write_text(
+                "# Ticket Queue\n\nNew tickets enter INBOX.\n", encoding="utf-8",
+            )
+            template = queue / "_templates" / "TICKET.txt"
+            template.parent.mkdir()
+            template.write_text(
+                "TICKET\nSTATUS:        INBOX\n", encoding="utf-8",
+            )
+
+            path = Path(ticket_writer.create(
+                "Titel", "Body", tickets_dir=queue, today="2026-06-27",
+            ))
+
+            self.assertEqual(path.parent, queue / "INBOX")
+
     def test_creates_unclaimed_ticket(self):
         with tempfile.TemporaryDirectory() as tmp:
+            verified_queue(tmp)
             path = ticket_writer.create("Titel", "Body", project="proj",
                                         tickets_dir=Path(tmp), today="2026-06-27")
             p = Path(path)
@@ -43,6 +103,7 @@ class TestTicketWriter(unittest.TestCase):
         belegten Zahlen liefert."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "SOLVED").mkdir()
             (base / "SOLVED" / "T-20260627-111111111.HOSTX.txt").write_text(
                 "alt", encoding="utf-8")
@@ -84,6 +145,7 @@ class TestTicketWriter(unittest.TestCase):
         from unittest.mock import patch
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             inbox = base / "INBOX"
             inbox.mkdir()
             first = inbox / "T-20260627-444444444.txt"
@@ -109,6 +171,7 @@ class TestTicketWriter(unittest.TestCase):
         """T-20260808-03 Punkt 2: die Vergabesperre nuetzt nur, wenn sie
         bequemer ist als von Hand zaehlen. Ein Shell-Einzeiler ist das."""
         with tempfile.TemporaryDirectory() as tmp:
+            verified_queue(tmp)
             exit_code = ticket_writer._cli([
                 "--title", "CLI-Titel", "--body", "CLI-Body",
                 "--tickets-dir", tmp,

@@ -287,7 +287,7 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 
 | Feld | Beschreibung |
 |------|--------------|
-| `tickets_dir` | Wo Ticket-Dateien liegen (Standard: `./tickets`) |
+| `tickets_dir` | Bewusst gewählte Live-Queue; der mitgelieferte Baum `./tickets` ist eine schreibgeschützte Fixture, kein Intake-Ziel |
 | `prompts_dir` | Repository-lokaler Ordner mit `TICKET-MASTER.<lang>.md`; alle drei Starter lösen ihn über `bin/ticket_master.py` auf und lehnen Pfade außerhalb des Repositorys ab |
 | `default_language` | Dokumentierte Standard-Promptsprache (`en`/`de`); Laufzeit-Override via `TM_LANG` |
 | `project_roots[]` | **Deine Projekte** — Name, Pfad und Pipeline für jeden Eintrag |
@@ -300,6 +300,23 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 | `score_thresholds` | Tier-Grenzwerte (`tier1_max`, `tier2_max` usw.) — nur Fallback, siehe `router_command` |
 | `router_command` | Optional: externer Multi-Modell-/Task-Router, primär vor der Score-Fallback-Formel |
 | `task_db_command` | Optional: „später"-Senke für `woche`/`backlog`-Tickets |
+
+### Queue-Root-Identität (Fail Closed)
+
+Ticket-Writer verweigern das Anlegen von `INBOX/` unter einem ungeprüften Pfad.
+So kann ein falsches `--tickets-dir` nicht still eine überzeugend aussehende
+Parallel-Queue erzeugen. Ein Root wird nur akzeptiert, wenn entweder:
+
+- `.ticket-master-queue` existiert und vollständig den Inhalt
+  `ticket-master-queue-v1` trägt; oder
+- sowohl `README.md` als auch `_templates/TICKET.txt` eine Ticket-Queue mit
+  `INBOX`-/`STATUS:`-Vertrag ausweisen (Kompatibilität für bestehende Queues).
+
+Der Writer darf ein fehlendes `INBOX/` innerhalb dieses verifizierten Roots
+anlegen, erzeugt oder errät aber niemals den Queue-Root selbst. Die
+Beispielkonfiguration zeigt absichtlich nicht auf die Repository-Fixture.
+Schreibe vor dem ersten Intake einmal den exakten Markerwert in das bewusst
+gewählte Live-Verzeichnis.
 
 ### Beispiel für einen `project_roots`-Eintrag
 
@@ -340,10 +357,11 @@ Tickettext wird nicht ausgegeben. `--intake` validiert und normalisiert die
 Beschreibung, legt exklusiv genau eine unclaimed Datei unter `INBOX/` an und
 schreibt nicht in das veraltete gemeinsame Intake-Log. Erst eine tatsächliche
 Übergabe an einen Provider/Agent verschiebt das Ticket nach `QUEUED/`. Für
-eine lokale Queue kann `--tickets-dir`, für eine JSON-Konfiguration `--config`
-verwendet werden.
-Eine fehlende Standard-Config nutzt sichere Repository-Defaults; eine explizit
-fehlende oder fehlerhafte Config endet mit einem kontrollierten Fehler.
+eine explizit verifizierte Live-Queue kann `--tickets-dir`, für eine
+JSON-Konfiguration `--config` verwendet werden. Ohne Config kann die Anzeige
+die mitgelieferte Repository-Fixture lesen; Intake schlägt dagegen kontrolliert
+fehl, bis eine Live-Queue ausdrücklich konfiguriert und verifiziert wurde. Eine
+explizit fehlende oder fehlerhafte Config endet mit einem kontrollierten Fehler.
 
 ---
 

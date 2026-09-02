@@ -49,6 +49,54 @@ def _default_tickets_dir() -> Path | None:
     env = os.environ.get("TICKET_MASTER_TICKETS_DIR")
     return Path(env) if env else None
 
+
+_QUEUE_MARKER = ".ticket-master-queue"
+_QUEUE_MARKER_VALUE = "ticket-master-queue-v1"
+
+
+def require_verified_queue_root(tickets_dir: Path) -> Path:
+    """Return *tickets_dir* only when it identifies an intentional queue.
+
+    Writers must never invent the queue root: a wrong ``--tickets-dir`` used
+    to create a convincing parallel lifecycle tree.  A dedicated marker is
+    the compact contract for new queues.  Existing queues remain compatible
+    when both their root README and canonical ticket template identify the
+    expected ticket/INBOX structure.
+    """
+    base = Path(tickets_dir)
+    marker = base / _QUEUE_MARKER
+    if marker.is_file():
+        try:
+            marker_text = marker.read_text(encoding="utf-8")
+            if marker_text in {_QUEUE_MARKER_VALUE, _QUEUE_MARKER_VALUE + "\n"}:
+                return base
+        except (OSError, UnicodeError):
+            pass
+
+    readme = base / "README.md"
+    template = base / "_templates" / "TICKET.txt"
+    try:
+        readme_text = readme.read_text(encoding="utf-8")
+        template_text = template.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        readme_text = ""
+        template_text = ""
+    legacy_contract = (
+        "TICKET" in readme_text.upper()
+        and "INBOX" in readme_text.upper()
+        and "TICKET" in template_text.upper()
+        and "STATUS:" in template_text.upper()
+    )
+    if base.is_dir() and legacy_contract:
+        return base
+
+    raise ValueError(
+        f"tickets_dir is not a verified ticket queue: {base}. "
+        f"Refusing to create queue directories. Add {_QUEUE_MARKER} containing "
+        f"'{_QUEUE_MARKER_VALUE}', or provide a queue with README.md and "
+        "_templates/TICKET.txt that identify the ticket/INBOX contract."
+    )
+
 _TICKET_TEMPLATE = """\
 ==============================================================
 TICKET
@@ -384,6 +432,7 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
     if base is None:
         raise ValueError(
             "tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+    base = require_verified_queue_root(base)
     inbox = base / "INBOX"
     inbox.mkdir(parents=True, exist_ok=True)
 
@@ -519,7 +568,7 @@ def create_routed_ticket(
     """
     if tickets_dir is None:
         raise ValueError("tickets_dir required for routing schema v2")
-    base = Path(tickets_dir)
+    base = require_verified_queue_root(Path(tickets_dir))
     inbox = base / "INBOX"
     inbox.mkdir(parents=True, exist_ok=True)
     date_iso = today or datetime.now().strftime("%Y-%m-%d")

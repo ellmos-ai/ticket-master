@@ -22,6 +22,7 @@ sys.path.insert(0, str(LIB_DIR))
 
 import ticket_mover  # noqa: E402
 import ticket_writer  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 class TestFilenameGrammar(unittest.TestCase):
@@ -77,6 +78,7 @@ class TestFilenameGrammar(unittest.TestCase):
         hier absichtlich zuerst genau die belegte Zahl."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "SOLVED").mkdir()
             (base / "SOLVED" / "T-20260612-123456789_promptboard-readme.txt").write_text(
                 "alt", encoding="utf-8")

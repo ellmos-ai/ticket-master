@@ -14,12 +14,14 @@ LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
 import ticket_writer  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 class TestFormalizeInformalEntry(unittest.TestCase):
     def test_creates_ticket_with_header_and_verbatim_originaltext(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "INBOX").mkdir(parents=True)
             wortlaut = "Modelle machen manchmal Fehler beim Anlegen von Tickets.\nZweite Zeile."
             source = base / "INBOX" / "formlos-codex-20260830-1200.txt"
@@ -38,6 +40,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
     def test_title_is_first_non_empty_line(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "INBOX").mkdir(parents=True)
             source = base / "INBOX" / "formlos-agent-x.txt"
             source.write_text("\n\n  Erste sichtbare Zeile als Titel  \nRest.\n",
@@ -49,6 +52,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
     def test_source_is_archived_not_deleted(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "INBOX").mkdir(parents=True)
             source = base / "INBOX" / "formlos-agent-y.txt"
             source.write_text("Ein formloser Eintrag.", encoding="utf-8")
@@ -66,6 +70,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
         archiviert, damit sie nicht liegen bleibt."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "INBOX").mkdir(parents=True)
             existing = base / "ACTIONABLE"
             existing.mkdir()
@@ -88,6 +93,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
     def test_cli_from_file_formalizes_and_moves_source(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
+            verified_queue(base)
             (base / "INBOX").mkdir(parents=True)
             source = base / "INBOX" / "formlos-cli-test.txt"
             source.write_text("CLI-Wortlaut, unveraendert.", encoding="utf-8")

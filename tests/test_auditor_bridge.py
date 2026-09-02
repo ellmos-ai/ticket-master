@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "lib"))
 
 import auditor_bridge  # noqa: E402
 import ticket_writer  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 def write_json(path: Path, data) -> Path:
@@ -347,7 +348,7 @@ def test_findings_to_tickets_missing_findings_dir_returns_empty(tmp_path):
 
 def test_findings_to_tickets_apply_creates_ticket_then_dedups_on_rerun(tmp_path):
     findings_dir = tmp_path / "findings"
-    tickets_dir = tmp_path / "tickets"
+    tickets_dir = verified_queue(tmp_path / "tickets")
     make_finding(findings_dir, "M-20260830-apply-me", "Apply me title")
 
     first = auditor_bridge.findings_to_tickets(

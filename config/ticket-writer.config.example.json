@@ -1,8 +1,8 @@
 {
   "_superseded": "The TICKET-WRITER (SIG-TU) role that consumed this config moved out to ellmos-ai/system-auditor on 2026-08-15 (see config/system-auditor.config.example.json there). This file remains only as a record of origin; nothing in this repository reads it anymore.",
   "_comment": "Copy this file to ticket-writer.config.json and fill in your own values. Placeholders: <USER> = OS user name, <HOME> = user home directory. The TICKET-WRITER role (prompts/TICKET-WRITER.<lang>.md) reads all paths/commands from here.",
-  "tickets_dir": "./tickets",
-  "ticket_template": "./tickets/_templates/TICKET.txt",
+  "tickets_dir": "<HOME>/ticket-master-data/tickets",
+  "ticket_template": "<HOME>/ticket-master-data/tickets/_templates/TICKET.txt",
   "_comment_areas": "Rotation list for the loop contract: exactly ONE area per run. 'name' is used in reports and ticket ORIGIN lines, 'path' scopes the read-only sweep, 'focus' states what integrity aspects to check.",
   "areas": [
     {

@@ -19,6 +19,7 @@ import routing_contract as rc  # noqa: E402
 import ticket_audit  # noqa: E402
 import ticket_mover  # noqa: E402
 import ticket_writer  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 REGISTRY = {
@@ -116,6 +117,7 @@ def make_contract(
 ) -> Path:
     if target_kind == "grouped" and targets is None:
         targets = ["ASUS-GEI", "WORKSTATION-LG"]
+    verified_queue(tmp_path)  # T-20260831-333760321: writers refuse an unverified root
     path = ticket_writer.create_routed_ticket(
         "Mehrsystemprüfung",
         "Prüfe den belegten Anteil je Zielsystem.",
@@ -227,6 +229,7 @@ def test_public_clutch_resolver_seam_makes_via_ticket_claimable(tmp_path, monkey
     fake_clutch.resolve_execution_selector = resolver
     monkeypatch.setitem(sys.modules, "clutch", fake_clutch)
 
+    verified_queue(tmp_path)
     path = Path(ticket_writer.create_routed_ticket(
         "Public resolver seam",
         "Claim through the Clutch-owned execution resolver.",
@@ -313,6 +316,7 @@ def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_
     assert [row["system"] for row in view.ledger] == ["WORKSTATION-LG"]
     assert rc.contract_errors(path, now="2026-08-22T09:00:00Z") == []
 
+    verified_queue(tmp_path / "all")
     all_path = ticket_writer.create_routed_ticket(
         "All systems", "One circulating contract.", tickets_dir=tmp_path / "all",
         registry_snapshot=REGISTRY, ticket_kind="fork", target_kind="all",
@@ -323,6 +327,7 @@ def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_
     assert len(rc.load_contract(all_path).ledger) == 2
 
     cli_root = tmp_path / "cli"
+    verified_queue(cli_root)
     registry_path = tmp_path / "systems.json"
     registry_path.write_text(json.dumps(REGISTRY), encoding="utf-8")
     assert ticket_writer._cli([
@@ -336,6 +341,7 @@ def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_
     assert len(list((cli_root / "INBOX").glob("*.to-WORKSTATION-LG.txt"))) == 1
 
     request_root = tmp_path / "idempotent"
+    verified_queue(request_root)
     kwargs = dict(
         tickets_dir=request_root, registry_snapshot=REGISTRY,
         ticket_kind="fork", target_kind="grouped",
@@ -556,6 +562,7 @@ def test_registry_outage_stays_unresolved_then_recovers_without_substitution(tmp
     def outage(_selector, runner=None):
         raise RuntimeError("provider detail must not leak")
 
+    verified_queue(tmp_path)
     path = ticket_writer.create_routed_ticket(
         "Unresolved", "Wait for registry.", tickets_dir=tmp_path,
         registry_snapshot=REGISTRY, ticket_kind="transfer", target_kind="exact",
@@ -686,6 +693,7 @@ def test_route_intent_boundary_is_stable_and_contains_no_transport_machine(tmp_p
 
 def test_real_creation_time_drives_binding_expiry_when_today_is_not_injected(tmp_path):
     created = "2026-08-22T18:45:12Z"
+    verified_queue(tmp_path)
     path = ticket_writer.create_routed_ticket(
         "Timed", "Use the actual absolute creation instant.", tickets_dir=tmp_path,
         registry_snapshot=REGISTRY, ticket_kind="normal", target_kind="any",

@@ -278,7 +278,7 @@ Copy `config/ticket-master.config.example.json` to
 
 | Field | Description |
 |-------|-------------|
-| `tickets_dir` | Where ticket files live (default: `./tickets`) |
+| `tickets_dir` | Intentional live queue; the shipped `./tickets` tree is a read-only fixture, not an intake target |
 | `prompts_dir` | Repository-local directory containing `TICKET-MASTER.<lang>.md`; all three starters resolve it through `bin/ticket_master.py` and reject paths escaping the repo root |
 | `default_language` | Documented default prompt language (`en`/`de`); runtime override via `TM_LANG` |
 | `project_roots[]` | **Your projects** — add name, path, pipeline for each |
@@ -291,6 +291,22 @@ Copy `config/ticket-master.config.example.json` to
 | `score_thresholds` | Tier boundary scores (tier1\_max, tier2\_max, etc.) — fallback only, see `router_command` |
 | `router_command` | Optional external multi-model/task router; consulted before the score-fallback formula |
 | `task_db_command` | Optional "later" sink for `woche`/`backlog`-urgency tickets |
+
+### Queue Root Identity (Fail Closed)
+
+Ticket writers refuse to create `INBOX/` below an unverified path. This keeps a
+wrong `--tickets-dir` from silently creating a convincing parallel queue. A
+root is accepted only when either:
+
+- `.ticket-master-queue` exists and its complete content is
+  `ticket-master-queue-v1`; or
+- both `README.md` and `_templates/TICKET.txt` identify a ticket queue with an
+  `INBOX`/`STATUS:` contract (compatibility path for existing queues).
+
+The writer may create a missing `INBOX/` inside that verified root, but it never
+creates or guesses the queue root itself. The example config deliberately
+points outside the repository fixture. Initialize that chosen live directory
+once by writing the exact marker value before the first intake.
 
 ### Example `project_roots` Entry
 
@@ -330,9 +346,11 @@ ticket bodies. `--intake` validates and normalizes a description, creates one
 exclusive unclaimed `INBOX/` file, and never appends the deprecated shared
 intake log. A ticket moves to `QUEUED/` only after an actual provider/agent
 handover.
-Use `--tickets-dir` for an explicit local queue or `--config` for a local JSON
-configuration. A missing default config uses safe repository-local defaults;
-an explicitly missing or malformed config exits with a controlled error.
+Use `--tickets-dir` for an explicit verified live queue or `--config` for a
+local JSON configuration. With no config, listing can inspect the shipped
+repository fixture, while intake fails closed until a live queue is explicitly
+configured and verified. An explicitly missing or malformed config exits with
+a controlled error.
 
 ---
 

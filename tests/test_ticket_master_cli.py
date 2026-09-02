@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from queue_helpers import verified_queue
+
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -105,7 +107,7 @@ class TicketMasterCliTests(unittest.TestCase):
     def test_intake_accepts_multiline_text_escapes_template_separator_and_is_exclusive(self):
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
+            base = verified_queue(tmp)
             path = cli.intake_ticket(
                 "first line\nsecond line\n" + cli._SEPARATOR,
                 tickets_dir=base,
@@ -133,7 +135,7 @@ class TicketMasterCliTests(unittest.TestCase):
         formgueltige ID am selben Datum."""
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:
-            base = Path(tmp)
+            base = verified_queue(tmp)
             inbox = base / "INBOX"
             inbox.mkdir()
             existing = inbox / "T-20260810-01.txt"

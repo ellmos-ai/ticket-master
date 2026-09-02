@@ -37,6 +37,21 @@ All notable changes to ticket-master are documented here.
   codeword. LOGGING section notes that a formless `INBOX/` file awaits
   formalization, not a log entry.
 
+### Fail-closed queue-root identity (T-20260831-333760321)
+
+- `ticket_writer.create()` and `create_routed_ticket()` now validate queue
+  identity before any directory creation. A root needs either the exact
+  `.ticket-master-queue` v1 marker or an existing contract-bearing `README.md`
+  plus `_templates/TICKET.txt`; wrong paths and the bundled fixture fail
+  closed instead of growing a parallel `INBOX/` tree.
+- Example configs point to an explicit home-directory live queue instead of
+  `./tickets`, which remains a read-only repository fixture. EN/DE docs define
+  the marker and compatibility contract.
+- Regression coverage includes a completely missing path, a fixture-like root
+  with only `_templates`, marker-backed queues and the existing README/template
+  compatibility path. Combined verification after the informal-intake rebase:
+  314 tests plus 13 subtests.
+
 ### Booking duty and STATUS drift audit (T-20260830-517795746)
 - `lib/ticket_audit.py`: new read-only check `status_drift()` and report key
   `status_drift` — flags `folder-mismatch` (STATUS cluster names another
