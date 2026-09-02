@@ -55,6 +55,46 @@ class TestCollectIds(unittest.TestCase):
             self.assertIn("T-20260808-02", report["collisions"])
 
 
+class TestClassifyCollision(unittest.TestCase):
+    """T-20260902-379329038: COLLISIONS alone doesn't say whether two files
+    sharing an ID are the same ticket claimed by two hosts (harmless) or two
+    unrelated tickets (a real conflict) -- the triage this ticket's own
+    investigation had to do by hand."""
+
+    def test_real_id_collision_is_flagged_when_titles_differ(self):
+        """Nachbau des scharfen Befunds: T-20260830-517795746 traegt in
+        SOLVED und PARKED zwei inhaltlich verschiedene Vorgaenge."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _write(
+                base / "SOLVED" / "T-20260830-517795746.ASUS-GEI.txt",
+                "TITEL:         Rueckschreibung von Entscheidungen ist nicht abgesichert\n",
+            )
+            _write(
+                base / "PARKED" / "T-20260830-517795746.WORKSTATION-LG.txt",
+                "TITEL:         USER-Tickets speisen nicht ins Entscheidungsregister ein\n",
+            )
+            report = ticket_audit.audit(base)
+            self.assertEqual(report["collision_kinds"]["T-20260830-517795746"], "id-collision")
+
+    def test_host_duplicate_is_flagged_when_titles_match(self):
+        """Nachbau der harmlosen Faelle: identischer Titel, zwei Hosts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            _write(
+                base / "SOLVED" / "T-20260830-321949169.ASUS-GEI.txt",
+                "TITEL:         Gleicher Vorgang, zwei Hosts\n",
+            )
+            _write(
+                base / "SOLVED" / "T-20260830-321949169.WORKSTATION-LG.txt",
+                "TITEL:         Gleicher Vorgang, zwei Hosts\n",
+            )
+            report = ticket_audit.audit(base)
+            self.assertEqual(
+                report["collision_kinds"]["T-20260830-321949169"], "host-duplicate"
+            )
+
+
 class TestClaimedInRoot(unittest.TestCase):
     def test_claimed_ticket_in_root_is_flagged(self):
         """Nachbau des Zweitbefunds: T-20260801-07.WORKSTATION-LG.txt lag

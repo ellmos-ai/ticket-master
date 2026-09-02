@@ -532,6 +532,57 @@ def formalize_informal_entry(
     return ticket_path
 
 
+_ORIGIN_ID_RE = re.compile(r"^T-(?P<date>\d{8})-(?P<number>\d+)")
+
+
+def split_ticket(
+    source: Path, tickets_dir: Path, *, title: str | None = None,
+    priority: str = "mittel", pipeline: str = "<offen>", project: str | None = None,
+    today: str | None = None, rng=None,
+) -> str:
+    """Splits one ticket file into a NEW, independently-identified ticket.
+
+    T-20260902-379329038: a real ID collision (two unrelated tickets sharing
+    one ID) turned out to be a ticket copied to a second file that kept the
+    ORIGINAL's ID instead of ever drawing a new one -- the collision guard in
+    create()/create_routed_ticket() only runs when an ID is actually drawn,
+    so a plain file copy bypasses it no matter how random the ID space is.
+    split_ticket() is the supported way to turn one ticket into two: it
+    always goes through create()'s exclusive draw, so the result can never
+    collide with the source.
+
+    The origin ticket's ID is recorded as an ORIGIN-TICKET provenance field,
+    and its full original content is preserved byte-identical in an
+    "ORIGINALTEXT (unveraendert, massgeblich)" block -- same convention as
+    formalize_informal_entry() above (precedent T-20260830-167725484:
+    reformatting means putting a head in front, never rewriting the text).
+
+    Does not touch, move, or retire the source file -- callers decide
+    separately whether/how the source should change afterwards (this
+    ticket's own note: merging or renumbering existing tickets is not a
+    unilateral decision when another host's state is involved).
+    """
+    source = Path(source)
+    tickets_dir = Path(tickets_dir)
+    text = source.read_text(encoding="utf-8")
+    id_match = _ORIGIN_ID_RE.match(source.name)
+    origin_id = f"T-{id_match.group('date')}-{id_match.group('number')}" if id_match else source.name
+
+    if title is None:
+        title = next((line.strip() for line in text.splitlines() if line.strip()), source.name)[:120]
+    body = (
+        f"Abgespalten von {origin_id} (Quelle: {source.name}).\n\n"
+        f"ORIGIN-TICKET: {origin_id}\n\n"
+        "--- ORIGINALTEXT (unveraendert, massgeblich) ---\n"
+        f"{text}\n"
+        "--- ENDE ORIGINALTEXT ---\n"
+    )
+    return create(
+        title, body, project=project, priority=priority, pipeline=pipeline,
+        tickets_dir=tickets_dir, today=today, rng=rng,
+    )
+
+
 def create_routed_ticket(
     title: str,
     body: str,
@@ -698,6 +749,7 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--tickets-dir", default=None)
     parser.add_argument("--from-file", help="formalize one formless INBOX entry (Entscheid 3A)")
     parser.add_argument("--submitter", default=None, help="with --from-file: submitter name (default: filename)")
+    parser.add_argument("--split-from", help="split one existing ticket file into a new, freshly-ID'd ticket")
     parser.add_argument("--ticket-kind", choices=("normal", "transfer", "fork"))
     parser.add_argument("--target-kind", choices=("any", "all", "grouped", "exact"))
     parser.add_argument("--target")
@@ -713,14 +765,21 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--execution-matrix", help="optional JSON file for via-mixed")
     parser.add_argument("--idempotency-key", help="stable caller key for retry-safe creation")
     args = parser.parse_args(argv)
-    if not args.from_file and not args.title:
-        parser.error("--title is required unless --from-file is set")
+    if not args.from_file and not args.split_from and not args.title:
+        parser.error("--title is required unless --from-file or --split-from is set")
     try:
         if args.from_file:
             path = formalize_informal_entry(
                 Path(args.from_file),
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
                 submitter=args.submitter, project=args.project,
+                priority=args.priority, pipeline=args.pipeline,
+            )
+        elif args.split_from:
+            path = split_ticket(
+                Path(args.split_from),
+                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                title=args.title, project=args.project,
                 priority=args.priority, pipeline=args.pipeline,
             )
         elif args.ticket_kind or args.target_kind or args.via or args.route_alias:

@@ -76,6 +76,39 @@ def collect_ids(base: Path) -> dict[str, list[Path]]:
     return ids
 
 
+_TITLE_LINE_RE = re.compile(r"^(?:TITEL|TITLE):[ \t]*(?P<value>.*)$", re.MULTILINE)
+
+
+def _read_title(path: Path) -> str | None:
+    try:
+        head = path.read_text(encoding="utf-8", errors="replace")[:4096]
+    except OSError:
+        return None
+    match = _TITLE_LINE_RE.search(head)
+    return match.group("value").strip() if match else None
+
+
+def classify_collision(paths: list[Path]) -> str:
+    """T-20260902-379329038: a raw COLLISIONS dump doesn't say whether an ID
+    is shared by two copies of the SAME ticket (each host claimed its own
+    copy of one submission -- harmless, at most needs merging) or by two
+    UNRELATED tickets (a real collision -- the 9-digit random ID was meant to
+    make this practically impossible, but a plain file *copy* never draws a
+    new ID, so no collision guard ever runs). Distinguishing them is the
+    triage this ticket's own investigation had to do by hand.
+
+    "host-duplicate": every file resolves to the exact same title value
+    (including the case where none of them has a readable title at all).
+    "id-collision": at least two files disagree -- including one file
+    having a title and another not, which is treated as disagreement
+    rather than silently assumed to be the same ticket.
+    """
+    titles = {_read_title(p) for p in paths}
+    if len(titles) <= 1:
+        return "host-duplicate"
+    return "id-collision"
+
+
 # "STATUS:" (Kategorien v1) plus Legacy-Markdown-Feld "**Status:**" (Tickets vom
 # 2026-08-01/02; T-20260901-916096823: sonst Dauer-Fehlalarm missing-status trotz
 # korrektem, ordnerkongruentem Status).
@@ -177,10 +210,14 @@ def audit(base: Path | str) -> dict:
     """
     base = Path(base)
 
+    colliding_ids = {
+        ticket_id: paths for ticket_id, paths in collect_ids(base).items() if len(paths) > 1
+    }
     collisions = {
-        ticket_id: sorted(str(p) for p in paths)
-        for ticket_id, paths in collect_ids(base).items()
-        if len(paths) > 1
+        ticket_id: sorted(str(p) for p in paths) for ticket_id, paths in colliding_ids.items()
+    }
+    collision_kinds = {
+        ticket_id: classify_collision(paths) for ticket_id, paths in colliding_ids.items()
     }
 
     claimed_in_root: list[str] = []
@@ -282,6 +319,7 @@ def audit(base: Path | str) -> dict:
 
     return {
         "collisions": collisions,
+        "collision_kinds": collision_kinds,
         "claimed_in_root": sorted(claimed_in_root),
         "non_ticket_files": sorted(non_ticket_files),
         "informal_entries": sorted(informal_entries),
@@ -387,10 +425,12 @@ def _print_human(report: dict) -> None:
     nested_lifecycle_tickets = report.get("nested_lifecycle_tickets", [])
     nested_lifecycle_details = report.get("nested_lifecycle_details", [])
 
+    collision_kinds = report.get("collision_kinds", {})
     if collisions:
         print(f"COLLISIONS ({len(collisions)} ID(s) with more than one file):")
         for ticket_id, paths in sorted(collisions.items()):
-            print(f"  {ticket_id}:")
+            kind = collision_kinds.get(ticket_id, "unknown")
+            print(f"  {ticket_id} [{kind}]:")
             for path in paths:
                 print(f"    {path}")
     else:
