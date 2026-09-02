@@ -309,3 +309,40 @@ Quelle: `ellmos-ai/FolderHome` @ `f9fdb6a` (unter Judging-Lock, nur gelesen),
       fail-closed bei Abweichung. Bezug: TODO-Punkt „Entscheidungs-Readback vor Eskalation".
 - **Verworfen (beitragsspezifisch):** Experten-Routing des Master-Agenten, Domänen-
   Executor-Adapter (Kalender, Finanzen, Gesundheit) — Fachlogik, nicht Ticket-Routing.
+
+## Unterkategorien werden nicht validiert (ticket-master@ASUS-GEI, 2026-09-02)
+
+Gemessen an der Live-Queue (79 Tickets in `USER/`): Das Audit prueft den
+STATUS-**Cluster** gegen den Lebenszyklusordner, aber die **Unterkategorie**
+gar nicht. Entsprechend stehen dort Werte, die `docs/CATEGORIES.de.md` nicht
+kennt.
+
+| Anzahl | STATUS-Wert | kanonisch? |
+|---|---|---|
+| 32 | `USER/decision` | ja |
+| 13 | `USER/session` | ja |
+| 12 | `USER/freigabe` | ja |
+| 7 | `USER/marker` | ja |
+| 7 | `USER` (ohne Unterkategorie) | zulaessig, aber unspezifisch |
+| 3 | `USER/data` | ja |
+| 1 | `USER/hardware` | ja |
+| 1 | `USER/decision-partial` | **nein** |
+| 1 | `USER / uac-live-abnahme` | **nein** (zusaetzlich mit Leerzeichen) |
+| 1 | `USER/manual-hardware-restart` | **nein** |
+
+- [ ] **Unterkategorie im Audit pruefen**: Ein Wert, der im Cluster-Vokabular
+      nicht vorgesehen ist, sollte als eigener Befund erscheinen (analog zum
+      2026-09-02 ergaenzten `legacy-header`), nicht stillschweigend
+      durchgehen. Wichtig dabei: nur MELDEN. Die drei abweichenden Werte sind
+      inhaltlich nicht unsinnig -- `decision-partial` beschreibt einen real
+      existierenden Zwischenzustand (Teil entschieden, Rest offen), und
+      `uac-live-abnahme` benennt praezise, worauf gewartet wird. Es ist daher
+      offen, ob das Vokabular erweitert oder die Werte angeglichen werden
+      sollten; diese Entscheidung gehoert NICHT nebenbei in den Audit-Fix.
+- **Nicht empfohlen:** die zehn Altfaelle einfach umschreiben. Sie sind der
+  Beleg dafuer, welche Zwischenzustaende in der Praxis gebraucht werden --
+  genau die Information, die man fuer die Vokabularentscheidung braucht.
+
+Herkunft: autonomer TICKET-MASTER-Lauf am 2026-09-02; aufgefallen beim
+gebuendelten Sichten des `USER/`-Clusters, nicht durch ein Werkzeug -- was
+den Punkt selbst belegt.
