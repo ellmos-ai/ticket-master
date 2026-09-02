@@ -602,11 +602,43 @@ def contract_metadata(*, ticket_id: str, ticket_kind: str, target_snapshot: Mapp
             }
         else:
             resolution = resolve_execution(via, resolver=resolver)
-        selector = resolution.get("canonical_selector") or via
-        state = "active" if resolution.get("resolved") else "unresolved"
-        expires_at = binding_expires(created, binding_ttl)
-        executor = "mixed" if via == "mixed" else resolution.get("runner") or "any"
-        model_selection = resolution.get("model_selection") or resolution.get("selector_type") or "unresolved"
+
+        # D-20260902-001 Option C (T-20260902-404302359): two required
+        # bindings shipped with the resolver's own availability left at
+        # host_ready=account_accessible=None -- unproven, not confirmed --
+        # and sat unusable in BLOCKED until a human noticed. A required
+        # binding must be backed by the resolver explicitly saying both are
+        # true; short of that it ships unbound rather than as a "required"
+        # contract nothing has actually confirmed can run. Does not cover
+        # "mixed" (its resolution carries no per-run availability at all --
+        # a different structure, a separate decision) or "preferred"
+        # (soft bindings already have their own fallback-reason path).
+        availability = resolution.get("availability") or {}
+        ungrounded_required = (
+            via != "mixed" and binding_mode == "required"
+            and resolution.get("resolved")  # a genuinely unresolved selector
+            # is a different, pre-existing failure mode (state="unresolved",
+            # already reported loudly by contract_errors()) -- this rule
+            # targets only the case that actually broke: fully resolved,
+            # fully claimable, but never confirmed runnable.
+            and not (availability.get("host_ready") is True
+                      and availability.get("account_accessible") is True)
+        )
+        if ungrounded_required:
+            logger.error(
+                "Refusing required binding for selector %r: host_ready/account_accessible "
+                "not confirmed true (availability=%r). Delivering unbound instead.",
+                via, availability,
+            )
+            resolution = {}
+        else:
+            selector = resolution.get("canonical_selector") or via
+            state = "active" if resolution.get("resolved") else "unresolved"
+            expires_at = binding_expires(created, binding_ttl)
+            executor = "mixed" if via == "mixed" else resolution.get("runner") or "any"
+            model_selection = (
+                resolution.get("model_selection") or resolution.get("selector_type") or "unresolved"
+            )
     return {
         "ROUTING_SCHEMA": ROUTING_SCHEMA,
         "TICKET_KIND": ticket_kind,

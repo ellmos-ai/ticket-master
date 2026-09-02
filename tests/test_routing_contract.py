@@ -590,6 +590,51 @@ def test_registry_outage_stays_unresolved_then_recovers_without_substitution(tmp
     assert rc.load_contract(path).resolution["canonical_selector"] == "claude-opus-5"
 
 
+def test_required_binding_ships_unbound_without_confirmed_availability(tmp_path):
+    """D-20260902-001 Option C (T-20260902-404302359): the two live tickets
+    that triggered this rule were fully resolved and claimable -- only
+    host_ready/account_accessible were unconfirmed (None). A required
+    binding must not ship on that; it is delivered unbound instead."""
+    def unconfirmed(selector, runner=None):
+        return {
+            "requested_selector": selector, "canonical_selector": selector,
+            "selector_type": "exact", "model_selection": "exact",
+            "resolved": True, "claimable": True, "runner": "clutch",
+            "provider": "google", "registry_name": selector,
+            "model_id": "gemini-3.1-pro-preview", "allowed_runners": ["clutch"],
+            "eligible_models": [selector],
+            "availability": {
+                "provider_documented": True, "provider_api_listed": True,
+                "registry_loaded": True, "selector_registered": True,
+                "runner_compatible": True,
+                "account_accessible": None, "host_ready": None,
+            },
+            "reason": None, "registry_fingerprint": "sha256:fixture",
+            "resolved_at": "2026-09-02T15:44:33Z",
+        }
+
+    verified_queue(tmp_path)
+    kwargs = dict(
+        tickets_dir=tmp_path, registry_snapshot=REGISTRY, ticket_kind="transfer",
+        target_kind="exact", target="ASUS-GEI", via="gemini-pro",
+        primary_ticket="T-20260902-100000000", original_owner="ASUS-GEI",
+        receipt_to="T-20260902-100000000", resolver=unconfirmed,
+        today="2026-09-02", rng=FixedRandom(),
+    )
+    path = Path(ticket_writer.create_routed_ticket("Unconfirmed", "x", **kwargs))
+    view = rc.load_contract(path)
+    assert view.fields["BINDING_STATE"] == "unbound"
+    assert view.fields["MODEL_SELECTOR"] == ""
+    assert view.resolution == {}
+    assert ".via-" not in path.name  # filename carries no binding either
+
+    # A "preferred" (soft) binding is unaffected by this rule.
+    kwargs["binding_mode"] = "preferred"
+    kwargs["rng"] = FixedRandom(987654321)
+    preferred = Path(ticket_writer.create_routed_ticket("Unconfirmed 2", "x", **kwargs))
+    assert rc.load_contract(preferred).fields["BINDING_STATE"] == "active"
+
+
 def test_execution_matrix_is_per_target_and_runner_completion_is_not_global(tmp_path):
     matrix = {
         "ASUS-GEI": {"selector": "claude", "variant": "windows-local"},
