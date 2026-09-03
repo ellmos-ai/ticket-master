@@ -361,7 +361,11 @@ class TestStatusMismatchWarning(unittest.TestCase):
                 ticket_mover.move_ticket(source, base / "SOLVED")
             self.assertEqual(stderr.getvalue(), "")
 
-    def test_move_preserves_subcategory_in_suggested_replacement(self):
+    def test_move_drops_subcategory_in_suggested_replacement(self):
+        """T-20260903-778818739 review: a source subcategory names something
+        about the SOURCE cluster ('decision' is a way of needing USER
+        input) -- carrying it onto the destination produced nonsense like
+        'SOLVED/decision'. It must be dropped, not copied."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260830-000000003.txt"
@@ -374,7 +378,8 @@ class TestStatusMismatchWarning(unittest.TestCase):
             with redirect_stderr(stderr):
                 ticket_mover.move_ticket(source, base / "SOLVED")
             today = date.today().isoformat()
-            self.assertIn(f"STATUS:        SOLVED/decision (seit {today})", stderr.getvalue())
+            self.assertIn(f"STATUS:        SOLVED (seit {today})", stderr.getvalue())
+            self.assertNotIn("SOLVED/decision", stderr.getvalue())
 
 
 if __name__ == "__main__":

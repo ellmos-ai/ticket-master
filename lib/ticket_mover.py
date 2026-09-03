@@ -416,6 +416,36 @@ def _dest_cluster_name(dest_dir: Path) -> str:
     return dest_dir.name if dest_dir.name in _LIFECYCLE_SUBDIRS else _ROOT_ALIAS
 
 
+def suggested_status_line(value: str, dest_cluster: str) -> str | None:
+    """Computes the STATUS value that pulls `value` forward onto
+    `dest_cluster`, preserving its free text and dating it today. Shared by
+    `_status_mismatch_warning` (warns, doesn't write) and
+    status_drift_fixer.py (writes the SAFE subset, T-20260903-778818739).
+
+    The subcategory is dropped, not carried over (T-20260903-778818739
+    review): it names something about the SOURCE cluster -- "dependency" is
+    a way of being BLOCKED, "cleanup"/"bug"/"lizenz" are ACTIONABLE work
+    kinds -- none of them are a way of being SOLVED. A blind carry-over
+    produced nonsense like "SOLVED/dependency".
+
+    Returns None when there is nothing to change (no parsable cluster
+    token, or it already matches dest_cluster).
+    """
+    token = _STATUS_CLUSTER_RE.match(value)
+    if not token:
+        return None
+    cluster = _LEGACY_STATUS_ALIASES.get(token.group(1), token.group(1))
+    if cluster not in _KNOWN_STATUS_CLUSTERS or cluster == dest_cluster:
+        return None
+    # Rebuild "<cluster> (seit <today>)<free text>", moving the date to the
+    # move day per the ticket's own request -- not just swapping the leading
+    # cluster token and leaving a stale "(seit ...)" behind.
+    remainder = value[token.end():]
+    subcat_match = re.match(r"(?:/[\w-]+)?\s*\(seit\s+[\d-]+\)(.*)$", remainder, re.DOTALL)
+    free_text = subcat_match.group(1) if subcat_match else remainder
+    return f"{dest_cluster} (seit {date.today().isoformat()}){free_text}"
+
+
 def _status_mismatch_warning(target: Path, dest_cluster: str) -> str | None:
     """T-20260902-776693293: the prompt-only warning ("always pull the
     STATUS line forward after ticket_mover.py") is routinely missed -- 97 of
@@ -442,22 +472,9 @@ def _status_mismatch_warning(target: Path, dest_cluster: str) -> str | None:
     if match is None:
         return None
     value = match.group("value").strip()
-    token = _STATUS_CLUSTER_RE.match(value)
-    if not token:
+    suggested = suggested_status_line(value, dest_cluster)
+    if suggested is None:
         return None
-    cluster = _LEGACY_STATUS_ALIASES.get(token.group(1), token.group(1))
-    if cluster not in _KNOWN_STATUS_CLUSTERS or cluster == dest_cluster:
-        return None
-    # Rebuild "<cluster>[/<subcategory>] (seit <today>)<free text>", moving the
-    # date to the move day per the ticket's own request -- not just swapping
-    # the leading cluster token and leaving a stale "(seit ...)" behind.
-    remainder = value[token.end():]
-    subcat_match = re.match(r"(/[\w-]+)?\s*\(seit\s+[\d-]+\)(.*)$", remainder, re.DOTALL)
-    if subcat_match:
-        subcat, free_text = subcat_match.group(1) or "", subcat_match.group(2)
-    else:
-        subcat, free_text = "", remainder
-    suggested = f"{dest_cluster}{subcat} (seit {date.today().isoformat()}){free_text}"
     return (
         f"STATUS DRIFT: {target} now lives in {dest_cluster!r} but its STATUS "
         f"line still says {value!r}. Pull it forward, e.g.:\n"
