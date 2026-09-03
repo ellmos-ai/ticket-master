@@ -34,7 +34,7 @@
     ]
   },
   "source_of_truth": {
-    "type": "local-directory",
+    "type": "git-repository",
     "path": ".",
     "repository": "https://github.com/ellmos-ai/ticket-master"
   },
