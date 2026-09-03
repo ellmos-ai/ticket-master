@@ -50,6 +50,17 @@ class ReceiptConflictError(RoutingContractError):
     """A receipt is incomplete, contradictory or reuses a signature."""
 
 
+class StaleContentError(RoutingContractError):
+    """A compare-and-swap write found the file changed since it was read
+    (T-20260903-965930417). Carries the file's CURRENT text so the caller
+    can merge instead of guessing or clobbering."""
+
+    def __init__(self, path: Path, current_text: str):
+        super().__init__(f"{path} changed since it was read for update")
+        self.path = path
+        self.current_text = current_text
+
+
 def _utc(value: datetime | str | None = None) -> datetime:
     if value is None:
         return datetime.now(timezone.utc)
@@ -692,6 +703,42 @@ def _atomic_rewrite(path: Path, text: str) -> None:
     finally:
         if tmp.exists():
             tmp.unlink()
+
+
+def content_hash(text: str) -> str:
+    """Same "sha256:<hex>" format already used for fingerprints/idempotency
+    keys elsewhere in this module."""
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def read_for_update(path: Path | str) -> tuple[str, str]:
+    """Read a ticket file for a later compare-and-swap write. Returns
+    (text, hash) -- hold the hash, transform the text, then pass both to
+    atomic_rewrite_if_unchanged() (T-20260903-965930417)."""
+    path = Path(path)
+    text = path.read_text(encoding="utf-8")
+    return text, content_hash(text)
+
+
+def atomic_rewrite_if_unchanged(path: Path | str, new_text: str, expected_hash: str) -> None:
+    """Compare-and-swap write: rewrites `path` only if its content still
+    hashes to `expected_hash` (from a prior read_for_update()). Otherwise
+    raises StaleContentError with the current content, instead of silently
+    clobbering a write that landed in the gap between read and write
+    (T-20260903-965930417 -- a shared, lock-free ticket tree with no
+    protection for exactly this read-modify-write window).
+
+    Content hash, not mtime: on this OneDrive-synced tree mtime is not a
+    reliable witness. Sync can touch a file without its content changing,
+    and (documented, T-20260903-592302105) can also redirect a write into a
+    conflict copy while leaving the canonical file at its OLD mtime AND old
+    content -- an mtime check would have reported "unchanged" right there.
+    """
+    path = Path(path)
+    current_text = path.read_text(encoding="utf-8")
+    if content_hash(current_text) != expected_hash:
+        raise StaleContentError(path, current_text)
+    _atomic_rewrite(path, new_text)
 
 
 def _exclusive_rewrite_move(source: Path, target: Path, text: str) -> Path:

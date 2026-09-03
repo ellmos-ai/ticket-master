@@ -111,6 +111,22 @@ class TestApplyFixErrors(unittest.TestCase):
             self.assertIsNone(new_value)
             self.assertIsNotNone(error)
 
+    def test_foreign_write_between_scan_and_apply_is_reported_not_clobbered(self):
+        """T-20260903-965930417: a shared, lock-free ticket tree means the
+        classify() scan and apply_fix() write can straddle a foreign edit.
+        The compare-and-swap must refuse instead of overwriting it."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            path = _ticket(base / "SOLVED" / "T-20260816-000000001.txt", "INBOX", _FILLED, _DONE_ENTRY)
+            report = status_drift_fixer.classify(base)
+            self.assertEqual(len(report["fixable"]), 1)
+            path.write_text(path.read_text(encoding="utf-8") + "\nFOREIGN EDIT\n", encoding="utf-8")
+
+            new_value, error = status_drift_fixer.apply_fix(report["fixable"][0])
+            self.assertIsNone(new_value)
+            self.assertIn("changed since scan", error)
+            self.assertIn("FOREIGN EDIT", path.read_text(encoding="utf-8"))  # not clobbered
+
 
 class TestRun(unittest.TestCase):
     def test_dry_run_does_not_write_and_previews_the_real_value(self):

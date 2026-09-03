@@ -759,3 +759,59 @@ def test_v2_release_helper_and_legacy_multi_host_release_stay_distinct(tmp_path)
     claimed = rc.claim_contract(routed, host="ASUS-GEI", actor="worker")
     released = ticket_mover.release_claim(claimed)
     assert ".to-grouped" in released.name and ".claim-" not in released.name
+
+
+def test_atomic_rewrite_if_unchanged_happy_path(tmp_path):
+    path = tmp_path / "T-20260903-000000001.txt"
+    path.write_text("STATUS:        INBOX\n", encoding="utf-8")
+    text, digest = rc.read_for_update(path)
+    rc.atomic_rewrite_if_unchanged(path, text.replace("INBOX", "SOLVED"), digest)
+    assert path.read_text(encoding="utf-8") == "STATUS:        SOLVED\n"
+
+
+def test_atomic_rewrite_if_unchanged_refuses_stale_write(tmp_path):
+    """T-20260903-965930417: a foreign writer editing the file between the
+    caller's read and its write must not be silently overwritten -- the
+    caller gets StaleContentError with the CURRENT content to merge from."""
+    path = tmp_path / "T-20260903-000000002.txt"
+    path.write_text("STATUS:        INBOX\n", encoding="utf-8")
+    text, digest = rc.read_for_update(path)
+    path.write_text("STATUS:        SOLVED\n", encoding="utf-8")  # foreign write
+
+    with pytest.raises(rc.StaleContentError) as excinfo:
+        rc.atomic_rewrite_if_unchanged(path, text.replace("INBOX", "ACTIONABLE"), digest)
+    assert excinfo.value.current_text == "STATUS:        SOLVED\n"
+    assert path.read_text(encoding="utf-8") == "STATUS:        SOLVED\n"  # untouched
+
+
+def test_content_hash_ignores_mtime_and_catches_conflict_copy_scenario():
+    """T-20260903-592302105: on this OneDrive tree a redirected write can
+    leave the canonical file at its OLD mtime AND old content while a
+    conflict copy holds the new content -- content_hash must still tell
+    two different texts apart regardless of any timestamp."""
+    assert rc.content_hash("a") != rc.content_hash("b")
+    assert rc.content_hash("a") == rc.content_hash("a")
+
+
+def test_move_ticket_with_expected_hash_refuses_stale_content(tmp_path):
+    """T-20260903-965930417 item 2: move_ticket's own re-read only guards
+    its own call window; expected_hash guards the gap between the caller's
+    earlier read (the decision to move) and this call."""
+    source = tmp_path / "T-20260903-000000003.txt"
+    source.write_text("STATUS:        ACTIONABLE\n", encoding="utf-8")
+    _, stale_hash = rc.read_for_update(source)
+    source.write_text("STATUS:        BLOCKED/lock\n", encoding="utf-8")  # foreign edit
+
+    with pytest.raises(rc.StaleContentError) as excinfo:
+        ticket_mover.move_ticket(source, tmp_path / "SOLVED", expected_hash=stale_hash)
+    assert excinfo.value.current_text == "STATUS:        BLOCKED/lock\n"
+    assert source.exists()  # refused before any write/delete
+
+
+def test_move_ticket_with_expected_hash_proceeds_when_unchanged(tmp_path):
+    source = tmp_path / "T-20260903-000000004.txt"
+    source.write_text("STATUS:        ACTIONABLE\n", encoding="utf-8")
+    _, digest = rc.read_for_update(source)
+    target = ticket_mover.move_ticket(source, tmp_path / "SOLVED", expected_hash=digest)
+    assert target.read_text(encoding="utf-8") == "STATUS:        ACTIONABLE\n"
+    assert not source.exists()

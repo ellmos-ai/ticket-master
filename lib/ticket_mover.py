@@ -41,8 +41,10 @@ try:  # package import
     from .routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
+        StaleContentError,
         claim_contract,
         complete_contract,
+        content_hash,
         parse_ticket_name,
         normalize_expired_binding,
         record_receipt,
@@ -61,8 +63,10 @@ except ImportError:  # direct import from lib on sys.path
     from routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
+        StaleContentError,
         claim_contract,
         complete_contract,
+        content_hash,
         parse_ticket_name,
         normalize_expired_binding,
         record_receipt,
@@ -485,7 +489,8 @@ def _status_mismatch_warning(target: Path, dest_cluster: str) -> str | None:
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
                 new_name: str | None = None,
-                dry_run: bool = False) -> Path:
+                dry_run: bool = False,
+                expected_hash: str | None = None) -> Path:
     """Move a ticket file into dest_dir, by default under its current filename.
 
     Fails closed: if dest_dir already contains a file with that name, nothing
@@ -526,6 +531,15 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     Kollisionspruefungen aus, gibt aber nur den geplanten Zielpfad zurueck.
     Weder Zielordner noch Zieldatei werden angelegt und die Quelle bleibt
     unveraendert.
+
+    expected_hash (optional, T-20260903-965930417): der Hash aus einem
+    frueheren routing_contract.read_for_update(source) -- wird die Quelle
+    noch VOR dem Move gegen diesen Hash geprueft, verweigert bei Abweichung
+    mit StaleContentError statt eine Entscheidung auf Basis veralteten
+    Inhalts auszufuehren. Die bereits bestehende
+    "source unveraendert seit dem Kopieren"-Pruefung unten schuetzt nur das
+    schmale Fenster INNERHALB dieses Aufrufs; expected_hash schuetzt das
+    Fenster zwischen dem Lesen des Aufrufers und diesem Aufruf.
     """
     source = Path(source)
     if not source.is_file():
@@ -595,6 +609,13 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
             f"move target already exists, refusing to overwrite: {target}"
         )
 
+    if expected_hash is not None:
+        # Text mode (universal newlines), matching read_for_update() -- a
+        # raw-bytes hash would disagree with it on any file using \r\n line
+        # endings even when nothing actually changed.
+        current_text = source.read_text(encoding="utf-8")
+        if content_hash(current_text) != expected_hash:
+            raise StaleContentError(source, current_text)
     data = source.read_bytes()
     if dry_run:
         return target

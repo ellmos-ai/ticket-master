@@ -27,9 +27,11 @@ from pathlib import Path
 try:  # package import
     from .ticket_audit import status_drift, _STATUS_LINE_RE
     from .ticket_mover import suggested_status_line
+    from .routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
 except ImportError:  # direct import from lib on sys.path
     from ticket_audit import status_drift, _STATUS_LINE_RE
     from ticket_mover import suggested_status_line
+    from routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
 
 
 # Header lines sometimes carry trailing free text on the same line (e.g.
@@ -77,6 +79,13 @@ def classify(base: Path | str) -> dict:
     "needs_review" also carries findings this fixer isn't scoped for at all
     (kind not in folder-mismatch/unknown-status) so a caller can see the
     full audit picture, not just its own slice.
+
+    Each fixable finding carries a "content_hash" from THIS scan's read
+    (T-20260903-965930417): `_TICKETS` is shared and lock-free, so between
+    this scan and a later apply_fix() call -- possibly the far side of a
+    ~100-file sweep -- a foreign writer can edit the same file. apply_fix()
+    uses this hash for a compare-and-swap write instead of trusting that
+    nothing changed.
     """
     fixable, needs_review = [], []
     for finding in status_drift(base):
@@ -94,7 +103,7 @@ def classify(base: Path | str) -> dict:
             continue
         text = Path(finding["path"]).read_text(encoding="utf-8", errors="replace")
         if _is_filled_loesung(text) and _has_closing_verlauf_entry(text):
-            fixable.append(finding)
+            fixable.append({**finding, "content_hash": content_hash(text)})
         else:
             needs_review.append(finding)
     return {"fixable": fixable, "needs_review": needs_review}
@@ -139,17 +148,27 @@ def preview_fix(finding: dict) -> tuple[str | None, str | None]:
 
 
 def apply_fix(finding: dict) -> tuple[str | None, str | None]:
-    """Rewrites the STATUS line in place. Returns (new_value, error) -- one
-    of the two is always None.
+    """Rewrites the STATUS line in place via a compare-and-swap write.
+    Returns (new_value, error) -- one of the two is always None.
 
-    Never raises: a rewrite over ~100 OneDrive ticket files must not abort
-    on the first file whose STATUS line changed or vanished between scan
-    and apply -- that belongs in the report as a skip, not a traceback
-    that leaves the run half-done (T-20260903-778818739 review).
+    Never raises: a rewrite over ~100 shared, lock-free OneDrive ticket
+    files must not abort on the first file that a foreign writer touched
+    between scan and apply, or whose STATUS line vanished -- that belongs
+    in the report as a skip, not a traceback that leaves the run half-done
+    (T-20260903-778818739 review). The compare-and-swap uses classify()'s
+    scan-time content_hash, not a hash taken fresh right here -- a hash
+    established at the top of this very function could never observe a
+    change, since nothing yields between reading it and using it. The real
+    exposure is a foreign edit landing anywhere in the ~100-file sweep
+    between classify()'s read of THIS file and this call
+    (T-20260903-965930417, routing_contract.atomic_rewrite_if_unchanged).
     """
     path = finding.get("path")
     if not path:
         return None, "finding has no path"
+    expected_hash = finding.get("content_hash")
+    if not expected_hash:
+        return None, "finding has no content_hash (not produced by classify())"
     path = Path(path)
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -161,7 +180,9 @@ def apply_fix(finding: dict) -> tuple[str | None, str | None]:
     match = _STATUS_LINE_RE.search(text)
     new_text = text[: match.start("value")] + new_value + text[match.end("value") :]
     try:
-        path.write_text(new_text, encoding="utf-8", newline="")
+        atomic_rewrite_if_unchanged(path, new_text, expected_hash)
+    except StaleContentError as exc:
+        return None, f"content changed since scan: {exc}"
     except OSError as exc:
         return None, f"write failed: {exc}"
     return new_value, None
