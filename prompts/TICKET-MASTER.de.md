@@ -724,6 +724,24 @@ nicht bei hoher Dringlichkeit. Aktiver fremder/exklusiver Lock → Ticket nicht
 spawnen, sondern nach `BLOCKED/` (Unterkategorie `lock`) verschieben oder auf
 Freigabe warten.
 
+**Ein Verzeichnis-Blick allein genügt nicht (T-20260903-592302105).** Ist das
+Ziel ein **git-Worktree**, liegt der zuständige Lock im **Hauptklon** — im
+Worktree selbst findet sich keine `LOCK*.txt`, obwohl der Vorgang gesperrt
+ist. Am 2026-09-03 haben deshalb zwei Sitzungen dieselbe Datei überschrieben;
+55 Worktrees waren betroffen. Prüfe daher mit einem Werkzeug, das den
+Hauptklon mit auflöst (`git rev-parse --git-common-dir`), nicht mit `ls`.
+Sofern vorhanden, ist der schnelle Einzelcheck der richtige Weg — er ersetzt
+den teuren Vollscan für diesen Zweck:
+
+```
+PYTHONIOENCODING=utf-8 python "<HOME>/OneDrive/_scripts/lock_scan.py" \
+    --check-dir "<zielverzeichnis>"     # Exit 0 = frei, Exit 1 = gesperrt
+```
+
+**Exitcode ohne Pipe messen.** `… | head` liefert den Exitcode von `head`,
+nicht den des Skripts — dieser Messfehler ließ am selben Tag zweimal einen
+funktionierenden Guard als wirkungslos erscheinen.
+
 **(1)** Übergib die Aufgabe an den Top-Kandidaten → weiter zu GATE 4.
 
 **GATE 4 — Erfolgsprüfung:** Wurde das Ticket zufriedenstellend gelöst?
