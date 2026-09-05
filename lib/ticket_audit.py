@@ -185,7 +185,149 @@ def status_drift(base: Path | str) -> list[dict[str, str | None]]:
     return sorted(findings, key=lambda f: str(f["path"]))
 
 
-def audit(base: Path | str) -> dict:
+# --- Fortschritts-Drift (T-20260904-141396683, Loesungsweg C) --------------
+# Fehlerklasse: ein Stand war einmal wahr und wird spaeter als aktuell gelesen.
+# Ein mehrwelliges Ticket mit fertiger Welle 1 sieht in ACTIONABLE aus wie eines,
+# an dem nie jemand gearbeitet hat -- der Erledigungsstand steht im VERLAUF bzw.
+# in DELEGIERT_AN, und genau die liest der Lean-Router aus Kontext-Oekonomie
+# nicht. Beide Pruefungen melden nur; repariert wird nichts.
+_OPEN_LIFECYCLE_SUBDIRS = ("", "INBOX", "ACTIONABLE")
+_GATE4_RE = re.compile(
+    r"GATE[ \t-]?4[^\n]{0,60}ABGENOMMEN|ABGENOMMEN[^\n]{0,60}GATE[ \t-]?4",
+    re.IGNORECASE,
+)
+# "DELEGIERT_AN: ... Welle 1 fertig, Wellen 2-4 offen" -- der Vermerk steht
+# hinter dem Empfaenger auf derselben Zeile.
+_DELEGIERT_DONE_RE = re.compile(
+    r"^DELEGIERT_AN:.*?\b(fertig|erledigt|abgeschlossen|abgenommen|done)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+_VERLAUF_RE = re.compile(r"^VERLAUF", re.MULTILINE)
+_TICKET_ID_RE = re.compile(r"T-\d{8}-\d+")
+# git grep spricht POSIX-ERE, dort gibt es kein \d -- der Python-Pattern
+# oben ist als git-Argument still wirkungslos (rc 1, keine Treffer).
+_TICKET_ID_GREP = "T-[0-9]{8}-[0-9]+"
+
+
+def _open_ticket_files(base: Path) -> list[Path]:
+    """Ticket files sitting in a folder that still invites a dispatch."""
+    files: list[Path] = []
+    for sub in _OPEN_LIFECYCLE_SUBDIRS:
+        directory = base / sub if sub else base
+        if not directory.is_dir():
+            continue
+        files.extend(
+            entry for entry in directory.iterdir()
+            if entry.is_file() and _LOOKS_LIKE_TICKET_RE.match(entry.name)
+        )
+    return sorted(files)
+
+
+def progress_drift(base: Path | str) -> list[dict[str, str | None]]:
+    """Open tickets that already carry a completion mark in their own body.
+
+    ``gate4-accepted`` -- the VERLAUF records a GATE-4 acceptance.
+    ``delegated-done`` -- DELEGIERT_AN names a finished portion.
+
+    Either one means the ticket is at least partly done, so dispatching it as
+    fresh work pays for that portion twice.  Read in full, not just the head:
+    the mark lives at the bottom of the file, which is exactly why the head-only
+    reader missed it.
+    """
+    findings: list[dict[str, str | None]] = []
+    for entry in _open_ticket_files(Path(base)):
+        try:
+            text = entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        # Nur ab dem VERLAUF suchen. Ein Ticket, das eine fremde Abnahme in
+        # seiner PROBLEMBESCHREIBUNG zitiert, ist nicht selbst abgenommen --
+        # ohne diese Grenze war der erste Treffer am echten Bestand prompt ein
+        # Fehlalarm, und ein Audit, dessen Treffer man wegklickt, ist keins.
+        # DELEGIERT_AN steht am Dateiende, liegt also ebenfalls dahinter.
+        marker = _VERLAUF_RE.search(text)
+        verlauf = text[marker.start():] if marker else ""
+        # DELEGIERT_AN braucht die Eingrenzung nicht: es ist ein zeilenverankertes
+        # Kopffeld am Dateiende, kein Fliesstext -- ein Zitat davon steht
+        # eingerueckt und trifft `^DELEGIERT_AN:` gar nicht.
+        for kind, match in (("gate4-accepted", _GATE4_RE.search(verlauf)),
+                            ("delegated-done", _DELEGIERT_DONE_RE.search(text))):
+            if match is not None:
+                findings.append({"path": str(entry), "kind": kind,
+                                 "evidence": match.group(0).strip()[:120]})
+    return sorted(findings, key=lambda f: (str(f["path"]), str(f["kind"])))
+
+
+def _git_grep_ticket_ids(repo: Path, timeout: float) -> dict[str, str]:
+    """Ticket IDs mentioned in one repository's tracked files -> first location."""
+    import subprocess
+    try:
+        proc = subprocess.run(
+            ["git", "-C", str(repo), "grep", "-I", "-n", "-E", _TICKET_ID_GREP],
+            capture_output=True, text=True, errors="replace", timeout=timeout,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    hits: dict[str, str] = {}
+    for line in proc.stdout.splitlines():
+        location, _, content = line.partition(":")
+        lineno, _, content = content.partition(":")
+        for found in _TICKET_ID_RE.findall(content):
+            hits.setdefault(found, f"{repo.name}/{location}:{lineno}")
+    return hits
+
+
+def source_reference_drift(
+    base: Path | str,
+    roots: list[Path] | None = None,
+    *,
+    timeout: float = 20.0,
+) -> list[dict[str, str | None]]:
+    """Open ticket IDs that already appear in a work tree's source.
+
+    T-20260903-370384774 was dispatched as fresh work while its first task was
+    long done -- documented nowhere in the ticket, only in a code comment that
+    quoted the ticket ID.  Reading the VERLAUF would not have caught it; only
+    the source does.  A hit is a strong signal that work happened, not proof,
+    so this reports and never blocks.
+
+    ``roots`` defaults to the sibling directory of this clone, which is the
+    Plan-D repository root on every host (``<...>/repos/<name>``); nothing is
+    hardcoded.  Repositories are read through ``git grep``, so ignored files
+    and history are skipped for free.  Paths inside the ticket base are not
+    counted -- a ticket quoting its own ID is not evidence of anything.
+    """
+    base = Path(base).resolve()
+    if roots is None:
+        roots = [Path(__file__).resolve().parents[2]]
+    open_ids: dict[str, Path] = {}
+    for entry in _open_ticket_files(base):
+        match = _TICKET_ID_RE.match(entry.name)
+        if match:
+            open_ids.setdefault(match.group(0), entry)
+    if not open_ids:
+        return []
+    findings: list[dict[str, str | None]] = []
+    seen: set[str] = set()
+    for root in roots:
+        root = Path(root)
+        if not root.is_dir():
+            continue
+        for repo in sorted(root.iterdir()):
+            if not (repo / ".git").exists():
+                continue
+            if base == repo or base.is_relative_to(repo):
+                continue
+            for found, location in _git_grep_ticket_ids(repo, timeout).items():
+                if found in open_ids and found not in seen:
+                    seen.add(found)
+                    findings.append({"path": str(open_ids[found]), "kind": "source-reference",
+                                     "ticket": found, "location": location})
+    return sorted(findings, key=lambda f: str(f["ticket"]))
+
+
+def audit(base: Path | str, *, scan_sources: bool = False,
+          source_roots: list[Path] | None = None) -> dict:
     """Runs all structural checks. Returns a JSON-serializable report:
 
     {
@@ -329,6 +471,12 @@ def audit(base: Path | str) -> dict:
             nested_lifecycle_details, key=lambda detail: str(detail["source"])
         ),
         "status_drift": status_drift(base),
+        "progress_drift": progress_drift(base),
+        # Opt-in: ein git grep je Repo ueber alle Arbeitsbaeume kostet
+        # Sekunden, und ein Audit, das niemand mehr startet, faengt nichts.
+        "source_reference_drift": (
+            source_reference_drift(base, roots=source_roots) if scan_sources else []
+        ),
     }
 
 
@@ -490,6 +638,22 @@ def _print_human(report: dict) -> None:
             print(f"    KIND: {finding['kind']}  FOLDER: {finding['folder']}  STATUS: {finding['status']}")
     else:
         print("STATUS-DRIFT: none")
+    progress_findings = report.get("progress_drift", [])
+    if progress_findings:
+        print(f"PROGRESS-DRIFT ({len(progress_findings)}):")
+        for finding in progress_findings:
+            print(f"  {finding['path']}")
+            print(f"    KIND: {finding['kind']}  EVIDENCE: {finding['evidence']}")
+    else:
+        print("PROGRESS-DRIFT: none")
+    source_findings = report.get("source_reference_drift", [])
+    if source_findings:
+        print(f"SOURCE-REFERENCE-DRIFT ({len(source_findings)}):")
+        for finding in source_findings:
+            print(f"  {finding['path']}")
+            print(f"    TICKET: {finding['ticket']}  SEEN-AT: {finding['location']}")
+    else:
+        print("SOURCE-REFERENCE-DRIFT: none")
 
 
 def _cli(argv: list[str] | None = None) -> int:
@@ -507,6 +671,8 @@ def _cli(argv: list[str] | None = None) -> int:
         help="Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR).",
     )
     parser.add_argument("--json", action="store_true", dest="as_json")
+    parser.add_argument("--no-source-scan", action="store_false", dest="scan_sources",
+                        help="skip the per-repo git grep for open ticket ids")
     parser.add_argument("--lint", action="store_true",
                          help="required fields, STATUS vocabulary, duplicate blocks (reports only)")
     args = parser.parse_args(argv)
@@ -521,7 +687,7 @@ def _cli(argv: list[str] | None = None) -> int:
             _print_lint_human(findings)
         return 1 if findings else 0
 
-    report = audit(args.tickets_dir)
+    report = audit(args.tickets_dir, scan_sources=args.scan_sources)
     if args.as_json:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:

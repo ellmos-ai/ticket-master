@@ -51,6 +51,26 @@ soll.
 
 ## ENTSCHEIDUNGSLEITER (pro Ticket)
 
+**0. Zwei grep, bevor du entscheidest** (T-20260904-141396683). Beide kosten je
+eine Zeile Ausgabe — das ist der Preis dafür, dass der Lean-Router VERLAUF und
+DELEGIERT_AN bewusst nicht liest. Genau dort steht der Erledigungsstand.
+
+- **Vor jedem Dispatch** — trägt das Ticket schon einen Abnahmevermerk?
+  `grep -nE "GATE[ -]?4|^DELEGIERT_AN:" <ticketdatei> | tail -5`
+  Treffer mit „ABGENOMMEN" oder „… fertig" ⇒ **teilerledigt**. Nicht als frische
+  Arbeit vergeben; erst den Reststand feststellen, sonst wird der fertige Teil
+  ein zweites Mal bezahlt — je stärker das Modell, desto teurer.
+- **Vor jeder `BLOCKED/foreign-*`-Einstufung** — ist die „Fremdarbeit" die
+  eigene? `cd <repo> && git diff | grep -c "<eigene Ticket-ID>"`
+  Treffer > 0 ⇒ **Selbstblockade**, kein fremder Zustand. Zwei reale Fälle lagen
+  so 8 bzw. 2 Tage fest; der grep hätte beide in Sekunden geklärt. Auch
+  untracked Dateien prüfen (`git status --short`), der Beleg stand einmal nur in
+  einem `_after-care/LOG.md`.
+
+Ein Erledigungsstand kann auch **ausserhalb** der Ticketdatei liegen — ein
+Quelltextkommentar, der die Ticket-ID zitiert. Das fangen diese greps nicht;
+dafür meldet `ticket_audit.py` `PROGRESS-DRIFT` und `SOURCE-REFERENCE-DRIFT`.
+
 1. **Feature / Wunsch / nicht dringend / braucht Design**
    → Task-Management des Projekts (z.B. `TODO.md`, `ROADMAP.md`). Der Master
    schreibt nur einen Verweis. Keine eigene Ausführung.

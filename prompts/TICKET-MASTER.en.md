@@ -48,6 +48,26 @@ context — exactly what the Lean Router principle exists to prevent.
 
 ## DECISION LADDER (per ticket)
 
+**0. Two greps before you decide** (T-20260904-141396683). Each costs one line
+of output — that is the price for the lean router deliberately not reading
+VERLAUF and DELEGIERT_AN. The completion state lives in exactly those two.
+
+- **Before every dispatch** — does the ticket already carry an acceptance mark?
+  `grep -nE "GATE[ -]?4|^DELEGIERT_AN:" <ticketfile> | tail -5`
+  A hit saying "ABGENOMMEN" or "… fertig" means **partly done**. Do not hand it
+  out as fresh work; establish what is left first, or the finished part gets
+  paid for twice — the stronger the model, the more expensive.
+- **Before every `BLOCKED/foreign-*` classification** — is the "foreign work"
+  your own? `cd <repo> && git diff | grep -c "<own ticket id>"`
+  More than zero means **self-block**, not a foreign state. Two real tickets sat
+  stuck for 8 and 2 days this way; the grep would have settled both in seconds.
+  Check untracked files too (`git status --short`) — one proof existed only in
+  an `_after-care/LOG.md`.
+
+A completion state can also live **outside** the ticket file — a source comment
+quoting the ticket id. These greps miss that; `ticket_audit.py` reports it as
+`PROGRESS-DRIFT` and `SOURCE-REFERENCE-DRIFT`.
+
 1. **Feature / wish / non-urgent / needs design**
    → Project's task management (e.g. `TODO.md`, `ROADMAP.md`). Master writes
    only a pointer. No own execution.
