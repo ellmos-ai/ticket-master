@@ -34,6 +34,7 @@ try:  # package import (``from lib import ticket_writer``)
         resolve_targets,
         update_fields,
     )
+    from .session_provenance import resolve_session_provenance
 except ImportError:  # direct script/module import from ``lib`` on sys.path
     from routing_contract import (
         canonical_contract_name,
@@ -43,6 +44,7 @@ except ImportError:  # direct script/module import from ``lib`` on sys.path
         resolve_targets,
         update_fields,
     )
+    from session_provenance import resolve_session_provenance
 
 
 def _default_tickets_dir() -> Path | None:
@@ -106,6 +108,7 @@ TITEL:         {title}
 ERSTELLT:      {date}
 STATUS:        INBOX
 PRIORITAET:    {priority}
+SESSION:       {session_provenance}
 
 --------------------------------------------------------------
 PROJEKT-ZUORDNUNG
@@ -149,6 +152,7 @@ LOESUNG / ERGEBNIS
 --------------------------------------------------------------
 <Vor Verschieben nach SOLVED ausfüllen.>
 ==============================================================
+session: {session_provenance}
 """
 
 
@@ -422,7 +426,9 @@ def draw_number(used: set[int], rng=None) -> int:
 
 def create(title: str, body: str, project: str | None = None, priority: str = "mittel",
            pipeline: str = "<offen>", tickets_dir: Path | None = None,
-           today: str | None = None, rng=None) -> str:
+           today: str | None = None, rng=None, session: str | None = None,
+           session_agent: str | None = None,
+           session_host: str | None = None) -> str:
     """Erzeugt ein unclaimed Ticket in <tickets_dir>/INBOX/. Returns den Pfad.
 
     tickets_dir ist erforderlich (oder via TICKET_MASTER_TICKETS_DIR gesetzt).
@@ -437,6 +443,8 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
     inbox.mkdir(parents=True, exist_ok=True)
 
     date_iso = today or datetime.now().strftime("%Y-%m-%d")
+    provenance = resolve_session_provenance(
+        session, agent=session_agent, host=session_host, day=date_iso)
     datestr = date_iso.replace("-", "")
     used = used_numbers(base, datestr)
     while True:
@@ -448,6 +456,7 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
             date=date_iso, priority=priority, pipeline=pipeline,
             project=project or "<offen>",
             body=body.strip() or "<keine Beschreibung>",
+            session_provenance=provenance.value,
         )
         try:
             # Exklusiv anlegen ("x"): schreibt NIE ueber ein bestehendes
@@ -480,7 +489,8 @@ def _archive_informal_source(source: Path, tickets_dir: Path) -> None:
 def formalize_informal_entry(
     source: Path, tickets_dir: Path, *, submitter: str | None = None,
     priority: str = "mittel", pipeline: str = "<offen>", project: str | None = None,
-    today: str | None = None, rng=None,
+    today: str | None = None, rng=None, session: str | None = None,
+    session_agent: str | None = None, session_host: str | None = None,
 ) -> str:
     """Turns one formless INBOX entry (Nutzerentscheid 3A, T-20260830-145228426:
     a file in INBOX/ without the "T-" ticket prefix) into a regular ticket.
@@ -527,6 +537,7 @@ def formalize_informal_entry(
     ticket_path = create(
         title, body, project=project, priority=priority, pipeline=pipeline,
         tickets_dir=tickets_dir, today=today, rng=rng,
+        session=session, session_agent=session_agent, session_host=session_host,
     )
     _archive_informal_source(source, tickets_dir)
     return ticket_path
@@ -538,7 +549,8 @@ _ORIGIN_ID_RE = re.compile(r"^T-(?P<date>\d{8})-(?P<number>\d+)")
 def split_ticket(
     source: Path, tickets_dir: Path, *, title: str | None = None,
     priority: str = "mittel", pipeline: str = "<offen>", project: str | None = None,
-    today: str | None = None, rng=None,
+    today: str | None = None, rng=None, session: str | None = None,
+    session_agent: str | None = None, session_host: str | None = None,
 ) -> str:
     """Splits one ticket file into a NEW, independently-identified ticket.
 
@@ -580,6 +592,7 @@ def split_ticket(
     return create(
         title, body, project=project, priority=priority, pipeline=pipeline,
         tickets_dir=tickets_dir, today=today, rng=rng,
+        session=session, session_agent=session_agent, session_host=session_host,
     )
 
 
@@ -609,6 +622,9 @@ def create_routed_ticket(
     today: str | None = None,
     created_at: datetime | str | None = None,
     rng=None,
+    session: str | None = None,
+    session_agent: str | None = None,
+    session_host: str | None = None,
 ) -> str:
     """Create one schema-v2 contract through the canonical ID authority.
 
@@ -623,6 +639,8 @@ def create_routed_ticket(
     inbox = base / "INBOX"
     inbox.mkdir(parents=True, exist_ok=True)
     date_iso = today or datetime.now().strftime("%Y-%m-%d")
+    provenance = resolve_session_provenance(
+        session, agent=session_agent, host=session_host, day=date_iso)
     datestr = date_iso.replace("-", "")
     if route_alias:
         aliases = [part for part in route_alias.split(".") if part]
@@ -712,6 +730,7 @@ def create_routed_ticket(
             pipeline=pipeline,
             project=project or "<offen>",
             body=body.strip() or "<keine Beschreibung>",
+            session_provenance=provenance.value,
         )
         content = update_fields(
             content,
@@ -764,6 +783,9 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--receipt-to")
     parser.add_argument("--execution-matrix", help="optional JSON file for via-mixed")
     parser.add_argument("--idempotency-key", help="stable caller key for retry-safe creation")
+    parser.add_argument("--session", help="creating parent session ID; explicit value wins over provider runtime variables")
+    parser.add_argument("--session-agent", help="creating agent identity for the provenance stamp")
+    parser.add_argument("--session-host", help="creating host; defaults to authoritative runtime host identity")
     args = parser.parse_args(argv)
     if not args.from_file and not args.split_from and not args.title:
         parser.error("--title is required unless --from-file or --split-from is set")
@@ -774,6 +796,8 @@ def _cli(argv: list[str] | None = None) -> int:
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
                 submitter=args.submitter, project=args.project,
                 priority=args.priority, pipeline=args.pipeline,
+                session=args.session, session_agent=args.session_agent,
+                session_host=args.session_host,
             )
         elif args.split_from:
             path = split_ticket(
@@ -781,6 +805,8 @@ def _cli(argv: list[str] | None = None) -> int:
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
                 title=args.title, project=args.project,
                 priority=args.priority, pipeline=args.pipeline,
+                session=args.session, session_agent=args.session_agent,
+                session_host=args.session_host,
             )
         elif args.ticket_kind or args.target_kind or args.via or args.route_alias:
             if not args.systems_registry:
@@ -814,12 +840,17 @@ def _cli(argv: list[str] | None = None) -> int:
                 project=args.project,
                 priority=args.priority,
                 pipeline=args.pipeline,
+                session=args.session,
+                session_agent=args.session_agent,
+                session_host=args.session_host,
             )
         else:
             path = create(
                 args.title, args.body, project=args.project, priority=args.priority,
                 pipeline=args.pipeline,
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else None,
+                session=args.session, session_agent=args.session_agent,
+                session_host=args.session_host,
             )
     except ValueError as exc:
         print(f"ERROR: {exc}")

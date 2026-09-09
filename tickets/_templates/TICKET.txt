@@ -14,6 +14,7 @@ STATUS:        <CLUSTER>[/<subcategory>] (since YYYY-MM-DD) — categories v1:
                PARKED/skip|backlog|until-trigger | SOLVED
                (legacy aliases: OPEN | PENDING | .USER — see docs/CATEGORIES.en.md)
 PRIORITY:      low | medium | high | critical
+SESSION:       <session-id> | <agent>@<host> | YYYY-MM-DD
 
 --------------------------------------------------------------
 PROJECT ASSIGNMENT
@@ -107,3 +108,4 @@ SOLUTION / RESULT  (fill before moving to SOLVED/)
 --------------------------------------------------------------
 <What was done, by whom / which model, empirical confirmation.>
 ==============================================================
+session: <session-id> | <agent>@<host> | YYYY-MM-DD

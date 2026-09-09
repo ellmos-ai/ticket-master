@@ -38,6 +38,7 @@ from pathlib import Path
 
 try:  # package import
     from .ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from .session_provenance import resolve_session_provenance
     from .routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -60,6 +61,7 @@ try:  # package import
     )
 except ImportError:  # direct import from lib on sys.path
     from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from session_provenance import resolve_session_provenance
     from routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -719,7 +721,9 @@ def is_actively_delegated(ticket: Path | str, *,
     return age_hours < stale_after_hours
 
 
-def mark_delegated(ticket: Path | str, agent: str) -> None:
+def mark_delegated(ticket: Path | str, agent: str, *,
+                   session: str | None = None,
+                   session_host: str | None = None) -> None:
     """Traegt einen DELEGIERT_AN-Vermerk in ein Ticket ein -- die
     schreibende Haelfte von `is_actively_delegated()`.
 
@@ -734,12 +738,29 @@ def mark_delegated(ticket: Path | str, agent: str) -> None:
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
     text = ticket.read_text(encoding="utf-8", errors="replace")
     marker = f"DELEGIERT_AN: {agent}"
+    agent_name, separator, agent_host = agent.partition("@")
+    provenance = resolve_session_provenance(
+        session,
+        agent=agent_name or agent,
+        host=session_host or (agent_host if separator else None),
+    )
+    header = f"SESSION:       {provenance.value}"
+    if re.search(r"(?m)^SESSION:\s*.*$", text):
+        text = re.sub(r"(?m)^SESSION:\s*.*$", header, text, count=1)
+    else:
+        priority = re.search(r"(?m)^PRIORITAET:\s*.*$|^PRIORITY:\s*.*$", text)
+        if priority:
+            text = text[:priority.end()] + "\n" + header + text[priority.end():]
+        else:
+            text = header + "\n" + text
     if DELEGATION_MARKER_RE.search(text):
         # Bestehenden Vermerk ersetzen statt einen zweiten anzuhaengen --
         # sonst waechst die Datei bei jedem erneuten Aufruf im selben Lauf.
         text = DELEGATION_MARKER_RE.sub(marker, text, count=1)
     else:
         text = text.rstrip("\n") + f"\n{marker}\n"
+    if provenance.stamp not in text:
+        text = text.rstrip("\n") + f"\n{provenance.stamp}\n"
     ticket.write_text(text, encoding="utf-8")
 
 
@@ -859,6 +880,10 @@ def _cli(argv: list[str] | None = None) -> int:
                         help="Canonical .SYNC root for --claim-current-host.")
     parser.add_argument("--agent",
                         help="Agent identity for --mark-delegated, e.g. claude-code@ASUS-GEI.")
+    parser.add_argument("--session",
+                        help="Parent session ID for --mark-delegated; explicit value wins over provider runtime variables.")
+    parser.add_argument("--session-host",
+                        help="Session host; defaults to the host in --agent or runtime identity.")
     args = parser.parse_args(argv)
 
     if args.verify_claim_host:
@@ -901,7 +926,9 @@ def _cli(argv: list[str] | None = None) -> int:
         if not args.agent:
             parser.error("--mark-delegated requires --agent")
         try:
-            mark_delegated(args.mark_delegated, args.agent)
+            mark_delegated(
+                args.mark_delegated, args.agent,
+                session=args.session, session_host=args.session_host)
         except FileNotFoundError as exc:
             print(f"REFUSED: {exc}")
             return 1
