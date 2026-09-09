@@ -38,5 +38,20 @@
     "path": ".",
     "repository": "https://github.com/ellmos-ai/ticket-master"
   },
-  "adapters": []
+  "adapters": [],
+  "roles": [
+    {
+      "id": "ticket-master",
+      "label": "TICKET-MASTER",
+      "prompt": "prompts/TICKET-MASTER.en.md",
+      "request": "Start as TICKET-MASTER. Complete boot steps (a) through (d) and enter POSITION 0.",
+      "modes": [],
+      "providers": [
+        "claude",
+        "codex",
+        "agy"
+      ],
+      "starter": "bin/ticket-master.sh"
+    }
+  ]
 }
