@@ -4,6 +4,16 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Delegation marker ownership (T-20260909-537604869)
+
+- `lib/ticket_mover.py` now recognizes only left-aligned standalone
+  `DELEGIERT_AN:` fields and the documented left-aligned dated history form
+  as live delegation markers. Indented historical quotations no longer hold
+  a claim or get overwritten by `--mark-delegated`; updating a real marker
+  replaces only its agent token and preserves its prefix, spacing and status
+  suffix. Regression fixtures cover quoted-only, standalone, mixed and dated
+  forms.
+
 ### Informal intake and boot-menu role spawn (T-20260830-145228426, T-20260830-446089912)
 - `lib/ticket_writer.py`: new `formalize_informal_entry()` / CLI
   `--from-file [--submitter <name>]` (Entscheid 3A) turns a formless

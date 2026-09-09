@@ -378,6 +378,71 @@ class TestDelegationMarker(unittest.TestCase):
             text = ticket.read_text(encoding="utf-8")
             self.assertEqual(text.count("DELEGIERT_AN:"), 1)
 
+    def test_indented_historical_quote_is_not_an_active_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            ticket.write_text(
+                "VERLAUF\n"
+                "  Historischer Beleg:\n"
+                "    DELEGIERT_AN: old-worker@ASUS-GEI\n",
+                encoding="utf-8",
+            )
+
+            self.assertFalse(ticket_mover.is_actively_delegated(ticket))
+
+    def test_marking_preserves_indented_historical_quote_byte_exactly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            quoted = "    DELEGIERT_AN: old-worker@ASUS-GEI -- alter Beleg"
+            ticket.write_text(f"VERLAUF\n{quoted}\n", encoding="utf-8")
+
+            ticket_mover.mark_delegated(
+                ticket, "new-worker@WORKSTATION-LG", session="parent-123")
+            text = ticket.read_text(encoding="utf-8")
+
+            self.assertIn(f"\n{quoted}\n", text)
+            self.assertIn("\nDELEGIERT_AN: new-worker@WORKSTATION-LG\n", text)
+            self.assertEqual(text.count("DELEGIERT_AN:"), 2)
+            self.assertTrue(ticket_mover.is_actively_delegated(ticket))
+
+    def test_mixed_history_and_live_marker_updates_only_live_marker(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            quoted = "    DELEGIERT_AN: historical-worker@ASUS-GEI"
+            ticket.write_text(
+                f"VERLAUF\n{quoted}\n"
+                "DELEGIERT_AN: current-worker@ASUS-GEI -- aktiv\n",
+                encoding="utf-8",
+            )
+
+            ticket_mover.mark_delegated(
+                ticket, "next-worker@WORKSTATION-LG", session="parent-123")
+            text = ticket.read_text(encoding="utf-8")
+
+            self.assertIn(f"\n{quoted}\n", text)
+            self.assertIn(
+                "\nDELEGIERT_AN: next-worker@WORKSTATION-LG -- aktiv\n", text)
+            self.assertNotIn("DELEGIERT_AN: current-worker@ASUS-GEI", text)
+            self.assertEqual(text.count("DELEGIERT_AN:"), 2)
+
+    def test_dated_history_marker_remains_supported_and_is_updated_in_place(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
+            ticket.write_text(
+                "VERLAUF\n"
+                "2026-08-15  DELEGIERT_AN: current-worker@ASUS-GEI\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(ticket_mover.is_actively_delegated(ticket))
+            ticket_mover.mark_delegated(
+                ticket, "next-worker@WORKSTATION-LG", session="parent-123")
+            text = ticket.read_text(encoding="utf-8")
+
+            self.assertIn(
+                "2026-08-15  DELEGIERT_AN: next-worker@WORKSTATION-LG", text)
+            self.assertEqual(text.count("DELEGIERT_AN:"), 1)
+
     def test_marking_missing_ticket_raises(self):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
