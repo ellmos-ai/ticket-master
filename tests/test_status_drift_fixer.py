@@ -153,8 +153,8 @@ class TestRun(unittest.TestCase):
             self.assertTrue(after.splitlines()[5].startswith("STATUS:        SOLVED"))
             # Everything except the STATUS line is untouched.
             self.assertEqual(
-                [l for i, l in enumerate(before.splitlines()) if i != 5],
-                [l for i, l in enumerate(after.splitlines()) if i != 5],
+                [line for i, line in enumerate(before.splitlines()) if i != 5],
+                [line for i, line in enumerate(after.splitlines()) if i != 5],
             )
             self.assertEqual(status_drift_fixer.status_drift(base), [])
             self.assertEqual(report["preview"], [])
