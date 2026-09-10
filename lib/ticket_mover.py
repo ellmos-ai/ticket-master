@@ -117,12 +117,16 @@ WORKING_SUBDIRS = ("QUEUED", "ACTIONABLE")
 # is_actively_delegated()).
 QUEUED_SUBDIR = "QUEUED"
 
-# Vermerk im Tickettext, dass ein Agent gerade aktiv daran arbeitet. Regex
-# statt fixer Zeilenform, weil das Feld sowohl als eigene VERLAUF-Zeile
-# ("2026-08-15  DELEGIERT_AN: claude-code@ASUS-GEI") als auch als
-# eigenstaendiges Feld auftreten darf -- beide Formen erlaubt der
-# Ticket-Nachtrag zum Ticket.
-DELEGATION_MARKER_RE = re.compile(r"DELEGIERT_AN:\s*(?P<agent>\S+)")
+# Vermerk im Tickettext, dass ein Agent gerade aktiv daran arbeitet. Das Feld
+# ist entweder eine eigenstaendige, linksbuendige Zeile oder Teil einer
+# linksbuendigen, datierten VERLAUF-Zeile
+# ("2026-08-15  DELEGIERT_AN: claude-code@ASUS-GEI"). Ein eingeruecktes Zitat
+# eines alten Markers ist dagegen nur Historie und darf weder einen Claim
+# schuetzen noch beim erneuten Markieren ueberschrieben werden.
+DELEGATION_MARKER_RE = re.compile(
+    r"(?m)^(?:\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?[ \t]{2,})?"
+    r"DELEGIERT_AN:[ \t]*(?P<agent>\S+)"
+)
 
 # Sicherheitsnetz, nicht die Hauptregel -- wie `expires_after` beim
 # LOCK-System (~/CLAUDE.md, "Projekt-Sperren"). Der Marker allein reicht
@@ -753,10 +757,17 @@ def mark_delegated(ticket: Path | str, agent: str, *,
             text = text[:priority.end()] + "\n" + header + text[priority.end():]
         else:
             text = header + "\n" + text
-    if DELEGATION_MARKER_RE.search(text):
-        # Bestehenden Vermerk ersetzen statt einen zweiten anzuhaengen --
-        # sonst waechst die Datei bei jedem erneuten Aufruf im selben Lauf.
-        text = DELEGATION_MARKER_RE.sub(marker, text, count=1)
+    delegation_match = DELEGATION_MARKER_RE.search(text)
+    if delegation_match:
+        # Nur das Agent-Token austauschen. So bleiben der optionale
+        # VERLAUF-Zeitstempel, Abstaende und ein nachfolgender Statusvermerk
+        # bytegenau erhalten; historische eingerueckte Zitate sind vom
+        # zeilenverankerten Muster ausgeschlossen.
+        text = (
+            text[:delegation_match.start("agent")]
+            + agent
+            + text[delegation_match.end("agent"):]
+        )
     else:
         text = text.rstrip("\n") + f"\n{marker}\n"
     if provenance.stamp not in text:
