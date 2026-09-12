@@ -1,0 +1,7 @@
+{
+  "_comment": "bin/ticket_master.py haengt lib/ zur Laufzeit selbst an den sys.path (sys.path.insert vor den Importen) und laedt von dort ticket_writer, routing_contract und config_paths. Ohne extraPaths sieht Pyright diesen Pfad nicht und meldet die drei Importe als unaufloesbar - dreimal Fehlalarm auf einer Datei, die zur Laufzeit und in tests/test_ticket_master_cli.py nachweislich laeuft. Hier wird der Suchpfad bekannt gemacht, nicht die Meldung stummgeschaltet. T-20260912-205078371.",
+  "extraPaths": ["lib"],
+  "_comment_include": "Bewusst ohne tests/: dort meldet Pyright 152 weitere Befunde und einen neuen reportMissingImports (Testdateien setzen den sys.path ebenfalls selbst). Das wuerde den blanken pyright-Lauf lauter machen statt leiser - also genau das Gegenteil dieses Tickets. Tests werden von pytest geprueft, nicht von Pyright.",
+  "include": ["lib", "bin"],
+  "exclude": ["**/__pycache__"]
+}
