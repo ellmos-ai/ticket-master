@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# ticket-master.sh — Unix dispatcher for ticket-master
+# ticket-master.sh - Unix dispatcher for ticket-master
 # Usage: ./bin/ticket-master.sh [--provider claude|codex|agy]
 set -euo pipefail
 

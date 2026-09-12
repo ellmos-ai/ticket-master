@@ -246,17 +246,22 @@ $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 
 ## Starter Matrix
 
+The provider-neutral role starters `START.bat` and `start.sh` in the repository root are generated from `roles[]` by COMA (`python -m coma starters generate --manifest ellmos-module.v2.json --output-dir .`) and are regenerated rather than edited by hand. They prefer the unified-gui console and fall back to COMA. The table below lists the direct dispatcher entry points, which stay hand-written.
+
 | OS | Provider | Command |
 |----|----------|---------|
-| Unix / macOS | Claude | `./bin/start-claude.sh` or `./bin/ticket-master.sh --provider claude` |
-| Unix / macOS | Codex | `./bin/start-codex.sh` or `./bin/ticket-master.sh --provider codex` |
-| Unix / macOS | agy (Gemini) | `./bin/start-agy.sh` or `./bin/ticket-master.sh --provider agy` |
-| Windows CMD | Claude | `bin\start-claude.bat` or `bin\ticket-master.bat --provider claude` |
-| Windows CMD | Codex | `bin\start-codex.bat` or `bin\ticket-master.bat --provider codex` |
-| Windows CMD | agy (Gemini) | `bin\start-agy.bat` or `bin\ticket-master.bat --provider agy` |
+| Unix / macOS | Claude | `./bin/providers/start-claude.sh` or `./bin/ticket-master.sh --provider claude` |
+| Unix / macOS | Codex | `./bin/providers/start-codex.sh` or `./bin/ticket-master.sh --provider codex` |
+| Unix / macOS | agy (Gemini) | `./bin/providers/start-agy.sh` or `./bin/ticket-master.sh --provider agy` |
+| Unix / macOS | Kimi | `./bin/providers/start-kimi.sh` or `./bin/ticket-master.sh --provider kimi` |
+| Windows CMD | Claude | `bin\providers\start-claude.bat` or `bin\ticket-master.bat --provider claude` |
+| Windows CMD | Codex | `bin\providers\start-codex.bat` or `bin\ticket-master.bat --provider codex` |
+| Windows CMD | agy (Gemini) | `bin\providers\start-agy.bat` or `bin\ticket-master.bat --provider agy` |
+| Windows CMD | Kimi | `bin\providers\start-kimi.bat` or `bin\ticket-master.bat --provider kimi` |
 | Windows PowerShell | Claude | `.\bin\ticket-master.ps1 -Provider claude` |
 | Windows PowerShell | Codex | `.\bin\ticket-master.ps1 -Provider codex` |
 | Windows PowerShell | agy (Gemini) | `.\bin\ticket-master.ps1 -Provider agy` |
+| Windows PowerShell | Kimi | `.\bin\ticket-master.ps1 -Provider kimi` |
 
 ### Environment Variables
 

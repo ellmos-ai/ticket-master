@@ -1,4 +1,4 @@
-# ticket-master.ps1 — PowerShell dispatcher for ticket-master
+# ticket-master.ps1 - PowerShell dispatcher for ticket-master
 # Usage: .\bin\ticket-master.ps1 [-Provider claude|codex|agy]
 param(
     [string]$Provider = $(if ($env:TM_PROVIDER) { $env:TM_PROVIDER } else { "claude" })

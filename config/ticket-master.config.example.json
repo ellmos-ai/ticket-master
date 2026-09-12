@@ -49,6 +49,12 @@
       "command": "agy",
       "default_model": "gemini-2.0-flash",
       "args": []
+    },
+    "kimi": {
+      "_comment": "Kimi Code CLI. The bootstrap text is appended as the final argument, so the command must end in the headless flag. Note that -p cannot be combined with --yolo/--auto. Adjust the command path as needed; on some hosts the binary is kimi-code rather than kimi.",
+      "command": "kimi -p",
+      "default_model": "auto",
+      "args": []
     }
   },
   "default_provider": "claude",
