@@ -34,8 +34,9 @@ from pathlib import Path
 from typing import Any
 
 try:  # package import (``from lib import auditor_bridge``)
-    from . import ticket_writer
+    from . import config_paths, ticket_writer
 except ImportError:  # direct script/module import from ``lib`` on sys.path
+    import config_paths
     import ticket_writer
 
 
@@ -527,6 +528,12 @@ def _cli(argv: list[str] | None = None) -> int:
             args.tickets_dir or tm_config.get("tickets_dir")
             or os.environ.get("TICKET_MASTER_TICKETS_DIR")
         )
+        # Config values may carry <HOME>/<USER> (see config/*.example.json). Without
+        # this, a placeholder path reaches the dedup check unexpanded: the lookup
+        # then runs against a directory literally named "<HOME>/...", finds no
+        # existing tickets and reports every finding as new (T-20260912-206012253).
+        findings_dir = config_paths.resolve_config_path(findings_dir)
+        tickets_dir = config_paths.resolve_config_path(tickets_dir)
         if not findings_dir or not tickets_dir:
             print(json.dumps({
                 "error": "findings_dir/tickets_dir not resolvable; pass --findings-dir/--tickets-dir",

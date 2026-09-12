@@ -10,7 +10,6 @@ commands or ticket files.
 from __future__ import annotations
 
 import argparse
-import getpass
 import json
 import os
 import re
@@ -33,6 +32,7 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
+from config_paths import expand_placeholders  # noqa: E402
 
 
 class ConfigError(ValueError):
@@ -100,19 +100,12 @@ def load_config(config: str | Path | None = None) -> dict[str, Any]:
     return value
 
 
-def _expand_placeholders(value: str) -> str:
-    return (
-        value.replace("<HOME>", str(Path.home()))
-        .replace("<USER>", getpass.getuser())
-    )
-
-
 def _resolve_path(raw: Any, *, root: Path, field: str, allow_outside: bool) -> Path:
     if isinstance(raw, os.PathLike):
         raw = os.fspath(raw)
     if not isinstance(raw, str) or not raw.strip():
         raise ConfigError(f"config field {field!r} must be a non-empty string")
-    value = _expand_placeholders(raw.strip())
+    value = expand_placeholders(raw.strip())
     path = Path(value).expanduser()
     if not path.is_absolute():
         path = root / path
