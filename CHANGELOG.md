@@ -4,6 +4,29 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### System-registry snapshot generator (T-20260912-203012999)
+
+- New `lib/systems_registry.py`: derives the snapshot routing schema v2
+  requires (`source` / `checked_at` / `systems`) from the inventory seeds each
+  host already maintains. Until now `ticket_writer.py` refused every schema-v2
+  ticket with "--systems-registry is required" and nothing produced such a
+  file — the only description of the format was a test fixture, so transfer
+  and fork tickets were effectively unusable.
+- The snapshot is derived, never authored: writing one by hand would fake the
+  evidence the routing contract asks for. The existing seeds stay the single
+  source (P-009, no parallel register).
+- `active` is deliberately not emitted. The seeds do not record it and
+  `resolve_targets()` reads it as `value.get("active", True)`; inventing the
+  field would turn an absent fact into an asserted one.
+- `ticket_writer.py` reads a default path from `TICKET_MASTER_SYSTEMS_REGISTRY`
+  (same convention as `TICKET_MASTER_TICKETS_DIR`), so `--systems-registry` no
+  longer has to be passed on every call. A missing or non-existent snapshot now
+  fails with a message naming the generator instead of passing `None` on.
+- Seeds carrying a UTF-8 BOM are read correctly (`surface.json` does; a plain
+  utf-8 read raised there).
+- Seven tests, pinned against the real `routing_contract` consumer rather than
+  a copy of the expected shape, so generator and contract cannot drift apart.
+
 ### Usable split children (T-20260912-793529183)
 
 - `lib/ticket_writer.py`: `split_ticket()` / CLI `--split-from` now produces a

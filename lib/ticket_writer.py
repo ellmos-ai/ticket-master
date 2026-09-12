@@ -54,6 +54,15 @@ def _default_tickets_dir() -> Path | None:
     return Path(env) if env else None
 
 
+def _default_systems_registry() -> Path | None:
+    """Routing schema v2 needs a system-registry snapshot; same env convention
+    as the tickets dir, so callers do not have to pass --systems-registry on
+    every invocation (T-20260912-203012999). Build one with
+    ``lib/systems_registry.py``."""
+    env = os.environ.get("TICKET_MASTER_SYSTEMS_REGISTRY")
+    return Path(env) if env else None
+
+
 _QUEUE_MARKER = ".ticket-master-queue"
 _QUEUE_MARKER_VALUE = "ticket-master-queue-v1"
 
@@ -845,11 +854,25 @@ def _cli(argv: list[str] | None = None) -> int:
                 session_host=args.session_host,
             )
         elif args.ticket_kind or args.target_kind or args.via or args.route_alias:
-            if not args.systems_registry:
-                raise ValueError("--systems-registry is required for routing schema v2")
+            registry_path = (
+                Path(args.systems_registry) if args.systems_registry
+                else _default_systems_registry()
+            )
+            if registry_path is None:
+                raise ValueError(
+                    "--systems-registry is required for routing schema v2. "
+                    "Set TICKET_MASTER_SYSTEMS_REGISTRY, or build a snapshot from "
+                    "your inventory seeds: python lib/systems_registry.py "
+                    "--systems-dir <seed-dir> --out <file>"
+                )
+            if not registry_path.is_file():
+                raise ValueError(
+                    f"system registry snapshot not found: {registry_path}. "
+                    "Rebuild it with lib/systems_registry.py --systems-dir <seed-dir>."
+                )
             import json
 
-            registry = json.loads(Path(args.systems_registry).read_text(encoding="utf-8"))
+            registry = json.loads(registry_path.read_text(encoding="utf-8"))
             matrix = (
                 json.loads(Path(args.execution_matrix).read_text(encoding="utf-8"))
                 if args.execution_matrix else None
