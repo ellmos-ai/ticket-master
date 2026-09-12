@@ -28,10 +28,12 @@ try:  # package import
     from .ticket_audit import status_drift, _STATUS_LINE_RE
     from .ticket_mover import suggested_status_line
     from .routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
+    from .config_paths import resolve_queue_alias
 except ImportError:  # direct import from lib on sys.path
     from ticket_audit import status_drift, _STATUS_LINE_RE
     from ticket_mover import suggested_status_line
     from routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
+    from config_paths import resolve_queue_alias
 
 
 # Header lines sometimes carry trailing free text on the same line (e.g.
@@ -239,6 +241,7 @@ def _cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.tickets_dir:
         parser.error("tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+    args.tickets_dir = resolve_queue_alias(args.tickets_dir)
 
     report = run(args.tickets_dir, dry_run=not args.apply)
     if args.as_json:

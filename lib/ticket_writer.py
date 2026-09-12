@@ -36,7 +36,9 @@ try:  # package import (``from lib import ticket_writer``)
         update_fields,
     )
     from .session_provenance import resolve_session_provenance
+    from .config_paths import resolve_queue_alias
 except ImportError:  # direct script/module import from ``lib`` on sys.path
+    from config_paths import resolve_queue_alias
     from routing_contract import (
         canonical_contract_name,
         contract_metadata,
@@ -75,8 +77,14 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
     the compact contract for new queues.  Existing queues remain compatible
     when both their root README and canonical ticket template identify the
     expected ticket/INBOX structure.
+
+    The root is pulled through ``resolve_queue_alias`` first, so a caller
+    still naming the pre-rename queue (``_TICKETS`` vs ``TICKETS``) verifies
+    against the directory that actually exists instead of inventing a
+    parallel tree next to it -- exactly the failure this function guards
+    (T-20260906-387521104).
     """
-    base = Path(tickets_dir)
+    base = resolve_queue_alias(tickets_dir)
     marker = base / _QUEUE_MARKER
     if marker.is_file():
         try:

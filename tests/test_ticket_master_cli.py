@@ -137,7 +137,12 @@ class TicketMasterCliTests(unittest.TestCase):
         title = "Registry-Quellattestierung aktualisieren"
         body = "Zeile eins\nZeile zwei mit Umlauten: \u00e4\u00f6\u00fc\nZeile drei"
         with tempfile.TemporaryDirectory() as tmp:
-            base = verified_queue(tmp)
+            # .resolve(): auf Windows-CI-Runnern liefert der Temp-Ordner den
+            # 8.3-Kurznamen (C:\Users\RUNNER~1\...), waehrend die CLI intern
+            # aufloest (C:\Users\runneradmin\...). Ohne das vergleicht der
+            # assertIn unten zwei Schreibweisen desselben Pfades. Lokal faellt
+            # das nicht auf, weil dort keine Kurznamen erzeugt werden.
+            base = verified_queue(Path(tmp).resolve())
             argv = [
                 "--intake",
                 "--title",
