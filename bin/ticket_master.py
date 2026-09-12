@@ -287,6 +287,30 @@ def _safe_intake_body(description: str) -> str:
     return body
 
 
+def resolve_intake_description(positional: str | None, body: str | None) -> str:
+    """Public intake contract: the description may arrive either way.
+
+    ``--intake DESCRIPTION`` is the historical form. ``--title T --body B`` is the
+    producer contract a finding sink emits (system-auditor ``sinks.emit_command``
+    appends exactly ``--title``/``--body`` and knows nothing about this CLI).
+    Supporting both is what makes the public interface usable without an adapter
+    on either side -- before this, only the internal ``lib/ticket_writer.py``
+    wiring worked (M-20260820-auditor-ticket-sink).
+
+    Both at once is rejected rather than silently preferring one: a caller that
+    passes two descriptions does not know which one it is sending.
+    """
+    has_positional = bool(positional and positional.strip())
+    has_body = bool(body and body.strip())
+    if has_positional and has_body:
+        raise ValueError("intake takes a description OR --body, not both")
+    if has_positional:
+        return positional or ""
+    if has_body:
+        return body or ""
+    raise ValueError("intake needs a description, either positionally or via --body")
+
+
 def intake_ticket(
     description: str,
     *,
@@ -370,11 +394,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--list", action="store_true", help="list open ticket metadata")
-    mode.add_argument("--intake", metavar="DESCRIPTION", help="create one exclusive INBOX intake ticket")
+    mode.add_argument(
+        "--intake",
+        metavar="DESCRIPTION",
+        nargs="?",
+        const="",
+        help="create one exclusive INBOX intake ticket; DESCRIPTION may also come from --body",
+    )
     mode.add_argument("--print-prompt", action="store_true", help="resolve and print the prompt path")
     parser.add_argument("--json", action="store_true", help="emit --list output as JSON")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")
     parser.add_argument("--config", help="path to local JSON config")
+    parser.add_argument(
+        "--body",
+        help="intake body; the public producer contract (--title/--body) used by system-auditor",
+    )
     parser.add_argument("--title", help="optional intake title (otherwise first description line)")
     parser.add_argument("--project", default=None, help="optional intake project")
     parser.add_argument("--priority", default="mittel", help="optional intake priority")
@@ -402,7 +436,7 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.intake is not None:
             path = intake_ticket(
-                args.intake,
+                resolve_intake_description(args.intake, args.body),
                 tickets_dir=resolve_tickets_dir(args.config, args.tickets_dir),
                 title=args.title,
                 project=args.project,

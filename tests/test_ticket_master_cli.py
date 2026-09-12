@@ -120,6 +120,60 @@ class TicketMasterCliTests(unittest.TestCase):
             self.assertIn("[ticket separator escaped]", text)
             self.assertFalse((base / "_logs" / "INTAKE-TRIAGE-LOG.txt").exists())
 
+    def test_intake_accepts_the_public_producer_contract_title_and_body(self):
+        """Der oeffentliche Uebergabevertrag, von der Konsumentenseite geprueft.
+
+        Eine Befund-Senke (system-auditor `sinks.emit_command`) haengt an das
+        konfigurierte Kommando genau `--title <titel> --body <text>` an; sie kennt
+        weder Ticketformate noch diese CLI. Bis 2026-09-12 nahm `--intake` nur ein
+        Positionsargument und kein `--body` entgegen -- der oeffentliche Aufruf lief
+        damit ins Leere, und nur die interne Verdrahtung ueber `lib/ticket_writer.py`
+        funktionierte (M-20260820-auditor-ticket-sink).
+
+        Geprueft wird die Zusage vollstaendig: genau EIN Ticket entsteht, und Titel
+        wie mehrzeiliger Body kommen unveraendert zurueck.
+        """
+        cli = _load_cli()
+        title = "Registry-Quellattestierung aktualisieren"
+        body = "Zeile eins\nZeile zwei mit Umlauten: \u00e4\u00f6\u00fc\nZeile drei"
+        with tempfile.TemporaryDirectory() as tmp:
+            base = verified_queue(tmp)
+            argv = [
+                "--intake",
+                "--title",
+                title,
+                "--body",
+                body,
+                "--tickets-dir",
+                str(base),
+            ]
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = cli.main(argv)
+            self.assertEqual(code, 0, out.getvalue())
+
+            created = sorted(base.rglob("T-*.txt"))
+            self.assertEqual(len(created), 1, created)
+            self.assertEqual(created[0].parent.name, "INBOX")
+            self.assertIn(str(created[0]), out.getvalue())
+
+            text = created[0].read_text(encoding="utf-8")
+            self.assertIn(title, text)
+            for line in body.split("\n"):
+                self.assertIn(line, text)
+
+    def test_intake_rejects_a_description_given_twice_or_not_at_all(self):
+        """Zwei Beschreibungen sind kein Vorrang, sondern ein Aufruffehler."""
+        cli = _load_cli()
+        with self.assertRaises(ValueError):
+            cli.resolve_intake_description("positional", "body")
+        with self.assertRaises(ValueError):
+            cli.resolve_intake_description(None, None)
+        with self.assertRaises(ValueError):
+            cli.resolve_intake_description("", "   ")
+        self.assertEqual(cli.resolve_intake_description("", "body"), "body")
+        self.assertEqual(cli.resolve_intake_description("positional", None), "positional")
+
     def test_intake_rejects_empty_and_nul_descriptions(self):
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:
