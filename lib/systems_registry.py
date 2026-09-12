@@ -20,11 +20,18 @@ Output shape -- the contract ``routing_contract._registry_systems()`` enforces:
     {"source": "...", "checked_at": "...",
      "systems": {"<HOSTNAME>": {"slot": "...", "hostname": "..."}}}
 
-``active`` is deliberately NOT emitted. The seeds do not record it, and
-``resolve_targets()`` reads it as ``value.get("active", True)`` -- an optional
-field with a documented default. Inventing one would turn an absent fact into
-an asserted one; a host that is genuinely inactive is a seed-level statement
-to be added there first, not guessed here.
+``active`` is emitted only where a marker PROVES a host is paused
+(T-20260912-311033160). The seeds themselves do not record it, so it is never
+guessed: the state comes from the markers ``slot_state_check.py`` already
+reads (T-20260830-351639684), and only the positive "paused" evidence
+produces ``active: false``. Absent a marker the field stays out, and
+``resolve_targets()`` applies its documented default of ``True``.
+
+The distinction that matters: "externally maintained" is NOT inactive. A host
+whose inventory seed carries ``_gepflegt_von`` simply has no sync actor of its
+own -- mac-studio is a 24/7 server. Treating the two alike would drop the
+strongest compute host out of routing, which is exactly the conflation
+T-20260830-351639684 removed from the vacancy watch.
 
 Usage:
     python lib/systems_registry.py --systems-dir <dir> --out <file>
@@ -49,11 +56,33 @@ def _read_seed(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
-def build_snapshot(systems_dir: Path, *, now: str | None = None) -> dict:
-    """Derive the routing snapshot from the inventory seeds in *systems_dir*."""
+_PAUSED_MARKER = "PAUSIERT.md"
+
+
+def _is_paused(sync_root: Path | None, slot: str) -> bool:
+    """True only when the slot carries the paused marker slot_state_check.py reads."""
+    if sync_root is None:
+        return False
+    return (Path(sync_root) / slot / _PAUSED_MARKER).is_file()
+
+
+def build_snapshot(
+    systems_dir: Path, *, sync_root: Path | None = None, now: str | None = None
+) -> dict:
+    """Derive the routing snapshot from the inventory seeds in *systems_dir*.
+
+    *sync_root* holds the per-slot folders carrying the state markers. It
+    defaults to the seed directory's grandparent, matching the canonical
+    ``<sync-root>/_inventory/systems`` layout; pass it explicitly when the
+    seeds live elsewhere. Where no marker tree is found, no state is read
+    and no ``active`` field is emitted.
+    """
     systems_dir = Path(systems_dir)
     if not systems_dir.is_dir():
         raise FileNotFoundError(f"inventory seed directory not found: {systems_dir}")
+    if sync_root is None:
+        candidate = systems_dir.parent.parent
+        sync_root = candidate if candidate.is_dir() else None
 
     systems: dict[str, dict[str, str]] = {}
     for seed in sorted(systems_dir.glob("*.json")):
@@ -73,6 +102,8 @@ def build_snapshot(systems_dir: Path, *, now: str | None = None) -> dict:
         role = str(data.get("system", {}).get("role", "") or "").strip()
         if role:
             entry["role"] = role
+        if _is_paused(sync_root, seed.stem):
+            entry["active"] = False
         systems[hostname] = entry
 
     if not systems:
@@ -89,8 +120,11 @@ def build_snapshot(systems_dir: Path, *, now: str | None = None) -> dict:
     }
 
 
-def write_snapshot(systems_dir: Path, out: Path, *, now: str | None = None) -> Path:
-    snapshot = build_snapshot(systems_dir, now=now)
+def write_snapshot(
+    systems_dir: Path, out: Path, *, sync_root: Path | None = None,
+    now: str | None = None,
+) -> Path:
+    snapshot = build_snapshot(systems_dir, sync_root=sync_root, now=now)
     out = Path(out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(
@@ -108,16 +142,25 @@ def main(argv: list[str] | None = None) -> int:
                         help="directory holding <slot>.json inventory seeds")
     parser.add_argument("--out", default=None,
                         help="write the snapshot here (default: print to stdout)")
+    parser.add_argument("--sync-root", default=None,
+                        help="root holding the per-slot state markers "
+                             "(default: the seed directory's grandparent)")
     parser.add_argument("--quiet", action="store_true")
     args = parser.parse_args(argv)
 
     try:
         if args.out:
-            path = write_snapshot(Path(args.systems_dir), Path(args.out))
+            path = write_snapshot(
+                Path(args.systems_dir), Path(args.out),
+                sync_root=Path(args.sync_root) if args.sync_root else None,
+            )
             if not args.quiet:
                 print(path)
         else:
-            snapshot = build_snapshot(Path(args.systems_dir))
+            snapshot = build_snapshot(
+                Path(args.systems_dir),
+                sync_root=Path(args.sync_root) if args.sync_root else None,
+            )
             print(json.dumps(snapshot, ensure_ascii=False, indent=2, sort_keys=True))
     except (FileNotFoundError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

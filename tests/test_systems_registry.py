@@ -68,7 +68,7 @@ class TestSystemsRegistry(unittest.TestCase):
             seeds = Path(tmp)
             _seed(seeds / "laptop.json", "ASUS-GEI")
 
-            snapshot = systems_registry.build_snapshot(seeds)
+            snapshot = systems_registry.build_snapshot(seeds, sync_root=None)
 
             self.assertNotIn("active", snapshot["systems"]["ASUS-GEI"])
 
@@ -113,6 +113,106 @@ class TestSystemsRegistry(unittest.TestCase):
             written = json.loads(out.read_text(encoding="utf-8"))
             self.assertEqual(written["checked_at"], "2026-09-12T08:00:00Z")
             rc.resolve_targets("all", registry_snapshot=written)
+
+
+class TestPausedSlots(unittest.TestCase):
+    """T-20260912-311033160: Ohne active-Feld galt jeder Host als aktiv, also
+    nahm --target-kind all den pausierten SURFACE-LAPTOP mit und ein
+    Fork-Ticket haette eine SYSTEM_LEDGER-Zeile fuer einen laengerfristig
+    ausser Betrieb stehenden Host bekommen."""
+
+    def _sync_tree(self, base: Path) -> Path:
+        seeds = base / "_inventory" / "systems"
+        seeds.mkdir(parents=True)
+        _seed(seeds / "laptop.json", "ASUS-GEI")
+        _seed(seeds / "workstation.json", "WORKSTATION-LG", role="primary-dev")
+        _seed(seeds / "surface.json", "SURFACE-LAPTOP", role="")
+        return seeds
+
+    def _pause(self, base: Path, slot: str) -> None:
+        (base / slot).mkdir(parents=True, exist_ok=True)
+        (base / slot / "PAUSIERT.md").write_text(
+            "Host laeuft laengerfristig nicht.", encoding="utf-8"
+        )
+
+    def test_paused_slot_is_marked_inactive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seeds = self._sync_tree(base)
+            self._pause(base, "surface")
+
+            snapshot = systems_registry.build_snapshot(seeds)
+
+            self.assertIs(snapshot["systems"]["SURFACE-LAPTOP"]["active"], False)
+            self.assertNotIn("active", snapshot["systems"]["ASUS-GEI"])
+
+    def test_target_kind_all_leaves_out_the_paused_host(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seeds = self._sync_tree(base)
+            self._pause(base, "surface")
+
+            snapshot = systems_registry.build_snapshot(seeds)
+            every = rc.resolve_targets("all", registry_snapshot=snapshot)
+
+            self.assertEqual(every["systems"], ["ASUS-GEI", "WORKSTATION-LG"])
+            self.assertNotIn("SURFACE-LAPTOP", every["systems"])
+
+    def test_exact_target_on_a_paused_host_is_not_silently_delivered(self):
+        """Ein pausierter Host bleibt adressierbar -- aber der Aufrufer sieht
+        es: der Eintrag traegt active=False in den Zieldetails, statt wie ein
+        normales Ziel auszusehen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seeds = self._sync_tree(base)
+            self._pause(base, "surface")
+
+            snapshot = systems_registry.build_snapshot(seeds)
+            exact = rc.resolve_targets(
+                "exact", target="SURFACE-LAPTOP", registry_snapshot=snapshot
+            )
+
+            self.assertEqual(exact["systems"], ["SURFACE-LAPTOP"])
+            self.assertIs(exact["details"]["SURFACE-LAPTOP"]["active"], False)
+
+    def test_externally_maintained_host_stays_active(self):
+        """'fremdgepflegt' ist NICHT inaktiv -- mac-studio ist ein 24/7-Server
+        ohne eigenen Sync-Akteur. Die Verwechslung wuerde den staerksten
+        Compute-Host aus dem Routing nehmen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seeds = self._sync_tree(base)
+            payload = json.loads((seeds / "laptop.json").read_text(encoding="utf-8"))
+            payload["system"]["hostname"] = "mac-studio"
+            payload["_gepflegt_von"] = "ASUS-GEI"
+            (seeds / "mac-studio.json").write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8"
+            )
+            (base / "mac-studio").mkdir()  # Slot-Ordner ohne PAUSIERT.md
+
+            snapshot = systems_registry.build_snapshot(seeds)
+            every = rc.resolve_targets("all", registry_snapshot=snapshot)
+
+            self.assertNotIn("active", snapshot["systems"]["mac-studio"])
+            self.assertIn("mac-studio", every["systems"])
+
+    def test_explicit_sync_root_wins_over_the_derived_one(self):
+        """Seeds koennen auch ausserhalb des kanonischen Layouts liegen; dann
+        nennt der Aufrufer den Markerbaum selbst."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            seeds = base / "anderswo" / "systems"
+            seeds.mkdir(parents=True)
+            _seed(seeds / "surface.json", "SURFACE-LAPTOP", role="")
+            markers = base / "echter-sync-root"
+            (markers / "surface").mkdir(parents=True)
+            (markers / "surface" / "PAUSIERT.md").write_text("x", encoding="utf-8")
+
+            abgeleitet = systems_registry.build_snapshot(seeds)
+            benannt = systems_registry.build_snapshot(seeds, sync_root=markers)
+
+            self.assertNotIn("active", abgeleitet["systems"]["SURFACE-LAPTOP"])
+            self.assertIs(benannt["systems"]["SURFACE-LAPTOP"]["active"], False)
 
 
 class TestWriterReadsSnapshot(unittest.TestCase):
