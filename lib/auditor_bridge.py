@@ -534,6 +534,8 @@ def _cli(argv: list[str] | None = None) -> int:
         # existing tickets and reports every finding as new (T-20260912-206012253).
         findings_dir = config_paths.resolve_config_path(findings_dir)
         tickets_dir = config_paths.resolve_config_path(tickets_dir)
+        if tickets_dir:
+            tickets_dir = config_paths.resolve_queue_alias(tickets_dir)
         if not findings_dir or not tickets_dir:
             print(json.dumps({
                 "error": "findings_dir/tickets_dir not resolvable; pass --findings-dir/--tickets-dir",

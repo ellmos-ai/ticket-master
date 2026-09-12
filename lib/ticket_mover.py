@@ -38,6 +38,7 @@ from pathlib import Path
 
 try:  # package import
     from .ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from .config_paths import resolve_queue_alias
     from .session_provenance import resolve_session_provenance
     from .routing_contract import (
         ClaimDeniedError,
@@ -61,6 +62,7 @@ try:  # package import
     )
 except ImportError:  # direct import from lib on sys.path
     from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from config_paths import resolve_queue_alias
     from session_provenance import resolve_session_provenance
     from routing_contract import (
         ClaimDeniedError,
@@ -949,6 +951,7 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.release_session:
         if not args.host or not args.tickets_dir:
             parser.error("--release-session requires --host and --tickets-dir")
+        args.tickets_dir = resolve_queue_alias(args.tickets_dir)
         freed, refused, held = release_claims(
             args.tickets_dir, host=args.host, dry_run=args.dry_run,
             include_queued=args.include_queued, report_refused=True)

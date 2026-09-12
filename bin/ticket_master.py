@@ -32,7 +32,7 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
-from config_paths import expand_placeholders  # noqa: E402
+from config_paths import expand_placeholders, resolve_queue_alias  # noqa: E402
 
 
 class ConfigError(ValueError):
@@ -126,7 +126,10 @@ def resolve_tickets_dir(
 ) -> Path:
     cfg = load_config(config)
     raw = override if override is not None else cfg.get("tickets_dir", "tickets")
-    return _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
+    path = _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
+    # Rename-tolerant, solange `_TICKETS` -> `TICKETS` nicht auf allen Hosts
+    # angekommen ist (T-20260906-387521104).
+    return resolve_queue_alias(path)
 
 
 def _normalise_language(raw: Any, *, source: str) -> tuple[str, str | None]:

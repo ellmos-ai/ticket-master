@@ -36,7 +36,9 @@ try:  # package import
         parse_lifecycle_status,
     )
     from .routing_contract import RoutingContractError, contract_errors, parse_ticket_name
+    from .config_paths import resolve_queue_alias
 except ImportError:  # direct import from lib on sys.path
+    from config_paths import resolve_queue_alias
     from ticket_writer import (
         _LIFECYCLE_SUBDIRS, LifecycleStatusError, iter_lifecycle_files,
         parse_lifecycle_status,
@@ -678,6 +680,7 @@ def _cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.tickets_dir:
         parser.error("tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+    args.tickets_dir = resolve_queue_alias(args.tickets_dir)
 
     if args.lint:
         findings = lint(args.tickets_dir)
