@@ -343,7 +343,34 @@ Windows, macOS, and Linux:
 python bin/ticket_master.py --list
 python bin/ticket_master.py --list --json
 python bin/ticket_master.py --intake "Describe the new issue" --project my-app
+python bin/ticket_master.py --intake --title "Short title" --body "First line
+second line"
 ```
+
+#### The public producer contract (`--title` / `--body`)
+
+A finding producer hands over a **title and a body** and knows nothing about
+ticket formats, lifecycle folders or this CLI. `system-auditor` emits exactly
+that: its command sink appends `--title <title> --body <text>` to whatever
+command it was configured with. `--intake` therefore takes its description
+either positionally or from `--body`; giving both is rejected rather than
+silently preferring one, and giving neither fails closed.
+
+This is the interface to wire an external producer against. Until 2026-09-12
+`--intake` accepted only the positional form, so the public call went nowhere
+and only the internal `lib/ticket_writer.py` wiring worked
+(measure `M-20260820-auditor-ticket-sink`). Configure the producer with the
+command prefix only:
+
+```jsonc
+// system-auditor config: the sink appends --title/--body itself
+{"sink": {"kind": "command",
+          "target": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --intake --tickets-dir <queue>",
+          "enabled_probe": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --list"}}
+```
+
+If the probe fails or the command errors, the producer degrades to its file
+sink — a missing ticket system loses the routing, never the finding.
 
 `--list` prints deterministic `STATUS / ID / TITLE / PATH` metadata for open
 tickets across all v1 clusters and readable legacy aliases; it never prints

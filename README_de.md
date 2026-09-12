@@ -354,7 +354,34 @@ Windows, macOS und Linux gleich:
 python bin/ticket_master.py --list
 python bin/ticket_master.py --list --json
 python bin/ticket_master.py --intake "Describe the new issue" --project my-app
+python bin/ticket_master.py --intake --title "Kurzer Titel" --body "Erste Zeile
+zweite Zeile"
 ```
+
+#### Der öffentliche Übergabevertrag (`--title` / `--body`)
+
+Ein Befund-Produzent übergibt **Titel und Text** und weiß nichts über
+Ticketformate, Lebenszyklusordner oder diese CLI. Genau das liefert
+`system-auditor`: Seine Kommando-Senke hängt an das konfigurierte Kommando
+`--title <titel> --body <text>` an. `--intake` nimmt die Beschreibung deshalb
+entweder positionell oder aus `--body` entgegen; beides zugleich wird
+abgelehnt statt still bevorzugt, keines von beidem scheitert fail-closed.
+
+Das ist die Schnittstelle, gegen die ein externer Produzent verdrahtet wird.
+Bis zum 2026-09-12 kannte `--intake` nur die Positionsform — der öffentliche
+Aufruf lief damit ins Leere, und nur die interne Verdrahtung über
+`lib/ticket_writer.py` funktionierte (Maßnahme `M-20260820-auditor-ticket-sink`).
+Der Produzent wird nur mit dem Kommando-Präfix konfiguriert:
+
+```jsonc
+// system-auditor-Config: die Senke hängt --title/--body selbst an
+{"sink": {"kind": "command",
+          "target": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --intake --tickets-dir <queue>",
+          "enabled_probe": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --list"}}
+```
+
+Scheitert die Probe oder das Kommando, fällt der Produzent auf seine Dateisenke
+zurück — ein fehlendes Ticketsystem kostet die Zustellung, nie den Befund.
 
 `--list` gibt deterministische Metadaten `STATUS / ID / TITEL / PFAD` für
 offene Tickets in allen v1-Clustern und lesbaren Legacy-Aliasordnern aus; der
