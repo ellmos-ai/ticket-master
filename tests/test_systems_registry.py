@@ -115,5 +115,45 @@ class TestSystemsRegistry(unittest.TestCase):
             rc.resolve_targets("all", registry_snapshot=written)
 
 
+class TestWriterReadsSnapshot(unittest.TestCase):
+    """Der Erzeuger schreibt sauberes UTF-8, aber ein von einem
+    Windows-Werkzeug angefasster Snapshot kann ein BOM tragen -- genau wie
+    einer der Inventar-Seeds, aus denen er abgeleitet wird."""
+
+    def test_snapshot_with_bom_is_still_readable(self):
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "INBOX").mkdir()
+            (base / ".ticket-master-queue").write_text(
+                "ticket-master-queue-v1", encoding="utf-8"
+            )
+            seeds = base / "systems"
+            seeds.mkdir()
+            _seed(seeds / "workstation.json", "WORKSTATION-LG", role="primary-dev")
+
+            snapshot = base / "systems-registry.json"
+            systems_registry.write_snapshot(seeds, snapshot)
+            # Mit BOM neu schreiben, wie ein Windows-Editor es tun wuerde
+            snapshot.write_text(
+                snapshot.read_text(encoding="utf-8"), encoding="utf-8-sig"
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(LIB_DIR / "ticket_writer.py"),
+                 "--tickets-dir", str(base), "--title", "BOM-Probe",
+                 "--body", "x", "--ticket-kind", "transfer",
+                 "--target-kind", "exact", "--target", "WORKSTATION-LG",
+                 "--primary-ticket", "T-20260912-000000001",
+                 "--original-owner", "a@h", "--receipt-to", "a@h",
+                 "--systems-registry", str(snapshot)],
+                capture_output=True, text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(list((base / "INBOX").glob("*.txt")))
+
+
 if __name__ == "__main__":
     unittest.main()
