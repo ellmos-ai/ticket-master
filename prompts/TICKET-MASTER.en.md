@@ -401,6 +401,11 @@ lease. Never infer one axis from another.
   Targets must come from an evidenced system-registry snapshot; runner,
   family, model and alias resolution comes exclusively from Clutch's public
   resolver. Keep no model list and perform no silent exact substitution.
+- Where the snapshot comes from: `python lib/systems_registry.py
+  --systems-dir <inventory-seeds> --out <file>` derives it from the inventory
+  seeds each host already maintains (never write one by hand — that would
+  fake the very evidence this contract asks for). Point at it via
+  `TICKET_MASTER_SYSTEMS_REGISTRY`, or pass `--systems-registry`.
 - Resolve `.all` and `.grouped` into a fixed target set at creation time.
   Transfer and fork tickets are one circulating contract with exactly one
   `SYSTEM_LEDGER` row per target, not copied child tickets per host.

@@ -418,6 +418,11 @@ einer anderen ab.
   stammen; Runner-, Familien-, Modell- und Aliasauflösung kommt ausschließlich
   aus dem öffentlichen Clutch-Resolver. Keine eigene Modellliste und keine
   stille exakte Substitution.
+- Woher der Snapshot kommt: `python lib/systems_registry.py --systems-dir
+  <inventar-seeds> --out <datei>` leitet ihn aus den vorhandenen
+  Inventar-Seeds ab (nie von Hand schreiben — das fälschte genau den Beleg,
+  den dieser Vertrag verlangt). Der Pfad wird über
+  `TICKET_MASTER_SYSTEMS_REGISTRY` gesetzt, sonst per `--systems-registry`.
 - `.all` und `.grouped` werden beim Erstellen in eine feste Zielmenge
   aufgelöst. Transfer- und Forktickets sind eine gemeinsame umlaufende
   Vertragsakte mit genau einer `SYSTEM_LEDGER`-Zeile je Ziel, keine kopierten
