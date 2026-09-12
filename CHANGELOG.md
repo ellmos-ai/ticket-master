@@ -4,6 +4,23 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Paused hosts stay out of `--target-kind all` (T-20260912-311033160)
+
+- `lib/systems_registry.py` now reads the slot state `slot_state_check.py`
+  already maintains: a `<sync-root>/<slot>/PAUSIERT.md` marker emits
+  `active: false`. Without it every host counted as active, so `all` routed to
+  the long-paused `SURFACE-LAPTOP` and a fork ticket would have opened a
+  `SYSTEM_LEDGER` row for a machine that is out of service.
+- Still nothing is invented: only the positive paused evidence sets the field.
+  Absent a marker it stays out and `resolve_targets()` applies its default.
+- **"Externally maintained" is not inactive.** A seed carrying `_gepflegt_von`
+  merely has no sync actor of its own — `mac-studio` is a 24/7 server, and
+  conflating the two would drop the strongest compute host out of routing.
+  That is the exact conflation T-20260830-351639684 removed from the vacancy
+  watch, and a regression test pins it.
+- The marker root defaults to the seed directory's grandparent (canonical
+  `<sync-root>/_inventory/systems`); `--sync-root` overrides it.
+
 ### System-registry snapshot generator (T-20260912-203012999)
 
 - New `lib/systems_registry.py`: derives the snapshot routing schema v2
