@@ -24,6 +24,10 @@ from typing import Any, Iterable
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LIB_ROOT = REPO_ROOT / "lib"
+# One list, two consumers: the launch guard below and the --provider choices.
+# Keeping them apart is how kimi ended up missing from the CLI while the module
+# manifest already declared it (T-20260906-249053451).
+SUPPORTED_PROVIDERS = ("claude", "codex", "agy", "kimi")
 if str(LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(LIB_ROOT))
 
@@ -344,8 +348,9 @@ def launch_provider(
 ) -> int:
     cfg = load_config(config)
     selected = provider or os.environ.get("TM_PROVIDER") or cfg.get("default_provider") or "claude"
-    if selected not in {"claude", "codex", "agy"}:
-        raise ConfigError(f"unknown provider {selected!r}; use claude, codex, or agy")
+    if selected not in SUPPORTED_PROVIDERS:
+        supported = ", ".join(SUPPORTED_PROVIDERS)
+        raise ConfigError(f"unknown provider {selected!r}; use one of: {supported}")
     lang, prompt_file, warnings = resolve_prompt(config=config, language=language)
     for warning in warnings:
         print(warning, file=sys.stderr)
@@ -381,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--project", default=None, help="optional intake project")
     parser.add_argument("--priority", default="mittel", help="optional intake priority")
     parser.add_argument("--pipeline", default="<offen>", help="optional intake pipeline")
-    parser.add_argument("--provider", choices=("claude", "codex", "agy"), help="provider to launch")
+    parser.add_argument("--provider", choices=SUPPORTED_PROVIDERS, help="provider to launch")
     parser.add_argument("--lang", help="prompt language (overrides TM_LANG/config default)")
     parser.add_argument("--skip-permissions", action="store_true", help="pass Claude skip-permissions flag")
     return parser

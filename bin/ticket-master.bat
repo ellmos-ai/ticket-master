@@ -1,5 +1,5 @@
 @echo off
-REM ticket-master.bat — Windows CMD dispatcher for ticket-master
+REM ticket-master.bat - Windows CMD dispatcher for ticket-master
 REM Usage: bin\ticket-master.bat [--provider claude|codex|agy]
 setlocal
 

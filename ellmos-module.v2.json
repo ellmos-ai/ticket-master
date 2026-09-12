@@ -49,7 +49,8 @@
       "providers": [
         "claude",
         "codex",
-        "agy"
+        "agy",
+        "kimi"
       ],
       "starter": "bin/ticket-master.sh"
     }
