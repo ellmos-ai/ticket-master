@@ -872,7 +872,11 @@ def _cli(argv: list[str] | None = None) -> int:
                 )
             import json
 
-            registry = json.loads(registry_path.read_text(encoding="utf-8"))
+            # utf-8-sig, not utf-8: the generator writes clean UTF-8, but a
+            # snapshot touched by a Windows tool can pick up a BOM -- one of
+            # the inventory seeds this is derived from already has one, and a
+            # plain utf-8 read fails there with an opaque JSONDecodeError.
+            registry = json.loads(registry_path.read_text(encoding="utf-8-sig"))
             matrix = (
                 json.loads(Path(args.execution_matrix).read_text(encoding="utf-8"))
                 if args.execution_matrix else None
