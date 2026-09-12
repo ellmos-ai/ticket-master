@@ -30,6 +30,7 @@ try:  # package import (``from lib import ticket_writer``)
         canonical_contract_name,
         contract_metadata,
         normalize_alias,
+        parse_fields,
         parse_ticket_name,
         resolve_targets,
         update_fields,
@@ -40,6 +41,7 @@ except ImportError:  # direct script/module import from ``lib`` on sys.path
         canonical_contract_name,
         contract_metadata,
         normalize_alias,
+        parse_fields,
         parse_ticket_name,
         resolve_targets,
         update_fields,
@@ -548,7 +550,8 @@ _ORIGIN_ID_RE = re.compile(r"^T-(?P<date>\d{8})-(?P<number>\d+)")
 
 def split_ticket(
     source: Path, tickets_dir: Path, *, title: str | None = None,
-    priority: str = "mittel", pipeline: str = "<offen>", project: str | None = None,
+    body: str | None = None, include_origin_text: bool = False,
+    priority: str = "mittel", pipeline: str | None = None, project: str | None = None,
     today: str | None = None, rng=None, session: str | None = None,
     session_agent: str | None = None, session_host: str | None = None,
 ) -> str:
@@ -563,11 +566,27 @@ def split_ticket(
     always goes through create()'s exclusive draw, so the result can never
     collide with the source.
 
-    The origin ticket's ID is recorded as an ORIGIN-TICKET provenance field,
-    and its full original content is preserved byte-identical in an
-    "ORIGINALTEXT (unveraendert, massgeblich)" block -- same convention as
-    formalize_informal_entry() above (precedent T-20260830-167725484:
-    reformatting means putting a head in front, never rewriting the text).
+    The origin ticket's ID is recorded as an ORIGIN-TICKET provenance field.
+
+    By default the child only REFERENCES the parent; it does not copy it
+    (T-20260912-793529183). The full-copy convention of
+    formalize_informal_entry() (precedent T-20260830-167725484: reformatting
+    means putting a head in front, never rewriting the text) does not carry
+    over here, and the difference is which file survives: formalizing REPLACES
+    a formless entry, so the wording has to travel with it, while splitting
+    leaves the source untouched (see below) -- the parent keeps its own file,
+    so copying it only duplicates queue content. Two concrete costs were
+    measured on 2026-09-12: children of 671 and 766 lines carrying the
+    parent's STATUS lines, which ticket_audit.py reads as STATUS drift.
+    Pass ``include_origin_text=True`` where the embedded wording is actually
+    wanted -- the convention stays available, it is just no longer the default.
+
+    ``body`` is the child's own problem statement. Passing it together with a
+    split is a combination, never a silent overwrite: it is placed ahead of the
+    reference (and ahead of the origin text, if requested).
+
+    ``pipeline`` and ``project`` default to the parent's values, so a split
+    child stays in its parent's project instead of landing on "<offen>".
 
     Does not touch, move, or retire the source file -- callers decide
     separately whether/how the source should change afterwards (this
@@ -582,15 +601,26 @@ def split_ticket(
 
     if title is None:
         title = next((line.strip() for line in text.splitlines() if line.strip()), source.name)[:120]
-    body = (
-        f"Abgespalten von {origin_id} (Quelle: {source.name}).\n\n"
-        f"ORIGIN-TICKET: {origin_id}\n\n"
-        "--- ORIGINALTEXT (unveraendert, massgeblich) ---\n"
-        f"{text}\n"
-        "--- ENDE ORIGINALTEXT ---\n"
-    )
+    parent_fields = parse_fields(text)
+    if pipeline is None:
+        pipeline = parent_fields.get("PIPELINE") or "<offen>"
+    if project is None:
+        project = parent_fields.get("PROJEKTORDNER") or None
+
+    parts = [f"Abgespalten von {origin_id} (Quelle: {source.name}).", "",
+             f"ORIGIN-TICKET: {origin_id}", ""]
+    if body:
+        parts += [body.strip(), ""]
+    if include_origin_text:
+        parts += ["--- ORIGINALTEXT (unveraendert, massgeblich) ---", text,
+                  "--- ENDE ORIGINALTEXT ---"]
+    else:
+        parts.append(
+            f"Der vollstaendige Elternkontext steht in {origin_id} und wird hier "
+            "bewusst nicht dupliziert (--split-include-origin erzwingt die Kopie)."
+        )
     return create(
-        title, body, project=project, priority=priority, pipeline=pipeline,
+        title, "\n".join(parts), project=project, priority=priority, pipeline=pipeline,
         tickets_dir=tickets_dir, today=today, rng=rng,
         session=session, session_agent=session_agent, session_host=session_host,
     )
@@ -764,11 +794,16 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--body", default="")
     parser.add_argument("--project", default=None)
     parser.add_argument("--priority", default="mittel")
-    parser.add_argument("--pipeline", default="<offen>")
+    parser.add_argument("--pipeline", default=None)
     parser.add_argument("--tickets-dir", default=None)
     parser.add_argument("--from-file", help="formalize one formless INBOX entry (Entscheid 3A)")
     parser.add_argument("--submitter", default=None, help="with --from-file: submitter name (default: filename)")
     parser.add_argument("--split-from", help="split one existing ticket file into a new, freshly-ID'd ticket")
+    parser.add_argument(
+        "--split-include-origin", action="store_true",
+        help="with --split-from: embed the parent's full wording "
+             "instead of only referencing it",
+    )
     parser.add_argument("--ticket-kind", choices=("normal", "transfer", "fork"))
     parser.add_argument("--target-kind", choices=("any", "all", "grouped", "exact"))
     parser.add_argument("--target")
@@ -795,7 +830,7 @@ def _cli(argv: list[str] | None = None) -> int:
                 Path(args.from_file),
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
                 submitter=args.submitter, project=args.project,
-                priority=args.priority, pipeline=args.pipeline,
+                priority=args.priority, pipeline=args.pipeline or "<offen>",
                 session=args.session, session_agent=args.session_agent,
                 session_host=args.session_host,
             )
@@ -803,7 +838,8 @@ def _cli(argv: list[str] | None = None) -> int:
             path = split_ticket(
                 Path(args.split_from),
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
-                title=args.title, project=args.project,
+                title=args.title, body=args.body, project=args.project,
+                include_origin_text=args.split_include_origin,
                 priority=args.priority, pipeline=args.pipeline,
                 session=args.session, session_agent=args.session_agent,
                 session_host=args.session_host,
@@ -839,7 +875,7 @@ def _cli(argv: list[str] | None = None) -> int:
                 idempotency_key=args.idempotency_key,
                 project=args.project,
                 priority=args.priority,
-                pipeline=args.pipeline,
+                pipeline=args.pipeline or "<offen>",
                 session=args.session,
                 session_agent=args.session_agent,
                 session_host=args.session_host,
@@ -847,7 +883,7 @@ def _cli(argv: list[str] | None = None) -> int:
         else:
             path = create(
                 args.title, args.body, project=args.project, priority=args.priority,
-                pipeline=args.pipeline,
+                pipeline=args.pipeline or "<offen>",
                 tickets_dir=Path(args.tickets_dir) if args.tickets_dir else None,
                 session=args.session, session_agent=args.session_agent,
                 session_host=args.session_host,

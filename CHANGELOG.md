@@ -4,6 +4,24 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Usable split children (T-20260912-793529183)
+
+- `lib/ticket_writer.py`: `split_ticket()` / CLI `--split-from` now produces a
+  short child that REFERENCES its parent instead of embedding it. Two children
+  measured on 2026-09-12 came out at 671 and 766 lines, carrying the parent's
+  `STATUS:` lines — which `ticket_audit.py` reads as STATUS drift.
+- `--body` is no longer silently discarded when combined with `--split-from`:
+  it becomes the child's problem statement, placed ahead of the reference.
+  Losing user input without a word was the more damaging half of the bug.
+- `PIPELINE` and `PROJEKTORDNER` are inherited from the parent ticket instead
+  of defaulting to `<offen>`, so a split child stays in its parent's project.
+- The full-copy convention is kept, not removed: `include_origin_text=True`
+  (CLI `--split-include-origin`) still embeds the parent's wording
+  byte-identical. It is no longer the default because splitting, unlike
+  `--from-file`, leaves the source file in place — the precedent
+  (T-20260830-167725484, "never rewrite the wording") protects a source that
+  is about to be replaced, which is not the case here.
+
 ### Delegation marker ownership (T-20260909-537604869)
 
 - `lib/ticket_mover.py` now recognizes only left-aligned standalone
