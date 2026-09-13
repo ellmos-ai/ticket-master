@@ -4,6 +4,59 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Decision readback gate before escalating to `USER/` (T-20260913-867541218)
+
+- New `lib/decision_readback.py`; `move_ticket()` refuses a move into `USER/`
+  when the decision register already answers the ticket. Open since 2026-08-26.
+- **The ticket's design question — prompt gate or code gate — is answered as
+  code.** A prompt gate binds one agent's discipline; every other consumer of
+  `ticket_mover` walks past it. This repo has that lesson on file twice: a
+  restriction living only as prose in a system prompt gets walked past by an
+  agent that has a shell, and T-20260830-938608207 found the same shape inside
+  this module — a lease that existed as a field but was never read on a write
+  path. A field nobody reads is a note; a rule nobody enforces is a wish. The
+  prompts (both languages) describe the gate; they do not implement it.
+- **Strong keys only, never free text.** The register holds 317 entries;
+  matching ticket wording against titles would produce a haystack of
+  near-misses and train everyone to click past it — which is how a checklist
+  dies. Searched: the ticket's own ID, and every `D-YYYYMMDD-NNN` the ticket
+  names.
+- Three distinct states, and the distinction is the point: `checked` (index
+  read, hits carry their status), `unavailable` (an index was *named* and could
+  not be read → refuse; naming it means meaning it), `absent` (none named and
+  none found → no gate, but the ticket records `UNGEPRUEFT`, never "open").
+  This is a public tool and a foreign user has no such register, so blocking
+  every escalation would be wrong — silently claiming "open" is the defect.
+- An `OFFEN` register entry does **not** block: a question still awaiting the
+  user is not an answered one, and blocking on it would make a follow-up
+  impossible. It is logged.
+- A hit that was read and does not apply is cleared with
+  `--acknowledge-decision <D-ID>` (repeatable) and the acknowledgement is
+  written into the ticket — naming the ID is the evidence that somebody looked.
+- The protocol line is written into the **source** before the copy, so it
+  travels in the same atomic move instead of needing a second write at the
+  destination, which would break `move_ticket`'s own "source unchanged since
+  the copy" guard. `--dry-run` writes nothing.
+- The gate fires only on a real escalation into `USER/` — not on the way back
+  out, and not on a rename inside `USER/` (which is what `claim_contract` does).
+- Verified against the real register (read-only): the teaching case reproduces.
+  `--decision-readback` on a ticket naming D-20260731-010 returns it as `DONE`
+  from `DECIDED-AND-DONE.md`, titled "ControlRoom-Umbauplan: E1–E9 entschieden
+  (Votum des Users)" — the decision that was submitted again as open on
+  2026-08-25.
+- Whole-key matching, not substring: the old two-digit ID form
+  `T-20260808-03` is a literal prefix of the nine-digit
+  `T-20260808-031234567`, so a plain `in` test reports a hit on an unrelated
+  ticket. A false hit is worse than no gate — it blocks a legitimate escalation
+  and teaches the next person to reach for `--acknowledge-decision` without
+  reading. Found while writing the review brief, fixed before review, pinned by
+  two tests.
+- Side finding fixed in the same pass: `config/ticket-writer.config.example.json`
+  pointed `decisions-chain` at `_control-center/_DECISIONS/`, a folder that has
+  not existed since the 2026-09-06 move to `_control-center/_CONTROL/_DECISIONS`
+  (its MOVED stub lists "0 live references" as its removal condition). Corrected
+  and the machine-readable index added alongside it.
+
 ### Hash-bound single-use approval for `USER/freigabe` (T-20260913-744071825)
 
 - New `lib/ticket_freigabe.py` plus three `ticket_mover.py` flags:
