@@ -608,11 +608,19 @@ a run whose predecessor visibly aborted.
      expert can govern a whole skill FAMILY rather than a single 1:1 skill):
      `experts[].matched_skills` is a LIST — equip the worker with ALL listed
      skills as available tools/references, not just the first one.
-  2. Skill-registry tools if available (`controlcenter_find_skill` MCP tool,
+  2. `domains.json`'s `usecase_skills[]` (phase 1b, T-20260913-150720021):
+     skills covering a usecase of the BOSS itself that belong to none of its
+     experts, and therefore appear in no `experts[]` entry. Each entry names
+     the `skill`, the `usecase` that triggered it and the `matched_tokens`.
+     If the ticket hits that exact usecase, the named skill is the endpoint;
+     otherwise ignore it (the list is ordered by usecase, not by relevance to
+     this ticket). The rule is deliberately strict — the full skill name must
+     appear in the usecase — so expect too few entries rather than wrong ones.
+  3. Skill-registry tools if available (`controlcenter_find_skill` MCP tool,
      or a local `skill-finder`-style skill) — also for experts whose
      `domains.json` snapshot still shows `"nicht-portiert"` (a live check can
      be more current).
-  3. Neither (1) nor (2) yields a skill even though the domain/usecase
+  4. Neither (1), (2) nor (3) yields a skill even though the domain/usecase
      matches: **no silent fallback** — flag it as a **GAP**
      (`ENDPOINT: GAP — no standalone skill yet (<expert>)`) so it stays
      visible for a later `skill-extractor` pass. The ticket still proceeds

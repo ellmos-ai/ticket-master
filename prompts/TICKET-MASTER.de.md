@@ -627,12 +627,22 @@ den Anfang eines Laufs, wenn die Vorsitzung erkennbar abgebrochen ist.
      1:1-Skills): `experts[].matched_skills` ist eine LISTE — dem Worker ALLE
      gelisteten Skills als verfügbare Werkzeuge/Referenzen mitgeben, nicht
      nur den ersten.
-  2. Skill-Registry-Tools, falls verfügbar (`controlcenter_find_skill`
+  2. `domains.json`s `usecase_skills[]` (Phase 1b, T-20260913-150720021):
+     Skills, die einen Usecase des Bosses SELBST abdecken und zu keinem
+     seiner Experten gehören — sie erscheinen deshalb in keinem
+     `experts[]`-Eintrag. Jeder Eintrag nennt `skill`, den auslösenden
+     `usecase` und die `matched_tokens`. Trifft der Ticket-Inhalt genau
+     diesen Usecase, ist der genannte Skill der Endpunkt; sonst ignorieren
+     (die Liste ist nach Usecase geordnet, nicht nach Relevanz für dieses
+     Ticket). Die Zuordnung ist absichtlich streng — der vollständige
+     Skillname muss im Usecase stehen —, es gibt also eher zu wenige
+     Einträge als falsche.
+  3. Skill-Registry-Tools, falls verfügbar (`controlcenter_find_skill`
      MCP-Tool bzw. lokaler `skill-finder`-Skill) — auch für Experten, deren
      `domains.json`-Snapshot noch `"nicht-portiert"` zeigt (Live-Check kann
      neuer sein).
-  3. Weder (1) noch (2) liefert einen Skill, obwohl die Domäne/der Usecase
-     matcht: **kein stiller Fallback** — als **LÜCKE** ausweisen
+  4. Weder (1), (2) noch (3) liefert einen Skill, obwohl die Domäne/der
+     Usecase matcht: **kein stiller Fallback** — als **LÜCKE** ausweisen
      (`ENDPOINT: GAP — noch nicht bachlos abgedeckt (<Experte>)`), damit sie
      später sichtbar für eine `skill-extractor`-Portierung bleibt. Das Ticket
      läuft trotzdem normal weiter (Projekt-Routing als Ersatz-Endpunkt, oder

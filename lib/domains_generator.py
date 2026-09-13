@@ -706,6 +706,95 @@ def fuzzy_match_skills(expert_name: str, boss_description: str, components: list
     return matches
 
 
+# Usecase-level matching, phase 1b (T-20260913-150720021). A usecase is a
+# SENTENCE, not a name -- "Kalender verwaltet werden soll" carries one topical
+# token and three grammatical ones. Without this list every usecase would offer
+# its verbs and auxiliaries as match keys, and a skill named after any of them
+# would attach to every boss that phrases a usecase that way. Kept to closed
+# word classes plus the handful of framing verbs the BACH boss descriptions
+# actually use (measured against all five live domains, 2026-09-13); topical
+# nouns are deliberately NOT listed, since those are the signal.
+_USECASE_STOPWORDS: set[str] = {
+    # German function words and framing verbs
+    "und", "oder", "der", "die", "das", "den", "dem", "des", "ein", "eine",
+    "einen", "einem", "eines", "werden", "wird", "soll", "sollen", "sollte",
+    "muss", "muessen", "kann", "koennen", "wenn", "bei", "beim", "fuer", "von",
+    "vom", "mit", "zum", "zur", "auf", "aus", "als", "ist", "sind", "nutze",
+    "diesen", "dieser", "dieses", "skill", "benoetigt", "gebraucht", "gesucht",
+    "erstellt", "verwaltet", "vorbereitet", "organisiert", "unterstuetzt",
+    "geplant", "koordiniert", "experten", "experte",
+    # English equivalents (three of the five live bosses are English)
+    "and", "or", "the", "a", "an", "to", "of", "for", "with", "when", "use",
+    "this", "you", "need", "are", "is", "be", "create", "generate", "manage",
+    "organize", "track", "plan", "provide", "analyze", "coordinates",
+    "specialized", "experts", "agent", "skill",
+}
+
+
+def match_usecase_skills(usecases: list[str], components: list[dict], *,
+                         claimed_ids: set[str] | None = None) -> list[dict]:
+    """Phase 1b (T-20260913-150720021): match a boss's OWN usecases to skills.
+
+    Stages 0-2 all compare a component against an EXPERT's name or a DOMAIN's
+    id/label. A boss also states usecases of its own -- and some of those have
+    standalone skills that appear nowhere in the output because they belong to
+    no named expert (measured 2026-09-13: `skill:assist:kalender` exists and
+    the `alltag` boss states the usecase "Kalender verwaltet werden soll", yet
+    the skill is absent from every entry of the generated domains.json).
+
+    WHY ITS OWN RULE AND NOT `fuzzy_match_skills()`. Stage 2 is allowed to use
+    the shared boss description only as a secondary signal precisely because
+    matching against it produced bleed-over onto sibling experts
+    (T-20260711-05): every expert of a boss shares one description, so a hit
+    there attaches the same skill to all of them. Usecases live in that exact
+    namespace -- they ARE the boss description, cut into pieces. Reusing stage
+    2's machinery would reintroduce the bleed-over one level down.
+
+    So this is the strictest available rule, the same one `match_domain_skill()`
+    settled on, with one addition forced by the input shape:
+
+      (a) whole-token equality only, against the component's own `id`/`name` --
+          never its description, never `_compound_overlap()`'s substring
+          bridging (T-20260711-04: a length-4 substring bridged the unrelated
+          pair "worksheet_generator"/"genogram-work").
+      (b) usecase tokens are filtered through `_USECASE_STOPWORDS` first. This
+          is the addition: a domain id is a name, a usecase is a sentence, and
+          an unfiltered sentence offers its grammar as match keys.
+
+    The result is attached to the DOMAIN, not to an expert -- which is the
+    point. These skills answer a boss-level need; pinning them to an arbitrary
+    expert would be the invention stage 2 was walked back from.
+
+    `claimed_ids` is the global exact-match exclusion the ticket asks for: a
+    component already resolved as an expert or tool endpoint of this domain is
+    not listed again here, so no skill is both an expert endpoint and a usecase
+    endpoint. Pass the domain's already-resolved ids.
+    """
+    claimed = claimed_ids or set()
+    matches: list[dict] = []
+    seen: set[str] = set()
+    for usecase in usecases:
+        tokens = _tokenize(usecase) - _GENERIC_EXPERT_NAME_TOKENS - _USECASE_STOPWORDS
+        if not tokens:
+            continue
+        for comp in components:
+            comp_id = str(comp.get("id") or "")
+            if not comp_id or comp_id in claimed or comp_id in seen:
+                continue
+            comp_tokens = (_tokenize(comp.get("name") or comp_id.rsplit(":", 1)[-1])
+                           - _GENERIC_EXPERT_NAME_TOKENS)
+            if not comp_tokens or not comp_tokens <= tokens:
+                continue
+            shared = comp_tokens
+            seen.add(comp_id)
+            matches.append({
+                "skill": comp_id,
+                "usecase": usecase,
+                "matched_tokens": sorted(shared),
+            })
+    return matches
+
+
 def match_domain_skill(domain_id: str, domain_label: str, components: list[dict]) -> list[dict]:
     """Stage-0 (domain-level) matching, T-20260808-02: covers the case where a
     standalone skill supersedes an ENTIRE boss agent rather than one of its
@@ -1244,12 +1333,30 @@ def build_domains(agents_dir: Path, registry_components_path: Path | None,
                     "matched_skills": domain_match_ids,
                 })
 
+        # Phase 1b (T-20260913-150720021): the boss's OWN usecases, matched
+        # against whatever the global exact-match exclusion left available,
+        # minus every id this domain already resolved as an expert or tool
+        # endpoint. That second exclusion is the ticket's requirement: a skill
+        # must never be both an expert endpoint and a usecase endpoint.
+        usecases = extract_usecases(description)
+        domain_claimed = {
+            skill_id
+            for expert in experts
+            for skill_id in ([expert.get("standalone_skill")]
+                             + list(expert.get("matched_skills") or []))
+            if skill_id
+        }
+        usecase_skills = match_usecase_skills(
+            usecases, fuzzy_pool_available, claimed_ids=domain_claimed,
+        ) if fuzzy_pool_available else []
+
         domains.append({
             "id": domain_id,
             "label": label,
             "source_boss": dirname,
             "description": description,
-            "usecases": extract_usecases(description),
+            "usecases": usecases,
+            "usecase_skills": usecase_skills,
             "services": services,
             "experts": experts,
         })

@@ -597,7 +597,14 @@ assistant triage console, on top of a BACH-style personal-assistant install:
   supersedes a WHOLE boss agent rather than any one of its named experts
   (`"match": "domain"`); a boss with zero orchestrated experts gets a
   synthetic `"__domain__:<boss>"` pseudo-expert instead, since there is
-  otherwise nowhere to attach the match. See `config/domains.example.json`
+  otherwise nowhere to attach the match. Since T-20260913-150720021 (phase 1b)
+  each domain also carries `usecase_skills[]`: skills covering a usecase of the
+  BOSS itself that belong to none of its experts and would otherwise appear
+  nowhere. That match is deliberately the strictest of the lot — the full skill
+  name must occur as whole tokens in the usecase text — because a usecase is a
+  sentence, not a name: a looser first version produced 1 correct hit and 19
+  wrong ones on the live corpus, all from generic nouns inside skill names.
+  See `config/domains.example.json`
   for the schema. The current generator can also read a module catalog via
   `--modules-catalog` and the skill library's own frontmatter via
   `--skill-library-dir`. Skill-library provenance is the primary exact source,

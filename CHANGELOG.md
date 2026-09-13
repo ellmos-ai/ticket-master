@@ -4,6 +4,42 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Usecase-level matching in the domains generator, phase 1b (T-20260913-150720021)
+
+- Each domain in `domains.json` now carries `usecase_skills[]`: skills covering
+  a usecase of the BOSS itself that belong to none of its experts, and which
+  therefore appeared nowhere in the output. `match_usecase_skills()` is new;
+  both prompts gained the lookup as step 2 of the endpoint resolution order.
+- **The rule is the strictest of the lot, and measurement is why.** Stages 0-2
+  compare a component against an expert NAME or a domain id/label. A usecase is
+  a sentence. A first version — any shared token between usecase and skill name
+  — produced **1 correct hit and 19 wrong ones** on the live corpus (368
+  skills, five bosses), all from generic nouns inside skill names: nine
+  `*-care` skills attached to "plan preventive care appointments",
+  `genogram-work` and `work-autonomous` to "organize work and schedules",
+  `music-composer` to a description mentioning music. Requiring the FULL skill
+  name to occur as whole tokens gives **1 hit, 0 false positives, and 0 skills
+  whose name occurs verbatim in a usecase without being found**.
+- That is exactly the bleed-over the ticket warned about: usecases ARE the
+  shared boss description, cut into pieces, and matching against it attaches
+  one skill to every sibling (walked back once already in T-20260711-05).
+- The ticket's requested global exact-match exclusion is honoured twice: the
+  pool is `fuzzy_pool_available` (already excluding every globally
+  exact-matched id) and, per domain, every id already resolved as an expert or
+  tool endpoint is excluded again. No skill is both.
+- Purely additive: regenerated against the live corpus with identical flags,
+  every pre-existing field of all five domains is byte-identical to the run
+  before the change.
+- **The ticket's premise is partly outdated, recorded for the next reader.**
+  It names `dossier-briefing`, `location-suche` and `reiseroute` as missing
+  endpoints; that TODO note is from 2026-07-04. The first two have since been
+  covered by `match_tool_by_stem()` (T-20260818-137943175) as `__tool__:`
+  pseudo-experts. `reiseroute` is named by no usecase at all — it corresponds
+  to `route_planner.py`, whose stem no skill carries — so phase 1b does not
+  reach it either, and it stays in `skill_library_bach_origin_unattached`
+  where it is already visible. The one real gap phase 1b closes on today's
+  corpus is `skill:assist:kalender`.
+
 ### Decision readback gate before escalating to `USER/` (T-20260913-867541218)
 
 - New `lib/decision_readback.py`; `move_ticket()` refuses a move into `USER/`
