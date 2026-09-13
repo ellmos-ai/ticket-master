@@ -263,9 +263,20 @@ def resolve_execution(selector: str, *, runner: str | None = None,
             "resolved_at": utc_text(),
         }
 
-    if resolver is None:
+    # Bound to its own name rather than rebinding the parameter: `... as
+    # resolver` left the parameter typed `Callable | None` for the whole
+    # function, so every static check reported the call below as a possible
+    # call on None. It never was -- the import branch returns on failure, and
+    # a resolver that somehow ended up None would be caught by the `except
+    # Exception` around the call and reported as `registry-error:TypeError`
+    # rather than crashing (both verified empirically, 2026-09-13, once with
+    # clutch installed and once with its import blocked). The warning was
+    # therefore noise, but recurring noise costs every reviewer the same
+    # investigation, so the shape is fixed instead of re-explained.
+    resolve = resolver
+    if resolve is None:
         try:
-            from clutch import resolve_execution_selector as resolver  # type: ignore
+            from clutch import resolve_execution_selector as resolve  # type: ignore
         except (ImportError, OSError) as exc:
             reason = f"resolver-import-error:{type(exc).__name__}"
             logger.error(
@@ -274,7 +285,7 @@ def resolve_execution(selector: str, *, runner: str | None = None,
             )
             return unavailable(reason)
     try:
-        result = _resolution_dict(resolver(selector, runner=runner), selector)
+        result = _resolution_dict(resolve(selector, runner=runner), selector)
     except Exception as exc:  # persist only the type; keep the cause in the local error log
         reason = f"registry-error:{type(exc).__name__}"
         logger.error(

@@ -4,6 +4,41 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### The agent identity is normalised once, not twice (T-20260913-695955668)
+
+- `resolve_session_provenance()` now splits an already-qualified
+  `<agent>@<host>` itself, so both value forms produce the same stamp. Two CLI
+  options disagree on which form they want — `ticket_mover --agent` documents
+  `claude-code@ASUS-GEI`, `ticket_writer --session-agent` wants the bare name —
+  and passing one into the other produced a stamp with **two** `@` separators,
+  unparsable for a machine, with nothing failing:
+  `SESSION: session_… | control1@ASUS-GEI@ASUS-GEI | 2026-09-13` (really
+  produced on 2026-09-13, corrected by hand).
+- The split already existed — in `ticket_mover.mark_delegated` only, one level
+  above. Moving it into the single function every caller passes through removes
+  the copy rather than adding a second one (P-009).
+- Refuses instead of guessing where a value means nothing: two different hosts
+  asserted at once (a wrong host in an audit trail is worse than a failed
+  call), more than one `@`, or an empty half. `SessionProvenanceError` subclasses
+  `ValueError`, so `ticket_writer`'s CLI already reported it; `ticket_mover
+  --mark-delegated` now catches it too and refuses without writing.
+- Host comparison is case-insensitive — `asus-gei` and `ASUS-GEI` are not a
+  contradiction.
+
+### Static-analysis noise removed in `resolve_execution()` (no behaviour change)
+
+- The clutch import bound `... as resolver`, rebinding the parameter and
+  leaving it typed `Callable | None` for the whole function, so every static
+  check reported the call below as a possible call on `None`. It never was: the
+  import branch returns on failure, and a resolver that somehow ended up `None`
+  is caught by the surrounding `except Exception` and reported as
+  `registry-error:TypeError` rather than crashing. **Both verified empirically
+  on 2026-09-13** — once with clutch installed (`resolved=True`) and once with
+  its import blocked (`resolver-import-error:ImportError`, no crash). The
+  warning was noise, but recurring noise costs every reviewer the same
+  investigation, so the shape is fixed instead of re-explained: the import now
+  binds its own name.
+
 ### Usecase-level matching in the domains generator, phase 1b (T-20260913-150720021)
 
 - Each domain in `domains.json` now carries `usecase_skills[]`: skills covering
