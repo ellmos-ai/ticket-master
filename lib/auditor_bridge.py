@@ -524,16 +524,17 @@ def _cli(argv: list[str] | None = None) -> int:
         tm_config = _load_tm_config(args.config)
         sa_config = _resolve_system_auditor_config()
         findings_dir = args.findings_dir or tm_config.get("findings_dir") or getattr(sa_config, "findings_dir", "")
-        tickets_dir = (
-            args.tickets_dir or tm_config.get("tickets_dir")
-            or os.environ.get("TICKET_MASTER_TICKETS_DIR")
-        )
         # Config values may carry <HOME>/<USER> (see config/*.example.json). Without
         # this, a placeholder path reaches the dedup check unexpanded: the lookup
         # then runs against a directory literally named "<HOME>/...", finds no
         # existing tickets and reports every finding as new (T-20260912-206012253).
         findings_dir = config_paths.resolve_config_path(findings_dir)
-        tickets_dir = config_paths.resolve_config_path(tickets_dir)
+        # Praezedenz-Angleichung (T-20260913-156957497): Dieses Modul las als
+        # einziges Konfiguration VOR Umgebung, der Rest des Pakets umgekehrt. Wo
+        # beide gesetzt sind und auseinanderlaufen, schrieb derselbe Aufruf hier
+        # in eine andere Queue als ticket_writer. Jetzt gilt ueberall
+        # Aufrufer > Umgebung > Konfiguration, aufgeloest an einer Stelle.
+        tickets_dir = config_paths.resolve_tickets_dir(args.tickets_dir, config=tm_config)
         if tickets_dir:
             tickets_dir = config_paths.resolve_queue_alias(tickets_dir)
         if not findings_dir or not tickets_dir:

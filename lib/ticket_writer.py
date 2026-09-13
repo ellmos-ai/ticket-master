@@ -8,8 +8,10 @@ into <tickets_dir>/INBOX/ using the canonical TICKET format
 (fields ID/TITLE/STATUS/.../LOG/SOLUTION). New IDs must only be minted through
 this helper; callers must never count or choose the numeric component manually.
 
-User-neutral module: `tickets_dir` is required (or taken from the
-TICKET_MASTER_TICKETS_DIR environment variable / config). The current date is
+User-neutral module: the queue root is resolved by
+`config_paths.require_tickets_dir()` -- caller argument, then the
+TICKET_MASTER_TICKETS_DIR environment variable, then "tickets_dir" in
+config/ticket-master.config.json. The current date is
 injectable (today=) for deterministic tests/automation. This is the canonical
 home of the helper; the running instance lives in the user's _scripts/ mirror.
 """
@@ -36,9 +38,21 @@ try:  # package import (``from lib import ticket_writer``)
         update_fields,
     )
     from .session_provenance import resolve_session_provenance
-    from .config_paths import resolve_config_path, resolve_queue_alias
+    from .config_paths import (
+        require_tickets_dir,
+        resolve_config_path,
+        resolve_queue_alias,
+        resolve_tickets_dir,
+        tm_config,
+    )
 except ImportError:  # direct script/module import from ``lib`` on sys.path
-    from config_paths import resolve_config_path, resolve_queue_alias
+    from config_paths import (
+        require_tickets_dir,
+        resolve_config_path,
+        resolve_queue_alias,
+        resolve_tickets_dir,
+        tm_config,
+    )
     from routing_contract import (
         canonical_contract_name,
         contract_metadata,
@@ -52,25 +66,18 @@ except ImportError:  # direct script/module import from ``lib`` on sys.path
 
 
 def _default_tickets_dir() -> Path | None:
-    env = os.environ.get("TICKET_MASTER_TICKETS_DIR")
-    return Path(env) if env else None
+    """Queue-Wurzel ohne expliziten Aufrufer: Umgebung, dann Konfiguration.
+
+    Duenner Alias auf `config_paths.resolve_tickets_dir()` -- die Aufloesung
+    liegt dort, weil vier Module im Paket dieselbe Frage stellten und sich
+    nicht einig waren (T-20260913-156957497).
+    """
+    return resolve_tickets_dir()
 
 
 def _tm_config() -> dict:
-    """`config/ticket-master.config.json` neben dem Paket, oder ein leeres Dict.
-
-    Absichtlich tolerant: Eine fehlende oder kaputte Konfiguration darf einen
-    Schreibvorgang nicht verhindern -- sie ist eine Bequemlichkeit, keine
-    Voraussetzung. Wer den Pfad wirklich braucht, bekommt weiter unten einen
-    klaren Fehler statt hier eine Ausnahme.
-    """
-    pfad = Path(__file__).resolve().parent.parent / "config" / "ticket-master.config.json"
-    try:
-        with pfad.open(encoding="utf-8-sig") as fh:
-            daten = json.load(fh)
-    except (OSError, ValueError):
-        return {}
-    return daten if isinstance(daten, dict) else {}
+    """Alias auf `config_paths.tm_config()` -- siehe dort."""
+    return tm_config()
 
 
 def _default_systems_registry() -> Path | None:
@@ -482,14 +489,11 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
            session_host: str | None = None) -> str:
     """Erzeugt ein unclaimed Ticket in <tickets_dir>/INBOX/. Returns den Pfad.
 
-    tickets_dir ist erforderlich (oder via TICKET_MASTER_TICKETS_DIR gesetzt).
+    tickets_dir wird ueber `config_paths.require_tickets_dir()` aufgeloest
+    (Aufrufer > Umgebung > Konfiguration).
     rng ist injizierbar (wie today=) fuer deterministische Tests; ohne Angabe
     wird random.SystemRandom() genutzt."""
-    base = Path(tickets_dir) if tickets_dir else _default_tickets_dir()
-    if base is None:
-        raise ValueError(
-            "tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
-    base = require_verified_queue_root(base)
+    base = require_verified_queue_root(require_tickets_dir(tickets_dir))
     inbox = base / "INBOX"
     inbox.mkdir(parents=True, exist_ok=True)
 
@@ -557,11 +561,8 @@ def formalize_informal_entry(
     no second ticket is created -- the existing ticket's path is returned and
     the source is (re-)archived.
     """
-    if tickets_dir is None:
-        raise ValueError(
-            "tickets_dir required (pass it or set TICKET_MASTER_TICKETS_DIR).")
+    tickets_dir = require_tickets_dir(tickets_dir)
     source = Path(source)
-    tickets_dir = Path(tickets_dir)
     text = source.read_text(encoding="utf-8")
     marker = source.name
 
@@ -642,8 +643,8 @@ def split_ticket(
     ticket's own note: merging or renumbering existing tickets is not a
     unilateral decision when another host's state is involved).
     """
+    tickets_dir = require_tickets_dir(tickets_dir)
     source = Path(source)
-    tickets_dir = Path(tickets_dir)
     text = source.read_text(encoding="utf-8")
     id_match = _ORIGIN_ID_RE.match(source.name)
     origin_id = f"T-{id_match.group('date')}-{id_match.group('number')}" if id_match else source.name
@@ -712,9 +713,7 @@ def create_routed_ticket(
     forms such as ``.all.claude`` or ``.WORKSTATION-LG.claude-opus`` and
     resolves the execution portion only through Clutch's public API.
     """
-    if tickets_dir is None:
-        raise ValueError("tickets_dir required for routing schema v2")
-    base = require_verified_queue_root(Path(tickets_dir))
+    base = require_verified_queue_root(require_tickets_dir(tickets_dir))
     inbox = base / "INBOX"
     inbox.mkdir(parents=True, exist_ok=True)
     date_iso = today or datetime.now().strftime("%Y-%m-%d")
@@ -876,7 +875,7 @@ def _cli(argv: list[str] | None = None) -> int:
         if args.from_file:
             path = formalize_informal_entry(
                 Path(args.from_file),
-                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                tickets_dir=args.tickets_dir,
                 submitter=args.submitter, project=args.project,
                 priority=args.priority, pipeline=args.pipeline or "<offen>",
                 session=args.session, session_agent=args.session_agent,
@@ -885,7 +884,7 @@ def _cli(argv: list[str] | None = None) -> int:
         elif args.split_from:
             path = split_ticket(
                 Path(args.split_from),
-                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                tickets_dir=args.tickets_dir,
                 title=args.title, body=args.body, project=args.project,
                 include_origin_text=args.split_include_origin,
                 priority=args.priority, pipeline=args.pipeline,
@@ -926,7 +925,7 @@ def _cli(argv: list[str] | None = None) -> int:
             ttl = raw_ttl if raw_ttl in {None, "never"} else int(raw_ttl)
             path = create_routed_ticket(
                 args.title, args.body,
-                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else _default_tickets_dir(),
+                tickets_dir=args.tickets_dir,
                 registry_snapshot=registry,
                 ticket_kind=args.ticket_kind or "normal",
                 target_kind=args.target_kind or "any",
@@ -952,7 +951,7 @@ def _cli(argv: list[str] | None = None) -> int:
             path = create(
                 args.title, args.body, project=args.project, priority=args.priority,
                 pipeline=args.pipeline or "<offen>",
-                tickets_dir=Path(args.tickets_dir) if args.tickets_dir else None,
+                tickets_dir=args.tickets_dir,
                 session=args.session, session_agent=args.session_agent,
                 session_host=args.session_host,
             )
