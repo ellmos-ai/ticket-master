@@ -33,7 +33,7 @@ import re
 import socket
 import sys
 import time
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 try:  # package import
@@ -52,8 +52,13 @@ try:  # package import
         record_receipt,
         recover_expired_claim,
         release_contract,
+        update_fields,
     )
     from .ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
+    from .decision_readback import (
+        DECISIONS_INDEX_ENV, INDEX_RELATIVE_PATH,
+        decision_readback, readback_log_line,
+    )
     from .ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
         _LEGACY_STATUS_ALIASES,
@@ -77,8 +82,13 @@ except ImportError:  # direct import from lib on sys.path
         record_receipt,
         recover_expired_claim,
         release_contract,
+        update_fields,
     )
     from ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
+    from decision_readback import (
+        DECISIONS_INDEX_ENV, INDEX_RELATIVE_PATH,
+        decision_readback, readback_log_line,
+    )
     from ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
         _LEGACY_STATUS_ALIASES,
@@ -102,6 +112,7 @@ __all__ = [
     "normalize_expired_binding",
     "record_receipt",
     "recover_expired_claim",
+    "DecisionReadbackError",
     "freigabe_state",
     "mark_freigabe",
     "release_claim",
@@ -124,6 +135,7 @@ WORKING_SUBDIRS = ("QUEUED", "ACTIONABLE")
 # dann NIE ein Ticket, das eine aktive Delegation traegt (Loesung b, siehe
 # is_actively_delegated()).
 QUEUED_SUBDIR = "QUEUED"
+USER_SUBDIR = "USER"
 
 # Vermerk im Tickettext, dass ein Agent gerade aktiv daran arbeitet. Das Feld
 # ist entweder eine eigenstaendige, linksbuendige Zeile oder Teil einer
@@ -185,6 +197,17 @@ class DestinationLooksLikeFileError(ValueError):
     ticket filename and the ticket ends up nested one level too deep inside
     it (T-20260818-427750316: happened live on a USER->SOLVED move, the
     on-disk result was .../SOLVED/T-....txt/T-....txt).
+    """
+
+
+class DecisionReadbackError(RuntimeError):
+    """An escalation to USER/ was refused by the decision readback gate.
+
+    T-20260913-867541218. Either the register already answers this ticket, or
+    a named index could not be read. Nothing is written; the ticket stays where
+    it is. Acknowledge a hit explicitly (see ``acknowledged_decisions``) once it
+    has been checked and found not to apply -- naming the ID is the evidence
+    that somebody looked.
     """
 
 
@@ -500,11 +523,51 @@ def _status_mismatch_warning(target: Path, dest_cluster: str) -> str | None:
     )
 
 
+def _decision_readback_gate(source: Path, dest_dir: Path,
+                            acknowledged: list[str] | None,
+                            index_path: Path | str | None) -> str:
+    """Refuse an escalation to USER/ that the register already answers.
+
+    T-20260913-867541218. Returns the protocol line to record; raises
+    DecisionReadbackError instead of returning when the move must not happen.
+
+    Three outcomes, and the difference between them is the whole point:
+      * the register answers this ticket (a hit in a decided state)  -> refuse,
+        unless the caller names that ID as checked-and-not-applicable;
+      * a NAMED index cannot be read                                 -> refuse;
+      * nothing found, or no index at all                            -> allow,
+        but the line says so, so "not found" can never be read as "open".
+    """
+    acknowledged = list(acknowledged or [])
+    result = decision_readback(
+        source, queue_dir=dest_dir.parent, index_path=index_path)
+    if result["state"] == "unavailable":
+        raise DecisionReadbackError(
+            f"decision index named but unreadable: {result['index']} "
+            f"({result.get('error', '?')}). Escalating to USER/ would claim "
+            "'open' without having looked.")
+    unhandled = [hit for hit in result["blocking"]
+                 if hit["id"] not in acknowledged]
+    if unhandled:
+        rendered = "; ".join(
+            f"{hit['id']} [{hit['status']}] {hit['title']!r} in {hit['source']}"
+            for hit in unhandled)
+        raise DecisionReadbackError(
+            f"the decision register already answers this ticket: {rendered}. "
+            "Read it; if it does not apply, say so with "
+            "--acknowledge-decision <ID> (repeatable) and the acknowledgement "
+            "is recorded in the ticket.")
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return readback_log_line(result, stamp=stamp, acknowledged=acknowledged)
+
+
 def move_ticket(source: Path | str, dest_dir: Path | str,
                 release_claim: bool | None = None,
                 new_name: str | None = None,
                 dry_run: bool = False,
-                expected_hash: str | None = None) -> Path:
+                expected_hash: str | None = None,
+                acknowledged_decisions: list[str] | None = None,
+                decisions_index: Path | str | None = None) -> Path:
     """Move a ticket file into dest_dir, by default under its current filename.
 
     Fails closed: if dest_dir already contains a file with that name, nothing
@@ -615,6 +678,11 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
             target_name = source.name
 
     target = dest_dir / target_name
+    readback_line = None
+    if (dest_dir.name == USER_SUBDIR
+            and dest_dir.resolve() != source.parent.resolve()):
+        readback_line = _decision_readback_gate(
+            source, dest_dir, acknowledged_decisions, decisions_index)
     queued_id_gate = dest_dir.name == QUEUED_SUBDIR
     if queued_id_gate:
         _assert_unique_id_for_queued_move(source, dest_dir.parent)
@@ -630,6 +698,14 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
         current_text = source.read_text(encoding="utf-8")
         if content_hash(current_text) != expected_hash:
             raise StaleContentError(source, current_text)
+    if readback_line and not dry_run:
+        # Written into the SOURCE before the copy, so the protocol travels with
+        # the ticket in the same atomic move instead of needing a second write
+        # at the destination -- which would also break move_ticket's own
+        # "source unchanged since the copy" readback guard.
+        source.write_text(
+            update_fields(source.read_text(encoding="utf-8"), {}, log=readback_line),
+            encoding="utf-8")
     data = source.read_bytes()
     if dry_run:
         return target
@@ -917,7 +993,40 @@ def _cli(argv: list[str] | None = None) -> int:
                               "--freigabe-id and --agent; fail-closed on any mismatch."))
     parser.add_argument("--freigabe-id",
                         help="The FREIGABE_ID the user quoted, for --mark-freigabe.")
+    # T-20260913-867541218: a code gate, not a prompt gate -- it binds every
+    # consumer of this module, not one agent's discipline.
+    parser.add_argument("--decisions-index",
+                        help=(f"Decision index JSON for the USER/ readback gate. "
+                              f"Default: <queue>/../{INDEX_RELATIVE_PATH.as_posix()}, "
+                              f"or ${DECISIONS_INDEX_ENV}. Naming one that cannot be "
+                              "read refuses the move."))
+    parser.add_argument("--acknowledge-decision", action="append", metavar="D-ID",
+                        default=[],
+                        help=("A register hit that was read and found not to apply. "
+                              "Repeatable; recorded in the ticket."))
+    parser.add_argument("--decision-readback", metavar="TICKET",
+                        help="Report the register readback for TICKET; writes nothing.")
     args = parser.parse_args(argv)
+
+    if args.decision_readback:
+        if args.source or args.dest_dir:
+            parser.error("--decision-readback cannot be combined with a move")
+        queue = Path(args.tickets_dir) if args.tickets_dir else Path(args.decision_readback).parent.parent
+        try:
+            result = decision_readback(args.decision_readback, queue_dir=queue,
+                                       index_path=args.decisions_index)
+        except OSError as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"DECISION READBACK {result['state'].upper()}: {args.decision_readback}")
+        print(f"  index: {result['index'] or '-'}")
+        print(f"  keys:  {', '.join(result['keys']) or '-'}")
+        for hit in result["hits"]:
+            mark = "BLOCKING" if hit in result["blocking"] else "info"
+            print(f"  [{mark}] {hit['id']} [{hit['status']}] {hit['source']}: {hit['title']}")
+        if not result["hits"]:
+            print("  hits:  none")
+        return 1 if result["state"] == "unavailable" else 0
 
     freigabe_ops = [args.freigabe_status, args.stamp_freigabe_id, args.mark_freigabe]
     if sum(1 for value in freigabe_ops if value) > 1:
@@ -1036,7 +1145,9 @@ def _cli(argv: list[str] | None = None) -> int:
         parser.error("source and dest_dir are required unless --release-session "
                       "or --mark-delegated is given")
     try:
-        target = move_ticket(args.source, args.dest_dir, dry_run=args.dry_run)
+        target = move_ticket(args.source, args.dest_dir, dry_run=args.dry_run,
+                             acknowledged_decisions=args.acknowledge_decision,
+                             decisions_index=args.decisions_index)
     except (TicketCollisionError, FileNotFoundError, RuntimeError,
             DestinationLooksLikeFileError, NestedLifecycleDestinationError) as exc:
         print(f"REFUSED: {exc}")

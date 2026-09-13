@@ -287,6 +287,17 @@ Conventions are below and in the template at `tickets/_templates/TICKET.txt`.
   - Marker rule: autonomously observable marker → `WAITING/marker`; if the
     user must provide or confirm occurrence, use `USER/marker`. Never silently
     reinterpret an evidenced `USER/marker` status as WAITING.
+  - **Decision readback before every escalation to `USER/`
+    (T-20260913-867541218):** `ticket_mover.py` reads the decision index by
+    itself and **refuses** the move when the register already answers the
+    question (a hit on the ticket ID or a D-ID named in the ticket, in state
+    DONE/ARCHIVIERT). This is a code gate, not a prompt gate — you need do
+    nothing extra, but you must take it seriously: if you read the hit and it
+    does not apply, name it with `--acknowledge-decision <D-ID>` and the
+    acknowledgement is recorded in the ticket. Without a readable index the
+    protocol says `UNGEPRUEFT`, never "open".
+    Teaching case: T-20260824-857836410 was submitted as open although
+    D-20260731-010 had carried the decision in full since 2026-07-31.
   - Deliberately set aside → `tickets/PARKED/` (skip / backlog / until-trigger)
   - Ticket solved → move to `tickets/SOLVED/`
   - Legacy (pre-v1, read-only, no new entries): `tickets/PENDING/`,

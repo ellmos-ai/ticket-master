@@ -41,7 +41,12 @@
     {
       "name": "decisions-chain",
       "kind": "file",
-      "target": "<HOME>/OneDrive/.TOPICS/_control-center/_DECISIONS/TO-DECIDE-USER.txt"
+      "target": "<HOME>/OneDrive/.TOPICS/_control-center/_CONTROL/_DECISIONS/TO-DECIDE-USER.txt"
+    },
+    {
+      "name": "decisions-index",
+      "kind": "file",
+      "target": "<HOME>/OneDrive/.TOPICS/_control-center/_CONTROL/_DECISIONS/_tools/decisions.index.json"
     },
     {
       "name": "project-decisions",

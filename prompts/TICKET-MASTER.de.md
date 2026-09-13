@@ -300,6 +300,17 @@ Die Konventionen stehen unten und im Template `tickets/_templates/TICKET.txt`.
   - Marker-Regel: autonom prüfbarer Marker → `WAITING/marker`; muss der User
     Eintritt/Feststellung liefern oder bestätigen → `USER/marker`. Einen
     belegten `USER/marker`-Status niemals still nach WAITING umdeuten.
+  - **Entscheidungs-Readback vor jeder Eskalation nach `USER/`
+    (T-20260913-867541218):** `ticket_mover.py` liest von sich aus den
+    Entscheidungsindex und **verweigert** den Move, wenn das Register die Frage
+    schon beantwortet (Treffer auf die Ticket-ID oder eine im Ticket genannte
+    D-ID im Zustand DONE/ARCHIVIERT). Das ist ein Code-Gate, kein Prompt-Gate —
+    du musst nichts zusätzlich tun, aber du musst es ernst nehmen: Hast du den
+    Treffer gelesen und er trifft nicht zu, nenne ihn mit
+    `--acknowledge-decision <D-ID>`; die Quittung landet im Ticket. Ohne
+    lesbaren Index behauptet das Protokoll `UNGEPRUEFT`, nie „offen".
+    Lehrfall: T-20260824-857836410 wurde als offen vorgelegt, obwohl
+    D-20260731-010 den Entscheid seit dem 31.07. vollständig enthielt.
   - Bewusst zurückgestellt → `tickets/PARKED/` (skip / backlog / until-trigger)
   - Ticket gelöst → nach `tickets/SOLVED/` verschieben
   - Legacy (vor v1, nur lesen, keine neuen Einträge): `tickets/PENDING/`,
