@@ -540,7 +540,14 @@ erledigt und gibt keinen aktiven fremden Claim frei.
 
 Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`,
 `done` oder `blocked`). Receipts erfassen tatsächlichen Runner, Provider,
-Modell, Zeitpunkt und Beleg und werden unter Lease idempotent übernommen. Nur
+Modell, Zeitpunkt und Beleg und werden unter Lease idempotent übernommen. Die
+Lease wird durchgesetzt, nicht nur notiert: `record_receipt` und
+`complete_contract` verweigern jeden Schreibvorgang, sobald `CLAIM_LEASE_UNTIL`
+verstrichen ist — eine mitten im Lauf gestorbene Sitzung kann Stunden später
+keinen halben Abschluss mehr buchen. Ein Claim ohne lesbare Lease wird ebenso
+abgewiesen: `claim_contract` schreibt immer eine, ihr Fehlen bedeutet also einen
+handgeschriebenen Vertrag. Das Freigeben bleibt einem abgelaufenen Inhaber
+erlaubt, denn ein zurückgegebener Claim nimmt niemandem etwas. Nur
 der Inhaber des letzten Claims darf die Akte nach `SOLVED` verschieben, und nur
 wenn jede erforderliche Zeile empirisch `done` ist. `ticket_audit.py` meldet
 Namens-/Metadaten-, Zielclaim-, Ledger-, Receipt-Signatur- und verfrühte

@@ -957,13 +957,61 @@ _RECEIPT_FIELDS = (
 )
 
 
+def _require_live_claim(view: ContractView, host: str, *, denial: str,
+                        now: datetime | str | None = None) -> None:
+    """Gate a write that acts under a claim: right host AND running lease.
+
+    T-20260830-938608207, stage 1 of the seal concept (user decision
+    D-20260906-008/E02 of 2026-09-11: the time lease ships on its own, the
+    content hash of stage 2 is explicitly NOT commissioned).
+
+    CLAIM_LEASE_UNTIL has existed since routing v2, but nothing ever read it
+    on a write path: ``record_receipt`` and ``complete_contract`` only asked
+    *who* holds the claim, never *whether it is still running*. A session
+    that died hours ago -- token abort, crash, a run that simply stopped --
+    kept the right to write half a completion into the ledger.
+    ``recover_expired_claim`` could clean such a claim up, but it is a
+    janitor someone has to call, not a gate. That made the lease a note.
+
+    Fail-closed on a missing or unreadable lease, not just an expired one:
+    ``claim_contract`` always writes one, so a claim without a lease is a
+    hand-edited contract, not a legitimate state. Measured against the live
+    queue on 2026-09-13 before choosing this: 18 v2 contracts, 2 of them
+    claimed, both already in SOLVED and both with an expired lease, none
+    claimed-without-lease -- so the strict reading breaks no standing work.
+
+    The boundary is ``<=``, mirroring ``recover_expired_claim``'s ``>``:
+    at the instant writing stops being allowed, recovery starts being
+    allowed. No gap, no overlap.
+
+    ``release_contract`` is deliberately NOT gated -- an expired holder must
+    stay able to hand its claim back (``recover_expired_claim`` releases
+    through it), and releasing takes nothing away from anyone.
+    """
+    if view.name.claim != host or view.fields.get("CLAIMED_BY_HOST") != host:
+        raise ClaimDeniedError(denial)
+    lease = (view.fields.get("CLAIM_LEASE_UNTIL") or "").strip()
+    if not lease:
+        raise ClaimDeniedError(
+            "claim carries no lease; re-acquire it via claim_contract before writing")
+    try:
+        expiry = _utc(lease)
+    except ValueError:
+        raise ClaimDeniedError(f"claim lease is unreadable: {lease!r}") from None
+    if expiry <= _utc(now):
+        raise ClaimDeniedError(
+            f"claim lease expired at {lease}; release it via recover_expired_claim() "
+            "and re-acquire the claim before writing")
+
+
 def record_receipt(path: Path | str, *, host: str, receipt: Mapping[str, Any],
                    now: datetime | str | None = None) -> bool:
     """Idempotently reconcile one transport receipt into the domain ledger."""
     path = Path(path)
     view = load_contract(path)
-    if view.name.claim != host or view.fields.get("CLAIMED_BY_HOST") != host:
-        raise ClaimDeniedError("receipt reconciliation requires the matching claim")
+    _require_live_claim(
+        view, host, now=now,
+        denial="receipt reconciliation requires the matching claim")
     missing = [field for field in _RECEIPT_FIELDS if not receipt.get(field)]
     if missing:
         raise ReceiptConflictError(f"receipt is missing: {', '.join(missing)}")
@@ -1013,8 +1061,9 @@ def complete_contract(path: Path | str, *, host: str, solved_dir: Path | str,
 
     path = Path(path)
     view = load_contract(path)
-    if view.name.claim != host or view.fields.get("CLAIMED_BY_HOST") != host:
-        raise ClaimDeniedError("completion requires the matching active claim")
+    _require_live_claim(
+        view, host, now=now,
+        denial="completion requires the matching active claim")
     if not completion_ready(view):
         raise ClaimDeniedError("not every required system ledger row is done")
     text = update_fields(view.text, {
