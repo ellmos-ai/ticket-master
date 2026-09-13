@@ -92,6 +92,13 @@ Examples: `STATUS: ACTIONABLE (since 2026-07-31)`,
 `STATUS: USER/marker (since 2026-07-31)`.
 
 - Folder and STATUS must be congruent.
+- The subcategories in the table above are the complete vocabulary:
+  `ticket_audit.py` reads them from that very table at runtime and reports any
+  other value as `unknown-subcategory`. An em dash in the column means "no
+  subcategories", not "any". Reporting only — existing tickets are never
+  rewritten: values such as `decision-partial` name real in-between states, and
+  whether the vocabulary should grow or the value should be aligned is its own
+  decision (T-20260913-204557243).
 - Every move between clusters updates STATUS and appends a `HISTORY`/`LOG`
   line with the reason.
 - The folder layout stays flat: `USER/decision`, `BLOCKED/dependency` and

@@ -125,6 +125,67 @@ _ROOT_ALIAS = "INBOX"
 _KNOWN_STATUS_CLUSTERS = frozenset(_STATUS_SUBDIRS) | {_ROOT_ALIAS, "PENDING", ".USER"}
 _LEGACY_STATUS_ALIASES = {"OPEN": _ROOT_ALIAS}
 
+# T-20260913-204557243. The subcategory vocabulary lives in exactly one place:
+# the cluster table of docs/CATEGORIES.de.md. Parsing it instead of copying the
+# values into this module is deliberate -- a hardcoded list would be a second
+# home for the same truth, and the pair would drift the moment someone extends
+# the documentation (the failure mode this project keeps correcting). The
+# values themselves are language-neutral, so the German table is authoritative
+# and a test pins the English one against it; if the table layout ever changes,
+# that test fails before a production run does.
+_CATEGORIES_DOC = Path(__file__).resolve().parent.parent / "docs" / "CATEGORIES.de.md"
+_VOCABULARY_ROW_RE = re.compile(
+    r"^\|\s*(?P<cluster>\.USER|[A-Z]+)\s*\|[^|]*\|[^|]*\|(?P<subs>[^|]*)\|\s*$",
+    re.MULTILINE,
+)
+_VOCABULARY_TERM_RE = re.compile(r"`([^`]+)`")
+# A subcategory candidate is the single token right after the slash. Anything
+# that continues as prose is free text, not a subcategory: measured against the
+# live queue, "SOLVED / Option A vollstaendig belegt" and "SOLVED / Decision-
+# Routing und Wiederaufnahme geklaert" would otherwise have become finds. That
+# is the same false-positive flood T-20260808-03 hit when a first audit pass
+# reported 114 "non-ticket files", ~100 of which were legitimate.
+_SUBCATEGORY_RE = re.compile(
+    r"^(?:\.USER|[A-Z]+)\s*/\s*(?P<sub>[^\s(]+)(?:$|\s*\(|\s+[-—–,;:])"
+)
+
+
+def subcategory_vocabulary(doc: Path | str | None = None) -> dict[str, frozenset[str]]:
+    """Cluster -> documented subcategories, read from the categories table.
+
+    Returns an empty mapping for a cluster the table marks with an em dash,
+    which is a statement, not a gap: INBOX/ACTIONABLE/QUEUED/SOLVED are
+    documented as having no subcategories at all.
+    """
+    path = Path(doc) if doc is not None else _CATEGORIES_DOC
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return {}
+    return {
+        row.group("cluster"): frozenset(_VOCABULARY_TERM_RE.findall(row.group("subs")))
+        for row in _VOCABULARY_ROW_RE.finditer(text)
+    }
+
+
+def _unknown_subcategory(value: str, cluster: str,
+                         vocabulary: dict[str, frozenset[str]]) -> str | None:
+    """The subcategory in this STATUS value, if the docs don't list it.
+
+    A cluster missing from the table entirely (the legacy ``PENDING``/
+    ``.USER``) returns None -- silence, not "everything is unknown". A cluster
+    the table marks with an em dash maps to an empty set, which is a statement:
+    it documents *no* subcategories, so any value there is a finding.
+    """
+    documented = vocabulary.get(cluster)
+    if documented is None:
+        return None
+    match = _SUBCATEGORY_RE.match(value)
+    if match is None:
+        return None
+    sub = match.group("sub")
+    return None if sub in documented else sub
+
 
 def status_drift(base: Path | str) -> list[dict[str, str | None]]:
     """STATUS field vs. lifecycle folder (T-20260830-517795746, Befund 3).
@@ -135,13 +196,28 @@ def status_drift(base: Path | str) -> list[dict[str, str | None]]:
     the first 4 KB), ``legacy-header`` (STATUS read from the legacy
     ``**Status:**`` markdown field and folder-congruent -- accepted as a
     valid field so it isn't also flagged folder-mismatch/missing-status, but
-    still surfaced so it doesn't silently disappear; T-20260902-792359826).
-    Only the leading cluster token is compared; the subcategory and free text
-    after it are presentation. A file in the root counts as INBOX; ``OPEN``
-    is the documented legacy alias for it.
+    still surfaced so it doesn't silently disappear; T-20260902-792359826),
+    ``unknown-subcategory`` (the part after the slash is not in the cluster's
+    documented vocabulary; T-20260913-204557243) and
+    ``subcategory-vocabulary-unavailable`` (the categories document could not
+    be read, so that check was skipped -- said out loud instead of passing
+    silently, which is the fail-silent class this audit exists to catch).
+
+    On ``unknown-subcategory`` the rule is report-only, hard: these values are
+    not nonsense. ``decision-partial`` names a real in-between state and
+    ``uac-live-abnahme`` says precisely what is being waited for. Whether the
+    vocabulary should grow or the values should be aligned is an open
+    question, and answering it as a side effect of an audit fix would be the
+    wrong place. A ticket carrying a cluster-level finding keeps it: the
+    subcategory is only examined once cluster and folder agree, so a drifting
+    ticket is reported once, for the bigger problem.
     """
     base = Path(base)
+    vocabulary = subcategory_vocabulary()
     findings: list[dict[str, str | None]] = []
+    if not vocabulary:
+        findings.append({"path": str(_CATEGORIES_DOC), "folder": None,
+                         "status": None, "kind": "subcategory-vocabulary-unavailable"})
     for sub in _LIFECYCLE_SUBDIRS:
         directory = base / sub if sub else base
         if not directory.is_dir():
@@ -180,6 +256,8 @@ def status_drift(base: Path | str) -> list[dict[str, str | None]]:
                 kind = "folder-mismatch"
             elif is_legacy_header:
                 kind = "legacy-header"
+            elif _unknown_subcategory(value, cluster, vocabulary) is not None:
+                kind = "unknown-subcategory"
             else:
                 continue
             findings.append({"path": str(entry), "folder": folder_cluster,

@@ -90,6 +90,13 @@ Beispiele: `STATUS: ACTIONABLE (seit 2026-07-31)`,
 `STATUS: USER/marker (seit 2026-07-31)`.
 
 - Ordner und STATUS müssen kongruent sein.
+- Die Unterkategorien in der Tabelle oben sind das vollständige Vokabular:
+  `ticket_audit.py` liest sie zur Laufzeit aus genau dieser Tabelle und meldet
+  jeden anderen Wert als `unknown-subcategory`. Ein Gedankenstrich in der Spalte
+  heißt „keine Unterkategorien", nicht „beliebige". Gemeldet wird nur —
+  Altbestände werden nie umgeschrieben: Werte wie `decision-partial` benennen
+  reale Zwischenzustände, und ob das Vokabular wachsen oder der Wert angeglichen
+  werden sollte, ist eine eigene Entscheidung (T-20260913-204557243).
 - Jedes Verschieben zwischen Clustern aktualisiert STATUS und fügt eine
   `VERLAUF`/`LOG`-Zeile mit Grund hinzu.
 - Die Ordnerstruktur bleibt flach: `USER/decision`, `BLOCKED/dependency` und
