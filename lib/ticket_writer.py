@@ -36,9 +36,9 @@ try:  # package import (``from lib import ticket_writer``)
         update_fields,
     )
     from .session_provenance import resolve_session_provenance
-    from .config_paths import resolve_queue_alias
+    from .config_paths import resolve_config_path, resolve_queue_alias
 except ImportError:  # direct script/module import from ``lib`` on sys.path
-    from config_paths import resolve_queue_alias
+    from config_paths import resolve_config_path, resolve_queue_alias
     from routing_contract import (
         canonical_contract_name,
         contract_metadata,
@@ -56,13 +56,45 @@ def _default_tickets_dir() -> Path | None:
     return Path(env) if env else None
 
 
+def _tm_config() -> dict:
+    """`config/ticket-master.config.json` neben dem Paket, oder ein leeres Dict.
+
+    Absichtlich tolerant: Eine fehlende oder kaputte Konfiguration darf einen
+    Schreibvorgang nicht verhindern -- sie ist eine Bequemlichkeit, keine
+    Voraussetzung. Wer den Pfad wirklich braucht, bekommt weiter unten einen
+    klaren Fehler statt hier eine Ausnahme.
+    """
+    pfad = Path(__file__).resolve().parent.parent / "config" / "ticket-master.config.json"
+    try:
+        with pfad.open(encoding="utf-8-sig") as fh:
+            daten = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return daten if isinstance(daten, dict) else {}
+
+
 def _default_systems_registry() -> Path | None:
-    """Routing schema v2 needs a system-registry snapshot; same env convention
-    as the tickets dir, so callers do not have to pass --systems-registry on
-    every invocation (T-20260912-203012999). Build one with
-    ``lib/systems_registry.py``."""
+    """Routing schema v2 needs a system-registry snapshot.
+
+    Reihenfolge: Umgebungsvariable, dann `systems_registry` aus
+    `config/ticket-master.config.json`. Der Aufrufer hat Vorrang vor beidem
+    (``--systems-registry``).
+
+    WARUM DIE KONFIGURATION DAZUKAM (T-20260913-734536498): Die Variable allein
+    reicht nicht. Am 2026-09-13 brach hier zweimal ein Transfer-Ticket ab,
+    obwohl `TICKET_MASTER_SYSTEMS_REGISTRY` auf Benutzerebene gesetzt WAR -- der
+    laufende Prozess hatte sie nur nicht geerbt, weil er vor dem Setzen gestartet
+    war. Eine Umgebungsvariable ist damit kein verlaesslicher Traeger fuer einen
+    Pfad, den jeder Schreibvorgang braucht; eine Datei neben dem Paket schon.
+
+    Die Beispielkonfiguration fuehrte `systems_registry` bereits, aber NIEMAND
+    las den Wert -- ihr eigener Kommentar bat den Menschen, Datei und Variable
+    von Hand gleichzuhalten. Genau solche Doppelpflege laeuft auseinander.
+    """
     env = os.environ.get("TICKET_MASTER_SYSTEMS_REGISTRY")
-    return Path(env) if env else None
+    if env:
+        return Path(env)
+    return resolve_config_path(_tm_config().get("systems_registry"))
 
 
 _QUEUE_MARKER = ".ticket-master-queue"
@@ -868,8 +900,10 @@ def _cli(argv: list[str] | None = None) -> int:
             if registry_path is None:
                 raise ValueError(
                     "--systems-registry is required for routing schema v2. "
-                    "Set TICKET_MASTER_SYSTEMS_REGISTRY, or build a snapshot from "
-                    "your inventory seeds: python lib/systems_registry.py "
+                    "Set it on the command line, in TICKET_MASTER_SYSTEMS_REGISTRY, "
+                    "or as \"systems_registry\" in config/ticket-master.config.json "
+                    "(in that order of precedence). Build a snapshot from your "
+                    "inventory seeds: python lib/systems_registry.py "
                     "--systems-dir <seed-dir> --out <file>"
                 )
             if not registry_path.is_file():
