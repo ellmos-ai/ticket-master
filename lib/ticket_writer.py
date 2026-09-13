@@ -871,6 +871,39 @@ def _cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if not args.from_file and not args.split_from and not args.title:
         parser.error("--title is required unless --from-file or --split-from is set")
+    # Fail-closed guard: the dispatch chain below evaluates --from-file and
+    # --split-from before checking routing flags. Combining routing flags with
+    # either mode would silently drop all routing metadata (ticket kind, target,
+    # route alias, ledger fields, etc.) and produce an unrouted formless ticket
+    # without any warning or error (T-20260913-300971098).
+    routing_flags = [
+        ("--ticket-kind", args.ticket_kind),
+        ("--target-kind", args.target_kind),
+        ("--target", args.target),
+        ("--targets", args.targets),
+        ("--via", args.via),
+        ("--route-alias", args.route_alias),
+        ("--systems-registry", args.systems_registry),
+        ("--primary-ticket", args.primary_ticket),
+        ("--original-owner", args.original_owner),
+        ("--receipt-to", args.receipt_to),
+        ("--execution-matrix", args.execution_matrix),
+        ("--binding-ttl", args.binding_ttl),
+    ]
+    set_routing = [flag for flag, val in routing_flags if val is not None]
+    if set_routing and (args.from_file or args.split_from):
+        active_modes = [
+            flag for flag, val in (("--from-file", args.from_file),
+                                   ("--split-from", args.split_from)) if val
+        ]
+        modes_str = " / ".join(active_modes)
+        conflicts = ", ".join(set_routing)
+        parser.error(
+            f"Routing flags ({conflicts}) cannot be combined with {modes_str}: "
+            f"they would be silently ignored because {modes_str} takes precedence. "
+            f"Transfer and fork tickets must be created via --title / --body, "
+            f"not {modes_str}."
+        )
     try:
         if args.from_file:
             path = formalize_informal_entry(

@@ -5,6 +5,8 @@
 in einem ORIGINALTEXT-Block erhalten, die Quelle wird archiviert statt
 geloescht, und ein bereits formalisierter Eintrag wird nicht doppelt
 angelegt."""
+import contextlib
+import io
 import sys
 import tempfile
 import unittest
@@ -109,6 +111,112 @@ class TestFormalizeInformalEntry(unittest.TestCase):
             self.assertIn("CLI-Wortlaut, unveraendert.", text)
             self.assertIn("cli-agent", text)
             self.assertFalse(source.exists())
+
+    def test_from_file_mit_routing_flags_bricht_ab(self):
+        """--from-file kombiniert mit Routing-Flags bricht fail-closed per SystemExit ab.
+
+        Weder wird ein Ticket angelegt noch die formlose Quelldatei archiviert
+        (T-20260913-300971098).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            verified_queue(base)
+            (base / "INBOX").mkdir(parents=True)
+            source = base / "INBOX" / "formlos-routing-conflict.txt"
+            source_content = "Wortlaut einer formlosen Einreichung mit Routing-Versuch."
+            source.write_text(source_content, encoding="utf-8")
+
+            err_buf = io.StringIO()
+            with contextlib.redirect_stderr(err_buf):
+                with self.assertRaises(SystemExit) as cm:
+                    ticket_writer._cli([
+                        "--from-file", str(source),
+                        "--tickets-dir", str(base),
+                        "--ticket-kind", "transfer",
+                        "--target-kind", "exact",
+                        "--target", "WORKSTATION-LG",
+                    ])
+
+            self.assertEqual(cm.exception.code, 2)
+            err_msg = err_buf.getvalue()
+            self.assertIn("--ticket-kind", err_msg)
+            self.assertIn("--target-kind", err_msg)
+            self.assertIn("--target", err_msg)
+            self.assertIn("--from-file", err_msg)
+
+            # Fail-closed: kein Ticket angelegt, Quelle liegt unveraendert am Platz
+            created = list((base / "INBOX").glob("T-*.txt"))
+            self.assertEqual(len(created), 0)
+            self.assertTrue(source.exists())
+            self.assertEqual(source.read_text(encoding="utf-8"), source_content)
+            self.assertFalse((base / "INBOX" / "_formalisiert").exists())
+
+    def test_split_from_mit_routing_flags_bricht_ab(self):
+        """--split-from kombiniert mit Routing-Flags bricht fail-closed per SystemExit ab.
+
+        Es darf kein Child-Ticket entstehen und die Ursprungsdatei bleibt
+        unangetastet (T-20260913-300971098).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            verified_queue(base)
+            (base / "INBOX").mkdir(parents=True)
+            parent = base / "INBOX" / "T-20260913-123456789.txt"
+            parent_content = (
+                "ID:            T-20260913-123456789\n"
+                "TITEL:         Ursprungsticket vor Split\n"
+                "STATUS:        INBOX (seit 2026-09-13)\n"
+            )
+            parent.write_text(parent_content, encoding="utf-8")
+
+            err_buf = io.StringIO()
+            with contextlib.redirect_stderr(err_buf):
+                with self.assertRaises(SystemExit) as cm:
+                    ticket_writer._cli([
+                        "--split-from", str(parent),
+                        "--title", "Abgespaltenes Ticket",
+                        "--tickets-dir", str(base),
+                        "--ticket-kind", "transfer",
+                        "--target-kind", "exact",
+                        "--target", "WORKSTATION-LG",
+                    ])
+
+            self.assertEqual(cm.exception.code, 2)
+            err_msg = err_buf.getvalue()
+            self.assertIn("--ticket-kind", err_msg)
+            self.assertIn("--target-kind", err_msg)
+            self.assertIn("--target", err_msg)
+            self.assertIn("--split-from", err_msg)
+
+            # Fail-closed: kein neues Ticket angelegt, Ursprungsdatei unveraendert
+            tickets = list((base / "INBOX").glob("T-*.txt"))
+            self.assertEqual(tickets, [parent])
+            self.assertTrue(parent.exists())
+            self.assertEqual(parent.read_text(encoding="utf-8"), parent_content)
+
+    def test_from_file_ohne_routing_flags_laeuft_weiter(self):
+        """Bestehender Gutpfad: --from-file allein ohne Routing-Flags legt das Ticket an."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            verified_queue(base)
+            (base / "INBOX").mkdir(parents=True)
+            source = base / "INBOX" / "formlos-gutpfad.txt"
+            source.write_text("Reiner formloser Eintrag ohne Routing-Flags.", encoding="utf-8")
+
+            exit_code = ticket_writer._cli([
+                "--from-file", str(source),
+                "--tickets-dir", str(base),
+                "--submitter", "gutpfad-agent",
+            ])
+            self.assertEqual(exit_code, 0)
+            created = list((base / "INBOX").glob("T-*.txt"))
+            self.assertEqual(len(created), 1)
+            text = created[0].read_text(encoding="utf-8")
+            self.assertIn("Reiner formloser Eintrag ohne Routing-Flags.", text)
+            self.assertIn("gutpfad-agent", text)
+            self.assertFalse(source.exists())
+            self.assertTrue((base / "INBOX" / "_formalisiert" / "formlos-gutpfad.txt").exists())
+
 
 
 if __name__ == "__main__":

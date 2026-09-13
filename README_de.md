@@ -182,6 +182,7 @@ Ticketkopf davor, hält den Wortlaut bytegleich in einem
 "ORIGINALTEXT"-Block und archiviert die Quelle nach
 `INBOX/_formalisiert/` (nie löschen). Idempotent — eine Quelle, die ein
 bestehendes Ticket bereits nennt, wird nicht erneut angelegt.
+Zu beachten: `--from-file` und `--split-from` sind nicht mit Routing-Flags kombinierbar; ein solcher Aufruf bricht jetzt mit einem Fehler ab, statt die Flags stillschweigend zu verwerfen — Transfer- und Fork-Tickets entstehen über `--title`/`--body`.
 
 ```bash
 python lib/ticket_writer.py --from-file tickets/INBOX/notiz.txt --submitter agent-x
