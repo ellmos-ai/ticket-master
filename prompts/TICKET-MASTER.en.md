@@ -743,6 +743,19 @@ absolute** — never override them, not even for high urgency. An active
 foreign/exclusive lock → do not spawn, move the ticket to `BLOCKED/`
 (subcategory `lock`) or wait for release instead.
 
+Measuring and working is **never** done in the working tree of the main clone.
+A main clone can have an old feature branch checked out — in the BACH clone on
+2026-09-13, it was **193 commits behind origin/main**. Anyone measuring from
+there sees a state that has not existed on the default branch for weeks and
+reports bugs that have long been resolved (three documented cases in
+T-20260913-521294194: a PR against an already merged .gitignore rule, an
+outdated nav.js structure, and skeleton checks against HEAD instead of
+origin/main). For every measurement and every edit, therefore create a
+dedicated worktree from `origin/<default>`:
+`git worktree add <path> -b <branch> origin/<default>`. The lock still belongs
+in the main clone (resolved via `git rev-parse --git-common-dir`), the actual
+work does not.
+
 **(1)** Hand the task to the top candidate → proceed to GATE 4.
 
 **GATE 4 — Success check:** Was the ticket resolved satisfactorily?
