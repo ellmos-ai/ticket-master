@@ -784,6 +784,18 @@ PYTHONIOENCODING=utf-8 python "<HOME>/OneDrive/_scripts/lock_scan.py" \
     --check-dir "<zielverzeichnis>"     # Exit 0 = frei, Exit 1 = gesperrt
 ```
 
+Gemessen und gearbeitet wird **nie** im Arbeitsbaum des Hauptklons. Ein
+Hauptklon kann einen alten Feature-Branch ausgecheckt haben — in einem gemessenen Fall
+waren es am 2026-09-13 **193 Commits hinter origin/main**. Wer von dort misst,
+sieht einen Stand, den es auf dem Default-Branch seit Wochen nicht mehr gibt,
+und meldet Fehler, die längst behoben sind (drei belegte Fälle in
+T-20260913-521294194: ein PR gegen eine bereits gemergte .gitignore-Regel, eine
+veraltete nav.js-Struktur, Skeleton-Checks gegen HEAD statt origin/main). Für
+jede Messung und jede Bearbeitung daher einen eigenen Worktree von
+`origin/<default>` anlegen:
+`git worktree add <pfad> -b <branch> origin/<default>`. Der Lock gehört
+weiterhin in den Hauptklon (siehe oben), die Arbeit nicht.
+
 **Exitcode ohne Pipe messen.** `… | head` liefert den Exitcode von `head`,
 nicht den des Skripts — dieser Messfehler ließ am selben Tag zweimal einen
 funktionierenden Guard als wirkungslos erscheinen.
