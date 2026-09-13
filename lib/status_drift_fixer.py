@@ -28,12 +28,12 @@ try:  # package import
     from .ticket_audit import status_drift, _STATUS_LINE_RE
     from .ticket_mover import suggested_status_line
     from .routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
-    from .config_paths import resolve_queue_alias
+    from .config_paths import resolve_queue_alias, resolve_tickets_dir
 except ImportError:  # direct import from lib on sys.path
     from ticket_audit import status_drift, _STATUS_LINE_RE
     from ticket_mover import suggested_status_line
     from routing_contract import StaleContentError, atomic_rewrite_if_unchanged, content_hash
-    from config_paths import resolve_queue_alias
+    from config_paths import resolve_queue_alias, resolve_tickets_dir
 
 
 # Header lines sometimes carry trailing free text on the same line (e.g.
@@ -225,16 +225,19 @@ def _print_human(report: dict) -> None:
 def _cli(argv: list[str] | None = None) -> int:
     import argparse
     import json
-    import os
 
     parser = argparse.ArgumentParser(
         prog="status_drift_fixer",
         description="Pulls STATUS forward for SOLVED tickets with filled LOESUNG+VERLAUF only.",
     )
-    default_dir = os.environ.get("TICKET_MASTER_TICKETS_DIR")
+    # Aufrufer > Umgebung > Konfiguration, aufgeloest in config_paths
+    # (T-20260913-156957497). Vorher las diese Stelle nur die Umgebungsvariable,
+    # waehrend die Beispielkonfiguration "tickets_dir" bereits fuehrte.
+    default_dir = resolve_tickets_dir()
     parser.add_argument(
         "tickets_dir", nargs="?" if default_dir else None, default=default_dir,
-        help="Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR).",
+        help=("Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR, "
+              'else "tickets_dir" from config/ticket-master.config.json).'),
     )
     parser.add_argument("--apply", action="store_true", help="write changes (default: dry-run)")
     parser.add_argument("--json", action="store_true", dest="as_json")

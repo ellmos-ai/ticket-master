@@ -36,9 +36,9 @@ try:  # package import
         parse_lifecycle_status,
     )
     from .routing_contract import RoutingContractError, contract_errors, parse_ticket_name
-    from .config_paths import resolve_queue_alias
+    from .config_paths import resolve_queue_alias, resolve_tickets_dir
 except ImportError:  # direct import from lib on sys.path
-    from config_paths import resolve_queue_alias
+    from config_paths import resolve_queue_alias, resolve_tickets_dir
     from ticket_writer import (
         _LIFECYCLE_SUBDIRS, LifecycleStatusError, iter_lifecycle_files,
         parse_lifecycle_status,
@@ -796,16 +796,19 @@ def _print_human(report: dict) -> None:
 def _cli(argv: list[str] | None = None) -> int:
     import argparse
     import json
-    import os
 
     parser = argparse.ArgumentParser(
         prog="ticket_audit",
         description="Health check: ID collisions, claimed-in-root and non-ticket files.",
     )
-    default_dir = os.environ.get("TICKET_MASTER_TICKETS_DIR")
+    # Aufrufer > Umgebung > Konfiguration, aufgeloest in config_paths
+    # (T-20260913-156957497). Vorher las diese Stelle nur die Umgebungsvariable,
+    # waehrend die Beispielkonfiguration "tickets_dir" bereits fuehrte.
+    default_dir = resolve_tickets_dir()
     parser.add_argument(
         "tickets_dir", nargs="?" if default_dir else None, default=default_dir,
-        help="Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR).",
+        help=("Ticket bestand root (default: $TICKET_MASTER_TICKETS_DIR, "
+              'else "tickets_dir" from config/ticket-master.config.json).'),
     )
     parser.add_argument("--json", action="store_true", dest="as_json")
     parser.add_argument("--no-source-scan", action="store_false", dest="scan_sources",

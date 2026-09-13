@@ -18,6 +18,7 @@ verdoppelt; P-009 verlangt hier eine Quelle.
 from __future__ import annotations
 
 import getpass
+import json
 import os
 import sys
 from pathlib import Path
@@ -25,9 +26,14 @@ from typing import Any
 
 __all__ = [
     "QueueAliasError",
+    "TICKETS_DIR_ENV",
     "expand_placeholders",
+    "require_tickets_dir",
     "resolve_config_path",
     "resolve_queue_alias",
+    "resolve_tickets_dir",
+    "tm_config",
+    "tm_config_path",
 ]
 
 
@@ -53,6 +59,90 @@ def resolve_config_path(raw: Any) -> Path | None:
     if not isinstance(raw, str) or not raw.strip():
         return None
     return Path(expand_placeholders(raw.strip())).expanduser()
+
+
+# --- Die Ticket-Queue finden (T-20260913-156957497) -------------------------
+#
+# Vier Stellen im Paket suchten die Queue-Wurzel auf eigene Faust, und sie waren
+# sich nicht einig: `ticket_writer`, `ticket_audit` und `status_drift_fixer`
+# lasen NUR die Umgebungsvariable, `auditor_bridge` las Konfiguration VOR
+# Umgebung. Vier private Varianten einer Frage sind drei zu viel -- und die
+# Beispielkonfiguration fuehrte `tickets_dir` die ganze Zeit als Schluessel,
+# den kein Schreiber las.
+#
+# Das ist derselbe Defekt wie bei `systems_registry` (T-20260913-734536498, PR
+# #30), und aus demselben Grund gefaehrlich: Eine Umgebungsvariable ist kein
+# verlaesslicher Traeger. Ein Prozess, der vor dem Setzen gestartet wurde, erbt
+# sie nicht -- die Variable ist dann gesetzt und trotzdem unsichtbar. Am
+# 2026-09-13 brach `ticket_writer --split-from` genau so ab, mit einem nackten
+# `TypeError` aus `pathlib`, weil `None` bis in `Path()` durchlief.
+#
+# Praezedenz wie in PR #30: **Aufrufer > Umgebung > Konfiguration.** Der
+# explizite Aufruf gewinnt immer, die Datei ist der verlaessliche Boden.
+
+TICKETS_DIR_ENV = "TICKET_MASTER_TICKETS_DIR"
+
+
+def tm_config_path() -> Path:
+    """`config/ticket-master.config.json` neben dem Paket."""
+    return Path(__file__).resolve().parent.parent / "config" / "ticket-master.config.json"
+
+
+def tm_config(path: Any = None) -> dict:
+    """Die Konfiguration lesen, oder ein leeres Dict.
+
+    Absichtlich tolerant: Eine fehlende oder kaputte Konfiguration darf einen
+    Schreibvorgang nicht verhindern -- sie ist eine Bequemlichkeit, keine
+    Voraussetzung. Wer den Pfad wirklich braucht, bekommt von
+    `require_tickets_dir()` einen klaren Fehler statt hier eine Ausnahme.
+    """
+    ziel = Path(path) if path else tm_config_path()
+    try:
+        with ziel.open(encoding="utf-8-sig") as fh:
+            daten = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return daten if isinstance(daten, dict) else {}
+
+
+def resolve_tickets_dir(explicit: Any = None, *, config: dict | None = None) -> Path | None:
+    """Die Queue-Wurzel bestimmen: Aufrufer, dann Umgebung, dann Konfiguration.
+
+    Gibt ``None`` zurueck, wenn keiner der drei Wege einen nutzbaren Wert traegt.
+    Platzhalter (`<HOME>`, `<USER>`) und `~` werden auf allen drei Wegen
+    aufgeloest -- vorher galt das nur fuer den Konfigurationswert, sodass ein
+    Platzhalter aus der Umgebung als Verzeichnis namens buchstaeblich `<HOME>/...`
+    endete (dieselbe Klasse wie T-20260912-206012253).
+    """
+    for kandidat in (
+        explicit,
+        os.environ.get(TICKETS_DIR_ENV),
+        (tm_config() if config is None else config).get("tickets_dir"),
+    ):
+        pfad = resolve_config_path(kandidat)
+        if pfad is not None:
+            return pfad
+    return None
+
+
+def require_tickets_dir(explicit: Any = None, *, config: dict | None = None) -> Path:
+    """Wie `resolve_tickets_dir()`, aber mit Fehler statt ``None``.
+
+    Die Fehlermeldung nennt **alle drei** Wege samt Reihenfolge. Wer nur einen
+    davon erfaehrt, richtet genau den ein und steht beim naechsten Prozess, der
+    die Variable nicht geerbt hat, wieder da.
+    """
+    gefunden = resolve_tickets_dir(explicit, config=config)
+    if gefunden is None:
+        raise ValueError(
+            "tickets_dir is not configured. Three ways, highest precedence first: "
+            "(1) pass it explicitly (--tickets-dir), "
+            f"(2) set the {TICKETS_DIR_ENV} environment variable, "
+            f'(3) set "tickets_dir" in {tm_config_path()}. '
+            "Prefer (3): an environment variable is not inherited by processes "
+            "that were already running when it was set (T-20260913-156957497)."
+        )
+    return gefunden
 
 
 # --- Rename-Toleranz fuer die Live-Queue (T-20260906-387521104) -------------
