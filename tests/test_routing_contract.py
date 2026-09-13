@@ -893,3 +893,42 @@ def test_claim_without_a_readable_lease_is_refused_not_waved_through(tmp_path):
             rc.complete_contract(claimed, host="ASUS-GEI",
                                  solved_dir=tmp_path / "SOLVED",
                                  now="2026-08-22T09:00:30Z")
+
+
+def test_contract_metadata_no_longer_takes_an_id_it_never_used(tmp_path):
+    """T-20260913-413869403: `ticket_id` war ein PFLICHTparameter, den der
+    Rumpf nie las -- nachgezaehlt genau ein Vorkommen, die Signatur selbst.
+
+    Ein Pflichtparameter gibt ein Versprechen: jeder Leser nimmt an, die ID
+    lande in den Metadaten. Sie tat es nicht. Derselbe Zuschnitt wie ein Feld,
+    das niemand liest (T-20260830-938608207), nur eine Ebene hoeher in der API.
+    """
+    snapshot = rc.resolve_targets("exact", target="ASUS-GEI", registry_snapshot=REGISTRY)
+    metadata = rc.contract_metadata(
+        ticket_kind="transfer", target_snapshot=snapshot,
+        primary_ticket="T-20260913-100000001",
+        original_owner="ASUS-GEI", receipt_to="T-20260913-100000001",
+        created_at="2026-09-13T00:00:00Z",
+    )
+    assert metadata["TARGET_KIND"] == "exact"
+
+    # Die ID steht NICHT in den Metadaten -- deshalb nimmt
+    # canonical_contract_name() sie separat entgegen. Sie dort zusaetzlich
+    # abzulegen waere ein dritter Ort fuer eine Wahrheit.
+    assert not any("T-20260913-100000002" in str(value) for value in metadata.values())
+    assert rc.canonical_contract_name("T-20260913-100000002", metadata).startswith(
+        "T-20260913-100000002.to-ASUS-GEI")
+
+
+def test_passing_the_removed_id_fails_loudly_not_silently():
+    """Keyword-only: ein Aufrufer, der ihn noch uebergibt, bekommt sofort einen
+    eindeutig zuordenbaren TypeError -- kein stilles Ignorieren."""
+    with pytest.raises(TypeError, match="ticket_id"):
+        rc.contract_metadata(
+            ticket_id="T-20260913-100000001",  # type: ignore[call-arg]
+            ticket_kind="transfer",
+            target_snapshot=rc.resolve_targets(
+                "exact", target="ASUS-GEI", registry_snapshot=REGISTRY),
+            primary_ticket="T-20260913-100000001",
+            original_owner="ASUS-GEI", receipt_to="T-20260913-100000001",
+        )

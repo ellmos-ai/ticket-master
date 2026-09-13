@@ -577,13 +577,36 @@ def binding_expires(created_at: datetime | str, ttl: int | str | None = None) ->
     return utc_text(_utc(created_at) + timedelta(days=days))
 
 
-def contract_metadata(*, ticket_id: str, ticket_kind: str, target_snapshot: Mapping[str, Any],
+def contract_metadata(*, ticket_kind: str, target_snapshot: Mapping[str, Any],
                       primary_ticket: str, original_owner: str, receipt_to: str,
                       via: str | None = None, binding_mode: str = "required",
                       binding_ttl: int | str | None = None,
                       resolver: Callable[..., Any] | None = None,
                       execution_matrix: Mapping[str, Any] | None = None,
                       created_at: datetime | str | None = None) -> dict[str, Any]:
+    """Build the v2 contract fields for one ticket.
+
+    T-20260913-413869403: this used to take a required keyword-only
+    ``ticket_id`` that the body never read -- counted, exactly one occurrence
+    in the whole function, the signature itself. A REQUIRED parameter makes a
+    promise: every reader assumes the ticket's ID ends up in the metadata. It
+    did not. That is the same shape as a field nobody reads
+    (T-20260830-938608207: the claim lease existed but no write path checked
+    it), one level up in the API.
+
+    Not "used" instead of removed, deliberately: the ID already lives in the
+    ticket's ``ID:`` field and in the filename, and
+    ``canonical_contract_name(ticket_id, metadata)`` takes it separately for
+    exactly that reason. Putting it in here as well would be a third home for
+    one truth.
+
+    Measured before cutting (2026-09-13): one caller in the repo
+    (``ticket_writer.create_routed_ticket``), no re-export through
+    ``ticket_mover``/``lib/__init__``, no ``__all__`` listing it, no consumer
+    anywhere under ``.MODULES``, and the package is not pip-installed on this
+    host. A caller that did pass it gets an immediate, clearly-attributed
+    ``TypeError`` -- keyword-only arguments fail loudly, never silently.
+    """
     if ticket_kind not in TICKET_KINDS:
         raise RoutingContractError(f"unknown ticket kind: {ticket_kind}")
     if binding_mode not in BINDING_MODES:

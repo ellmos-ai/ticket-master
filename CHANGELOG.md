@@ -4,6 +4,25 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Breaking (internal API): `contract_metadata()` no longer takes `ticket_id` (T-20260913-413869403)
+
+- It was a **required** keyword-only parameter that the body never read —
+  counted, exactly one occurrence in the whole function: the signature itself.
+  A required parameter makes a promise; every reader assumes the ticket's ID
+  ends up in the metadata. It did not. Same shape as a field nobody reads
+  (T-20260830-938608207, the unchecked claim lease), one level up in the API.
+- **Removed rather than used**, deliberately: the ID already lives in the
+  ticket's `ID:` field and in the filename, and
+  `canonical_contract_name(ticket_id, metadata)` takes it separately for
+  exactly that reason. Storing it in the metadata as well would be a third home
+  for one truth.
+- Measured before cutting: one caller in the repo
+  (`ticket_writer.create_routed_ticket`), no re-export through
+  `ticket_mover`/`lib/__init__`, no `__all__` listing it, no consumer anywhere
+  under `.MODULES`, and the package is not pip-installed on this host. A caller
+  that still passes it gets an immediate, clearly-attributed `TypeError` —
+  keyword-only arguments fail loudly, never silently. A test pins that.
+
 ### The audit reports unknown folders in the queue root (T-20260913-580105077)
 
 - New `non_v1_folders()`, surfaced as `NON-V1-FOLDER` in the human report and
