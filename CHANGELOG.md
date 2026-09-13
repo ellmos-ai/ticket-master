@@ -4,6 +4,35 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### The claim lease is now enforced, not just recorded (T-20260830-938608207, stage 1)
+
+- `record_receipt()` and `complete_contract()` refuse to write once
+  `CLAIM_LEASE_UNTIL` has passed. Both previously checked only *who* held the
+  claim — a session killed hours earlier by a token abort or a crash kept the
+  right to book half a completion into the ledger. `recover_expired_claim()`
+  could clean such a claim up, but it is a janitor someone has to call, not a
+  gate; that made the lease a note.
+- Both paths go through one helper, `_require_live_claim()`, so the two
+  identical host checks stopped being two places to forget the lease in.
+- Fail-closed on a missing or unreadable lease too, not just an expired one:
+  `claim_contract` always writes one, so its absence means a hand-edited
+  contract. Measured before choosing the strict reading — the live queue on
+  2026-09-13 held 18 v2 contracts, 2 of them claimed, both already in SOLVED
+  with an expired lease, none claimed-without-lease. It breaks no standing work.
+- The boundary is `<=`, mirroring `recover_expired_claim`'s `>`: at the instant
+  writing stops being allowed, recovery starts being allowed — no gap where
+  nobody may act, no overlap where both may.
+- `release_contract()` is deliberately NOT gated. An expired holder must stay
+  able to hand its claim back (`recover_expired_claim` releases through it),
+  and releasing takes nothing away from anyone.
+- Three existing tests were silently wall-clock-dependent: they claimed at a
+  fixed 2026-08-22 timestamp and then wrote with the real "now". They now pass
+  an explicit `now` inside the lease.
+- **Stage 2 (the content-hash seal) is explicitly NOT part of this.** User
+  decision D-20260906-008/E02 of 2026-09-11 released the time lease on its own
+  and did not commission the hash; the open questions on legacy contracts and
+  on the behaviour after a refused write stay with the ticket.
+
 ### Startup validation: an empty `project_roots` is now audible (tidy-up 2026-09-13)
 
 - `bin/ticket_master.py::config_warnings()` warns on launch when

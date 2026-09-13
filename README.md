@@ -523,9 +523,14 @@ row done, or releases an active foreign claim.
 
 Each target has exactly one `SYSTEM_LEDGER` row (`pending`, `claimed`, `done`,
 or `blocked`). Receipts record the actual runner, provider, model, time and
-evidence and are reconciled idempotently under the lease. Only the holder of
-the last claim may move the contract to `SOLVED`, and only when every required
-row is empirically `done`. `ticket_audit.py` reports filename/metadata,
+evidence and are reconciled idempotently under the lease. The lease is enforced,
+not merely recorded: `record_receipt` and `complete_contract` refuse to write
+once `CLAIM_LEASE_UNTIL` has passed, so a session that died mid-run cannot book
+half a completion hours later. A claim without a readable lease is refused the
+same way — `claim_contract` always writes one, so its absence means a hand-edited
+contract. Releasing stays open to an expired holder, since handing a claim back
+takes nothing from anyone. Only the holder of the last claim may move the
+contract to `SOLVED`, and only when every required row is empirically `done`. `ticket_audit.py` reports filename/metadata,
 target-claim, ledger, receipt-signature and premature-SOLVED violations.
 
 Responsibility boundary: ticket-master owns this contract and its lifecycle;

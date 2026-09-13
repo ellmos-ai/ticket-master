@@ -369,7 +369,7 @@ def test_wrong_or_done_target_cannot_claim(tmp_path):
     )
     rc.record_receipt(claimed, host="WORKSTATION-LG", receipt=receipt(
         "WORKSTATION-LG", "sig-one"
-    ))
+    ), now="2026-08-22T09:30:00Z")
     released = rc.release_contract(claimed, host="WORKSTATION-LG")
     with pytest.raises(rc.ClaimDeniedError, match="done"):
         rc.claim_contract(released, host="WORKSTATION-LG", actor="again")
@@ -403,10 +403,12 @@ def test_systemless_via_contract_materializes_one_any_target_ledger_row(tmp_path
     assert [row["system"] for row in view.ledger] == ["ASUS-GEI"]
     assert rc.contract_errors(claimed, now="2026-08-22T09:30:00Z") == []
     rc.record_receipt(
-        claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-any")
+        claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-any"),
+        now="2026-08-22T09:30:00Z",
     )
     solved = rc.complete_contract(
-        claimed, host="ASUS-GEI", solved_dir=tmp_path / "SOLVED"
+        claimed, host="ASUS-GEI", solved_dir=tmp_path / "SOLVED",
+        now="2026-08-22T09:30:00Z",
     )
     assert solved.parent.name == "SOLVED"
 
@@ -542,9 +544,11 @@ def test_required_binding_fails_closed_and_preferred_fallback_is_evidenced(tmp_p
     )
     payload = receipt("ASUS-GEI", "sig-fallback", runner="codex")
     with pytest.raises(rc.ReceiptConflictError, match="fallback requires"):
-        rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload)
+        rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+                          now="2026-08-22T09:30:00Z")
     payload["fallback_reason"] = "preferred runner unavailable"
-    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload)
+    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+                             now="2026-08-22T09:30:00Z")
 
     exact = make_contract(tmp_path / "exact", via="openai-gpt-5.6-sol")
     exact_claim = rc.claim_contract(
@@ -553,9 +557,11 @@ def test_required_binding_fails_closed_and_preferred_fallback_is_evidenced(tmp_p
     )
     wrong_model = receipt("ASUS-GEI", "sig-exact", runner="codex")
     with pytest.raises(rc.ReceiptConflictError, match="exact model"):
-        rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model)
+        rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model,
+                          now="2026-08-22T09:30:00Z")
     wrong_model["actual_model"] = "gpt-5.6-sol"
-    assert rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model)
+    assert rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model,
+                             now="2026-08-22T09:30:00Z")
 
 
 def test_registry_outage_stays_unresolved_then_recovers_without_substitution(tmp_path):
@@ -815,3 +821,75 @@ def test_move_ticket_with_expected_hash_proceeds_when_unchanged(tmp_path):
     target = ticket_mover.move_ticket(source, tmp_path / "SOLVED", expected_hash=digest)
     assert target.read_text(encoding="utf-8") == "STATUS:        ACTIONABLE\n"
     assert not source.exists()
+
+
+def test_expired_claim_lease_blocks_every_write_but_not_the_release(tmp_path):
+    """T-20260830-938608207 stage 1: a dead session must not keep writing.
+
+    Before this gate CLAIM_LEASE_UNTIL was a note -- record_receipt and
+    complete_contract asked only WHO holds the claim, never whether the lease
+    was still running, so a session killed hours earlier (token abort, crash)
+    could still book half a completion.
+    """
+    path = make_contract(tmp_path, target_kind="exact", target="ASUS-GEI",
+                         ticket_kind="transfer")
+    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="worker",
+                                now="2026-08-22T09:00:00Z", lease_seconds=60)
+    payload = receipt("ASUS-GEI", "sig-late")
+
+    # Inside the lease both writes are allowed ...
+    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+                             now="2026-08-22T09:00:30Z")
+
+    # ... and the very instant it expires, neither is.
+    with pytest.raises(rc.ClaimDeniedError, match="lease expired"):
+        rc.record_receipt(claimed, host="ASUS-GEI",
+                          receipt=receipt("ASUS-GEI", "sig-later"),
+                          now="2026-08-22T09:01:00Z")
+    with pytest.raises(rc.ClaimDeniedError, match="lease expired"):
+        rc.complete_contract(claimed, host="ASUS-GEI",
+                             solved_dir=tmp_path / "SOLVED",
+                             now="2026-08-22T09:01:00Z")
+
+    # The boundary mirrors recover_expired_claim: at exactly the moment
+    # writing stops being allowed, recovery starts being allowed. Neither a
+    # gap (nobody may act) nor an overlap (both may act) is acceptable here.
+    recovered = rc.recover_expired_claim(claimed, now="2026-08-22T09:01:00Z")
+    assert ".claim-" not in recovered.name
+
+    # Releasing stays ungated on purpose -- an expired holder must be able to
+    # hand the claim back; recover_expired_claim goes through release_contract.
+    fresh = make_contract(tmp_path / "release", target_kind="exact",
+                          target="ASUS-GEI", ticket_kind="transfer")
+    stale = rc.claim_contract(fresh, host="ASUS-GEI", actor="worker",
+                              now="2026-08-22T10:00:00Z", lease_seconds=60)
+    assert rc.release_contract(stale, host="ASUS-GEI",
+                               now="2026-08-25T00:00:00Z")
+
+
+def test_claim_without_a_readable_lease_is_refused_not_waved_through(tmp_path):
+    """A claim carrying no (or an unreadable) lease is a hand-edited state.
+
+    claim_contract always writes a lease, so fail-closed costs nothing:
+    measured against the live queue on 2026-09-13 there was no
+    claimed-without-lease contract in the whole bestand.
+    """
+    path = make_contract(tmp_path, target_kind="exact", target="ASUS-GEI",
+                         ticket_kind="transfer")
+    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="worker",
+                                now="2026-08-22T09:00:00Z", lease_seconds=60)
+    payload = receipt("ASUS-GEI", "sig-handmade")
+
+    for forged, expected in (("", "no lease"), ("not-a-timestamp", "unreadable")):
+        text = claimed.read_text(encoding="utf-8")
+        claimed.write_text(
+            rc.update_fields(text, {"CLAIM_LEASE_UNTIL": forged}),
+            encoding="utf-8",
+        )
+        with pytest.raises(rc.ClaimDeniedError, match=expected):
+            rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+                              now="2026-08-22T09:00:30Z")
+        with pytest.raises(rc.ClaimDeniedError, match=expected):
+            rc.complete_contract(claimed, host="ASUS-GEI",
+                                 solved_dir=tmp_path / "SOLVED",
+                                 now="2026-08-22T09:00:30Z")
