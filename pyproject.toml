@@ -11,7 +11,7 @@ authors = [
     { name = "dev-bricks" }
 ]
 license = "MIT"
-license-files = ["LICENSE"]
+license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -37,9 +37,15 @@ keywords = [
     "local-first"
 ]
 requires-python = ">=3.10"
+dependencies = []
 
 [project.optional-dependencies]
 routing-v2 = ["clutch-router>=0.5,<0.6"]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6.0",
+    "build>=1.2.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/ellmos-ai/ticket-master"

@@ -4,6 +4,14 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Security & Dependency Audit: Zero-Runtime Architecture, PEP 639 & SLA Hardening (2026-09-13)
+
+- **Third-Party License Inventory**: Added `THIRD_PARTY_LICENSES.md` declaring 100% zero-runtime external dependencies (`dependencies = []` in `pyproject.toml`) and inventorying built-in Python standard library modules, optional `routing-v2` (`clutch-router`), and development tooling (`pytest`, `ruff`, `setuptools`, `build`).
+- **PEP 639 Compliance**: Declared `license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]` in `pyproject.toml`.
+- **Gitignore Hardening**: Added explicit ignore patterns for runtime queue markers (`tickets/.ticket-master-queue`, `**/.ticket-master-queue`), certificate extensions (`*.crt`, `*.cert`), generic tokens/secrets (`*.token`, `*.secret`, `id_rsa*`, `id_ed25519*`), and multi-host sync conflict artifacts (`*-WORKSTATION-LG.*`, `*-ASUS-GEI.*`, `*-LAPTOP.*`, `*.sync-conflict-*`, `*.conflict`, `*.orig`, `*.rej`).
+- **Security Policy & SLA Hardening**: Updated `SECURITY.md` to supported version 1.12.x, added standard response SLA (48h initial acknowledgment, 5 business days triage classification, 30 days fix plan), and introduced full bilingual German policy (`## Sicherheitsrichtlinie (Deutsch)`).
+- **Automated Contract Tests**: Added `test_third_party_licenses_inventory_and_zero_dependencies`, `test_gitignore_secret_and_credential_patterns`, and `test_security_policy_bilingual_sla_and_version` in `tests/test_metadata.py`.
+
 ### Breaking (internal API): `contract_metadata()` no longer takes `ticket_id` (T-20260913-413869403)
 
 - It was a **required** keyword-only parameter that the body never read —

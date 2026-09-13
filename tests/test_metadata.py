@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 310
-LAST_CHECKED = "2026-08-30"
+EXPECTED_TEST_COUNT = 498
+LAST_CHECKED = "2026-09-13"
 
 
 def test_version_consistency():
@@ -93,7 +93,8 @@ def test_pyproject_pep621_metadata():
 
     assert 'requires = ["setuptools>=77.0.3"]' in content
     assert 'license = "MIT"' in content
-    assert 'license-files = ["LICENSE"]' in content
+    assert 'license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]' in content
+    assert 'dependencies = []' in content
     assert "license = {" not in content
     assert '"License ::' not in content
     assert (REPO_ROOT / "LICENSE").read_text(encoding="utf-8").startswith(
@@ -126,13 +127,69 @@ def test_llms_txt_integrity():
 
 
 def test_security_policy_exists():
-    """Verify SECURITY.md exists and contains reporting guidelines and security scope."""
+    """Verify SECURITY.md exists and contains reporting guidelines, SLA, and security scope."""
     sec_path = REPO_ROOT / "SECURITY.md"
     assert sec_path.is_file()
     content = sec_path.read_text(encoding="utf-8")
     assert "Security Policy" in content
     assert "Reporting a Vulnerability" in content
     assert "Scope" in content
+    assert "48 hours" in content
+    assert "5 business days" in content
+    assert "1.12.x" in content
+    assert "Sicherheitsrichtlinie" in content
+
+
+def test_third_party_licenses_inventory_and_zero_dependencies():
+    """Verify THIRD_PARTY_LICENSES.md exists, documents zero runtime dependencies and dev tooling."""
+    tpl_path = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
+    assert tpl_path.is_file(), "THIRD_PARTY_LICENSES.md missing"
+    content = tpl_path.read_text(encoding="utf-8")
+    assert "Zero-Runtime-Dependency Guarantee" in content
+    assert "Python Standard Library" in content
+    assert "PSF License" in content
+    assert "pytest" in content
+    assert "ruff" in content
+    assert "MIT License" in content
+    assert "Apache License 2.0" in content
+
+
+def test_gitignore_secret_and_credential_patterns():
+    """Verify .gitignore contains patterns for credentials, private keys, queue markers, and multi-host sync conflicts."""
+    gitignore_path = REPO_ROOT / ".gitignore"
+    assert gitignore_path.is_file(), ".gitignore missing"
+    content = gitignore_path.read_text(encoding="utf-8")
+    for pattern in [
+        ".env",
+        "*.pem",
+        "*.key",
+        "id_rsa",
+        "id_ed25519",
+        "credentials*.json",
+        "token*.json",
+        "secrets*.json",
+        ".npmrc",
+        ".pypirc",
+        "tickets/.ticket-master-queue",
+        "*-WORKSTATION-LG.*",
+        "*-ASUS-GEI.*",
+        "*.sync-conflict-*",
+        "*.conflict",
+    ]:
+        assert pattern in content, f"Pattern '{pattern}' missing in .gitignore"
+
+
+def test_security_policy_bilingual_sla_and_version():
+    """Verify SECURITY.md contains bilingual German policy, 48h/5d SLA, and version 1.12.x support."""
+    sec_path = REPO_ROOT / "SECURITY.md"
+    assert sec_path.is_file()
+    content = sec_path.read_text(encoding="utf-8")
+    assert "48 hours" in content
+    assert "5 business days" in content
+    assert "1.12.x" in content
+    assert "Sicherheitsrichtlinie" in content
+    assert "48 Stunden" in content
+    assert "5 Werktage" in content
 
 
 def test_ellmos_module_manifest_validity():

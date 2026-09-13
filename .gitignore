@@ -23,16 +23,23 @@ config/knowledge.json
 .pypirc
 *.pem
 *.key
+*.key.*
 *.p12
 *.pfx
+*.crt
+*.cert
 id_rsa
+id_rsa*
 id_ed25519
+id_ed25519*
 credentials*.json
 token*.json
 secrets*.json
 *password*.json
 *.recovery-codes.txt
 *recovery*codes*.txt
+*.token
+*.secret
 .npmrc
 *.db
 *.sqlite
@@ -67,6 +74,20 @@ tickets/.USER/*
 
 # Local intake log variant
 tickets/_logs/INTAKE-TRIAGE-LOG.local.txt
+
+# Runtime queue markers
+tickets/.ticket-master-queue
+.ticket-master-queue
+**/.ticket-master-queue
+
+# Multi-Host Sync & Conflict Artifacts
+*-WORKSTATION-LG.*
+*-ASUS-GEI.*
+*-LAPTOP.*
+*.sync-conflict-*
+*.conflict
+*.orig
+*.rej
 
 # Python
 __pycache__/
