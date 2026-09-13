@@ -4,6 +4,24 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Startup validation: an empty `project_roots` is now audible (tidy-up 2026-09-13)
+
+- `bin/ticket_master.py::config_warnings()` warns on launch when
+  `project_roots` is missing, empty, or not a list. GATE 1 anchors tickets to
+  projects through that list; empty, it silently loses every anchor and the
+  prompt only notices much later, on the first ticket it cannot place.
+- Deliberately a warning, not an error: the prompt can still resolve a project
+  outside `project_roots[]` through a configured `maps` knowledge source
+  (retest finding B2). Blocking the launch would break that documented path.
+- The provider half of the long-standing TODO point ("or provider commands are
+  not found in PATH") was already implemented as the `shutil.which` guard in
+  `launch_provider` and stays a hard error — without the binary nothing runs.
+- README fact correction in the same pass: `<HOME>`/`<USER>` in `tickets_dir`
+  are resolved in code by `lib/config_paths.py` since T-20260912-206012253, not
+  by the agent. Both READMEs still claimed the agent did it for every key, and
+  neither mentioned that `_TICKETS` and `TICKETS` are both accepted during the
+  rename.
+
 ### Paused hosts stay out of `--target-kind all` (T-20260912-311033160)
 
 - `lib/systems_registry.py` now reads the slot state `slot_state_check.py`

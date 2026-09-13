@@ -339,11 +339,18 @@ Liegt `config/ticket-master.config.json` in einem Ordner, der über mehrere
 Maschinen synchronisiert wird, löst sich ein wörtlicher Pfad nur auf dem
 Host auf, auf dem er geschrieben wurde. `tickets_dir` und jeder
 `project_roots[].path` dürfen stattdessen die Platzhalter `<HOME>`
-(Home-Verzeichnis des aktuellen Users) und `<USER>` (OS-Username) nutzen —
-der Agent, der dem TICKET-MASTER-Prompt folgt, löst diese vor jedem
-Datei-Zugriff auf den tatsächlichen Wert des aktuellen Hosts auf. Dieselbe
-Konvention wie in `config/ticket-writer.config.example.json`. Beispiel in
+(Home-Verzeichnis des aktuellen Users) und `<USER>` (OS-Username) nutzen. Wer
+sie auflöst, hängt vom Schlüssel ab: `tickets_dir` löst `lib/config_paths.py`
+im Code auf, damit jeder CLI- und Bibliotheks-Konsument denselben echten Pfad
+sieht; `project_roots[].path` liest der Agent, der dem TICKET-MASTER-Prompt
+folgt, und löst ihn vor jedem Datei-Zugriff auf. Dieselbe Konvention wie in
+`config/ticket-writer.config.example.json`. Beispiel in
 `config/ticket-master.config.example.json`.
+
+Dasselbe Modul akzeptiert außerdem beide Namen des Queue-Verzeichnisses,
+`_TICKETS` und `TICKETS`, solange diese Umbenennung läuft — eine Config, die
+auf einen der beiden zeigt, funktioniert weiter, und unter dem nicht
+existierenden Namen wird nichts angelegt.
 
 ### Auditierbare CLI (`--list` / `--intake`)
 

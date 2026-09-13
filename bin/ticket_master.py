@@ -359,6 +359,25 @@ def _provider_command(cfg: dict[str, Any], provider: str) -> list[str]:
     return shlex.split(command, posix=os.name != "nt")
 
 
+def config_warnings(cfg: dict[str, Any]) -> list[str]:
+    """Startup validation for settings that silently cripple the prompt.
+
+    The provider-command half of this check is the ``shutil.which`` guard in
+    ``launch_provider`` and stays a hard error -- without the binary nothing
+    runs at all.  An empty ``project_roots`` is only a warning: GATE 1 loses
+    its anchors, but the prompt can still resolve a project through a
+    configured ``maps`` knowledge source (retest finding B2).
+    """
+
+    roots = cfg.get("project_roots")
+    if not isinstance(roots, list) or not roots:
+        return [
+            "[ticket-master] warning: 'project_roots' is empty - GATE 1 has no "
+            "project anchors (see README, 'project_roots[]')"
+        ]
+    return []
+
+
 def launch_provider(
     provider: str | None = None,
     *,
@@ -367,6 +386,8 @@ def launch_provider(
     skip_permissions: bool = False,
 ) -> int:
     cfg = load_config(config)
+    for warning in config_warnings(cfg):
+        print(warning, file=sys.stderr)
     selected = provider or os.environ.get("TM_PROVIDER") or cfg.get("default_provider") or "claude"
     if selected not in SUPPORTED_PROVIDERS:
         supported = ", ".join(SUPPORTED_PROVIDERS)
