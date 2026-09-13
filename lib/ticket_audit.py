@@ -168,7 +168,43 @@ def subcategory_vocabulary(doc: Path | str | None = None) -> dict[str, frozenset
     }
 
 
-def _unknown_subcategory(value: str, cluster: str,
+def non_v1_folders(base: Path | str) -> list[str]:
+    """Folders in the queue root that are neither a v1 cluster nor plumbing.
+
+    T-20260913-580105077. A `DONE/` folder appeared in the live queue --
+    empty, origin unknown, most likely carried in by OneDrive from another
+    host -- and nearly took a ticket that belonged in `SOLVED/`. A ticket
+    landing there is invisible to every triage glob: the same failure as the
+    claimed-tickets-in-root finding of T-20260808-03, where a user request
+    marked "heute" sat unseen for seven days.
+
+    Nothing else catches this. `ticket_mover` refuses NESTED destinations
+    (`USER/decision`) fail-closed, but a FLAT folder with a wrong name is a
+    syntactically perfect move target -- it passes every existing check.
+
+    "Known" is `_LIFECYCLE_SUBDIRS` (which already carries the legacy
+    `PENDING`/`.USER`) plus any folder whose name starts with `_` or `.`.
+    A prefix rule, not a curated allow-list: a list goes stale the moment
+    somebody adds an infrastructure folder, and then reports it as a finding
+    -- which trains readers to ignore the check. Measured against the live
+    queue on 2026-09-13, the prefix rule leaves exactly one finding: `DONE`.
+
+    Report-only. An empty folder may be the start of someone else's
+    convention; deciding that is not an audit run's business.
+    """
+    base = Path(base)
+    if not base.is_dir():
+        return []
+    known = {name for name in _LIFECYCLE_SUBDIRS if name}
+    return sorted(
+        str(entry) for entry in base.iterdir()
+        if entry.is_dir()
+        and entry.name not in known
+        and not entry.name.startswith(("_", "."))
+    )
+
+
+def _unknown_subcategory(value: str, cluster: str | None,
                          vocabulary: dict[str, frozenset[str]]) -> str | None:
     """The subcategory in this STATUS value, if the docs don't list it.
 
@@ -176,6 +212,15 @@ def _unknown_subcategory(value: str, cluster: str,
     ``.USER``) returns None -- silence, not "everything is unknown". A cluster
     the table marks with an em dash maps to an empty set, which is a statement:
     it documents *no* subcategories, so any value there is a finding.
+
+    ``cluster`` is typed ``str | None`` because the caller's variable is, not
+    because None reaches here: ``status_drift``'s first branch
+    (``cluster not in _KNOWN_STATUS_CLUSTERS``) catches None and reports
+    ``unknown-status`` before this function is consulted. Verified on three
+    broken STATUS lines (empty, ``/REVIEW``, ``123 ohne cluster``) -- all three
+    come back as ``unknown-status``. Guarding for None here would be dead code
+    AND worse than nothing: the natural guard, ``continue``, would stop
+    reporting those tickets at all. The annotation states the truth instead.
     """
     documented = vocabulary.get(cluster)
     if documented is None:
@@ -417,6 +462,8 @@ def audit(base: Path | str, *, scan_sources: bool = False,
       "informal_entries": [path, ...],  # INBOX/ files without "T-" prefix
                                          # (Entscheid 3A) -- not clutter
       "nested_lifecycle_tickets": [path, ...],  # backwards-compatible list
+      "non_v1_folders": [path, ...],   # folders in the root that are neither
+                                       # a v1 cluster nor "_"/"."-plumbing
       "nested_lifecycle_details": [
         {
           "source": path,
@@ -550,6 +597,7 @@ def audit(base: Path | str, *, scan_sources: bool = False,
         "nested_lifecycle_details": sorted(
             nested_lifecycle_details, key=lambda detail: str(detail["source"])
         ),
+        "non_v1_folders": non_v1_folders(base),
         "status_drift": status_drift(base),
         "progress_drift": progress_drift(base),
         # Opt-in: ein git grep je Repo ueber alle Arbeitsbaeume kostet
@@ -685,6 +733,15 @@ def _print_human(report: dict) -> None:
             print(f"  {path}")
     else:
         print("NON-TICKET-FILES: none")
+
+    non_v1 = report.get("non_v1_folders", [])
+    if non_v1:
+        print(f"NON-V1-FOLDER ({len(non_v1)}):")
+        for path in non_v1:
+            print(f"  {path}  -- not a Categories-v1 cluster; a ticket moved "
+                  "here is invisible to every triage glob")
+    else:
+        print("NON-V1-FOLDER: none")
 
     if routing_errors:
         print(f"ROUTING-ERRORS ({len(routing_errors)}):")

@@ -122,6 +122,13 @@ Examples: `STATUS: ACTIONABLE (since 2026-07-31)`,
   adds `nested_lifecycle_details`: each finding contains `source`, the flat
   `expected_target` derived by removing the subfolders, and
   `target_collision`. The audit changes no STATUS, claim, or file.
+- **No folder beside the clusters.** The root carries the v1 clusters, the
+  legacy `PENDING`/`.USER`, and `_`/`.`-prefixed plumbing — nothing else. A
+  flat folder with a wrong name (`DONE/`, `ERLEDIGT/`) is a syntactically
+  perfect move target and therefore slips past the guard against nested
+  destinations; a ticket inside it is invisible to every triage.
+  `ticket_audit.py` reports it as `NON-V1-FOLDER` — report only, never delete
+  (T-20260913-580105077).
 
 ---
 

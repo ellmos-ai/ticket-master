@@ -121,6 +121,13 @@ Beispiele: `STATUS: ACTIONABLE (seit 2026-07-31)`,
   `source`, das durch Entfernen der Unterordner abgeleitete flache
   `expected_target` und `target_collision`. Der Audit ändert dabei weder
   STATUS noch Claim oder Datei.
+- **Kein Ordner neben den Clustern.** Die Wurzel trägt die v1-Cluster, die
+  Legacy-Ordner `PENDING`/`.USER` und Infrastruktur mit `_`- oder `.`-Präfix —
+  sonst nichts. Ein flacher Ordner mit falschem Namen (`DONE/`, `ERLEDIGT/`)
+  ist syntaktisch ein einwandfreies Move-Ziel und entgeht deshalb der Sperre
+  gegen verschachtelte Ziele; ein Ticket darin ist für jede Triage unsichtbar.
+  `ticket_audit.py` meldet ihn als `NON-V1-FOLDER` — nur melden, nie löschen
+  (T-20260913-580105077).
 
 ---
 

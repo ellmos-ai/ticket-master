@@ -4,6 +4,38 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### The audit reports unknown folders in the queue root (T-20260913-580105077)
+
+- New `non_v1_folders()`, surfaced as `NON-V1-FOLDER` in the human report and
+  `non_v1_folders` in `--json`. A `DONE/` folder had appeared in the live queue
+  — empty, origin unknown, most likely carried in by cloud sync from another
+  host — and nearly took a ticket that belonged in `SOLVED/`.
+- **Nothing else catches this.** `ticket_mover` refuses NESTED destinations
+  (`USER/decision`) fail-closed, but a FLAT folder with a wrong name is a
+  syntactically perfect move target and passes every existing check. A ticket
+  landing there is invisible to every triage glob — the same failure as the
+  claimed-tickets-in-root finding of T-20260808-03, where a request marked
+  "heute" sat unseen for seven days.
+- "Known" is `_LIFECYCLE_SUBDIRS` (which already carries the legacy
+  `PENDING`/`.USER`) plus any folder prefixed `_` or `.`. **A prefix rule, not
+  a curated allow-list:** a list goes stale the moment somebody adds an
+  infrastructure folder and then reports it as a finding, which trains readers
+  to ignore the check. Measured against the live queue: exactly one finding,
+  `DONE`.
+- Report-only. An empty folder may be the start of someone else's convention;
+  deciding that is not an audit run's business.
+
+### `_unknown_subcategory`'s `cluster` parameter is typed honestly (no behaviour change)
+
+- Annotated `str | None`, because the caller's variable is — not because None
+  reaches it. `status_drift`'s first branch (`cluster not in
+  _KNOWN_STATUS_CLUSTERS`) catches None and reports `unknown-status` first.
+  **Verified on three broken STATUS lines** (empty, `/REVIEW`, `123 ohne
+  cluster`): all three come back as `unknown-status`.
+- The guard that static analysis suggests here (`if cluster is None: continue`)
+  would be dead code **and worse than nothing** — it would stop reporting those
+  tickets at all. A regression test now pins that they are reported.
+
 ### The agent identity is normalised once, not twice (T-20260913-695955668)
 
 - `resolve_session_provenance()` now splits an already-qualified
