@@ -4,6 +4,43 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### The audit reports undocumented subcategories (T-20260913-204557243)
+
+- `status_drift()` gained an `unknown-subcategory` kind: the token after the
+  slash in a STATUS value is checked against the cluster's documented
+  vocabulary. Until now only the leading cluster token was compared and
+  everything after it counted as "presentation", so a value nobody had ever
+  agreed on passed silently.
+- **The vocabulary is parsed from `docs/CATEGORIES.de.md`, not copied into the
+  module.** A hardcoded list would be a second home for the same truth, and the
+  pair drifts the moment the documentation grows. The values are
+  language-neutral, so the German table is authoritative and a test pins the
+  English one against it — if the table layout ever changes, that test fails
+  before a production run does.
+- **Report-only, hard.** `status_drift_fixer` is untouched and still repairs
+  only `folder-mismatch`/`unknown-status`; the new finds land in NEEDS REVIEW.
+  The values are not nonsense — `decision-partial` names a real in-between
+  state, `uac-live-abnahme` says precisely what is being waited for. Whether
+  the vocabulary should grow or the values should be aligned stays an open
+  question; answering it as a side effect of an audit fix would be wrong.
+- Free text is not mistaken for a subcategory. A candidate is the single token
+  right after the slash, followed by end, `(`, or a separator; anything that
+  continues as prose (`SOLVED / Option A vollständig belegt`) is ignored. That
+  guard is the lesson of T-20260808-03, where a first audit pass reported 114
+  "non-ticket files", about 100 of which were legitimate.
+- A cluster missing from the table entirely (legacy `PENDING`/`.USER`) stays
+  silent — "undocumented" means "not assessable" there, not "everything wrong".
+  A cluster the table marks with an em dash maps to the empty set, which is a
+  statement: any value there is a find.
+- If the categories document cannot be read, that is said out loud as
+  `subcategory-vocabulary-unavailable` rather than silently skipping the check.
+- Measured on the live queue: findings go from 71 to 92, all 21 new ones
+  `unknown-subcategory`, every other kind unchanged. That is **seven times the
+  three deviations the ticket expected** — 17 of them sit in `SOLVED`, a
+  cluster documented as having none (`local-only`, `verified`, `read-only`,
+  `stage-B1`, …). The vocabulary question is therefore bigger than assumed,
+  which is exactly why this change only reports it.
+
 ### The claim lease is now enforced, not just recorded (T-20260830-938608207, stage 1)
 
 - `record_receipt()` and `complete_contract()` refuse to write once
