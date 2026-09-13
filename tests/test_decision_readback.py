@@ -250,3 +250,31 @@ class TestKeyMatchingIsWholeKey(unittest.TestCase):
             ticket = _ticket(queue, "ACTIONABLE", "T-20260808-03.txt")
             with self.assertRaises(ticket_mover.DecisionReadbackError):
                 ticket_mover.move_ticket(ticket, queue / "USER")
+
+
+class TestSubDecisionIds(unittest.TestCase):
+    def test_a_sub_decision_id_in_the_ticket_finds_the_parent_in_the_register(self):
+        """Tickets schreiben "D-20260906-008/E01", das Register indiziert die
+        Eltern-ID "D-20260906-008". Ohne die Basis-Kennung findet das Gate
+        nichts -- ein falsches NEGATIV, und damit genau das "nicht gefunden",
+        das hier nie als "offen" durchgehen soll. Am 2026-09-13 gegen das echte
+        Register gemessen: die Entscheide des Tages stehen in genau dieser
+        Notation."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260906-008@DECIDED-AND-DONE", "id": "D-20260906-008",
+                "status_class": "DONE", "title": "Fünf Governance-Entscheidungen",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt",
+                             "Entscheid D-20260906-008/E01 (2026-09-11).")
+            with self.assertRaises(ticket_mover.DecisionReadbackError) as refused:
+                ticket_mover.move_ticket(ticket, queue / "USER")
+            self.assertIn("D-20260906-008", str(refused.exception))
+
+    def test_both_forms_are_searched_and_the_written_one_comes_first(self):
+        keys = dr._keys_from_ticket("Siehe D-20260906-008/E01 und D-20260731-010.",
+                                    "T-20260913-000000001.txt")
+        self.assertEqual(keys, ["T-20260913-000000001", "D-20260906-008/E01",
+                                "D-20260906-008", "D-20260731-010"])

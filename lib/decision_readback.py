@@ -106,8 +106,19 @@ def _keys_from_ticket(text: str, ticket_name: str) -> list[str]:
             if match.group(0) not in keys:
                 keys.append(match.group(0))
     for match in _DECISION_ID_RE.finditer(text):
-        if match.group(0) not in keys:
-            keys.append(match.group(0))
+        found = match.group(0)
+        if found not in keys:
+            keys.append(found)
+        # A sub-decision is written "D-20260906-008/E01" in tickets, while the
+        # register indexes the parent "D-20260906-008". Searching only the
+        # written form finds nothing -- a false NEGATIVE, and precisely the
+        # "not found" that this gate exists to stop being mistaken for "open".
+        # Measured 2026-09-13 against the live register: the day's own
+        # decisions are booked in exactly this notation, so without the base
+        # key the gate would have been silent in the common case.
+        base = found.split("/", 1)[0]
+        if base not in keys:
+            keys.append(base)
     return keys
 
 
