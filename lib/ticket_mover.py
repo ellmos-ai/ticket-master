@@ -39,7 +39,9 @@ from pathlib import Path
 try:  # package import
     from .ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
     from .config_paths import resolve_queue_alias
-    from .session_provenance import resolve_session_provenance
+    from .session_provenance import (
+        SessionProvenanceError, resolve_session_provenance,
+    )
     from .routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -69,7 +71,9 @@ try:  # package import
 except ImportError:  # direct import from lib on sys.path
     from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
     from config_paths import resolve_queue_alias
-    from session_provenance import resolve_session_provenance
+    from session_provenance import (
+        SessionProvenanceError, resolve_session_provenance,
+    )
     from routing_contract import (
         ClaimDeniedError,
         RoutingContractError,
@@ -113,6 +117,7 @@ __all__ = [
     "record_receipt",
     "recover_expired_claim",
     "DecisionReadbackError",
+    "SessionProvenanceError",
     "freigabe_state",
     "mark_freigabe",
     "release_claim",
@@ -826,11 +831,8 @@ def mark_delegated(ticket: Path | str, agent: str, *,
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
     text = ticket.read_text(encoding="utf-8", errors="replace")
     marker = f"DELEGIERT_AN: {agent}"
-    agent_name, separator, agent_host = agent.partition("@")
     provenance = resolve_session_provenance(
-        session,
-        agent=agent_name or agent,
-        host=session_host or (agent_host if separator else None),
+        session, agent=agent, host=session_host,
     )
     header = f"SESSION:       {provenance.value}"
     if re.search(r"(?m)^SESSION:\s*.*$", text):
@@ -1113,7 +1115,7 @@ def _cli(argv: list[str] | None = None) -> int:
             mark_delegated(
                 args.mark_delegated, args.agent,
                 session=args.session, session_host=args.session_host)
-        except FileNotFoundError as exc:
+        except (FileNotFoundError, SessionProvenanceError) as exc:
             print(f"REFUSED: {exc}")
             return 1
         print(f"MARKED: {args.mark_delegated} DELEGIERT_AN: {args.agent}")
