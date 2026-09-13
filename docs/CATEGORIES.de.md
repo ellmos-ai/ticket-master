@@ -63,6 +63,19 @@ INBOX.
 - `decision` — der User muss eine Entscheidung treffen (Optionen im Ticket).
 - `data` — der User muss Daten, Informationen oder Zugänge liefern.
 - `freigabe` — eine explizite Freigabe/Genehmigung des Users ist nötig.
+  **Hashgebunden und einmalig (T-20260913-744071825):** Wer nach `USER/freigabe`
+  eskaliert, legt einen Abschnitt `ZUR FREIGABE` an, der den genau freizugebenden
+  Wortlaut trägt, und vergibt die ID mit
+  `ticket_mover.py --stamp-freigabe-id <ticket>` → Feld `FREIGABE_ID: frg_…`
+  (sha256 des Abschnitts, 20 Hexstellen; niemals von Hand setzen). Der Nutzer
+  nennt diese ID; gebucht wird mit
+  `--mark-freigabe <ticket> --freigabe-id frg_… --agent <wer>`. Fail-closed:
+  falsche, fehlende oder veraltete ID → Datei bleibt unverändert. Ändert sich der
+  Wortlaut nach der Freigabe, ist sie `stale` und zählt nicht mehr — genau dafür
+  existiert die Bindung. Eine Freigabe ist einmalig (`FREIGABE_ERTEILT`).
+  **Altbestand wird bewusst nicht nachgerüstet:** Tickets ohne den Abschnitt
+  gelten als `legacy` und behalten ihre formlose Freigabe; eine ID nachträglich
+  zu berechnen würde eine Bindung vortäuschen, die es nie gab.
 - `hardware` — physischer Schritt/Gerät, den nur der User ausführen kann.
 - `session` — nur-User-startbares Modell, Login-Session oder manueller Lauf.
 - `marker` — ein Marker/Ereignis muss zwingend vom User geliefert oder

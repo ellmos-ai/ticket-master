@@ -98,6 +98,17 @@ TASK PROMPT  (for sub-agent; includes routing + root docs to read)
  pipeline root documents before starting.>
 
 --------------------------------------------------------------
+ZUR FREIGABE  (only for USER/freigabe; add when escalating)
+--------------------------------------------------------------
+FREIGABE_ID:   frg_<set by `ticket_mover.py --stamp-freigabe-id`, never by hand>
+<The exact wording the user is being asked to approve. The ID is the hash of
+ THIS text: change the wording and the old approval stops counting, which is
+ the whole point. Approval is single-use and recorded as FREIGABE_ERTEILT.
+ Leave the whole section out unless an approval is actually being requested;
+ an empty section states nothing. Tickets filed before 2026-09-13 keep their
+ formless approval and are deliberately not retrofitted (T-20260913-744071825).>
+
+--------------------------------------------------------------
 HISTORY / LOG
 --------------------------------------------------------------
 YYYY-MM-DD  Created.

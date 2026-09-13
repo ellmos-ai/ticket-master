@@ -65,6 +65,19 @@ directory (`tickets/*.txt`) counts as INBOX.
 - `data` — the user must supply data, information, or credentials.
 - `freigabe` — an explicit user approval/release is required (German term
   kept for consistency with the source taxonomy).
+  **Hash-bound and single-use (T-20260913-744071825):** whoever escalates to
+  `USER/freigabe` adds a `ZUR FREIGABE` section carrying the exact wording to be
+  approved and stamps the ID with
+  `ticket_mover.py --stamp-freigabe-id <ticket>` → field `FREIGABE_ID: frg_…`
+  (sha256 of that section, 20 hex digits; never set by hand). The user quotes
+  that ID and it is recorded with
+  `--mark-freigabe <ticket> --freigabe-id frg_… --agent <who>`. Fail-closed: a
+  wrong, missing or outdated ID leaves the file unchanged. If the wording changes
+  after approval it goes `stale` and no longer counts — which is the whole point
+  of the binding. An approval is single-use (`FREIGABE_ERTEILT`).
+  **Existing stock is deliberately not retrofitted:** tickets without the section
+  are `legacy` and keep their formless approval; computing an ID after the fact
+  would fake a binding that never happened.
 - `hardware` — a physical step/device only the user can perform.
 - `session` — a user-only launchable model, login session, or manual run.
 - `marker` — a marker/event must be supplied or confirmed by the user. Example:

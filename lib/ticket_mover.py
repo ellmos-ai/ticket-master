@@ -53,6 +53,7 @@ try:  # package import
         recover_expired_claim,
         release_contract,
     )
+    from .ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
     from .ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
         _LEGACY_STATUS_ALIASES,
@@ -77,6 +78,7 @@ except ImportError:  # direct import from lib on sys.path
         recover_expired_claim,
         release_contract,
     )
+    from ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
     from ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
         _LEGACY_STATUS_ALIASES,
@@ -88,6 +90,7 @@ except ImportError:  # direct import from lib on sys.path
 __all__ = [
     "ClaimDeniedError",
     "DuplicateTicketIdError",
+    "FreigabeError",
     "HostIdentityError",
     "NestedLifecycleDestinationError",
     "TicketCollisionError",
@@ -99,8 +102,11 @@ __all__ = [
     "normalize_expired_binding",
     "record_receipt",
     "recover_expired_claim",
+    "freigabe_state",
+    "mark_freigabe",
     "release_claim",
     "release_contract",
+    "stamp_freigabe_id",
 ]
 
 # Ordner, in denen ein Host-Suffix "ich arbeite gerade daran" bedeutet. NUR
@@ -897,7 +903,63 @@ def _cli(argv: list[str] | None = None) -> int:
                         help="Parent session ID for --mark-delegated; explicit value wins over provider runtime variables.")
     parser.add_argument("--session-host",
                         help="Session host; defaults to the host in --agent or runtime identity.")
+    # T-20260913-744071825. Deliberately NOT called --mark-released: in this
+    # module "release" already means handing back the host claim
+    # (release_claim/release_contract/release_claims). --mark-freigabe matches
+    # the STATUS subcategory `freigabe`, which both doc languages use untranslated.
+    parser.add_argument("--freigabe-status", metavar="TICKET",
+                        help="Report the hash-bound approval state of TICKET; writes nothing.")
+    parser.add_argument("--stamp-freigabe-id", metavar="TICKET",
+                        help=("Write the FREIGABE_ID of TICKET's 'ZUR FREIGABE' section "
+                              "so the user can quote it. Idempotent."))
+    parser.add_argument("--mark-freigabe", metavar="TICKET",
+                        help=("Record the user's approval for TICKET. Requires "
+                              "--freigabe-id and --agent; fail-closed on any mismatch."))
+    parser.add_argument("--freigabe-id",
+                        help="The FREIGABE_ID the user quoted, for --mark-freigabe.")
     args = parser.parse_args(argv)
+
+    freigabe_ops = [args.freigabe_status, args.stamp_freigabe_id, args.mark_freigabe]
+    if sum(1 for value in freigabe_ops if value) > 1:
+        parser.error("the freigabe operations are mutually exclusive")
+    if any(freigabe_ops) and (args.source or args.dest_dir or args.release_session
+                              or args.claim_current_host or args.mark_delegated):
+        parser.error("a freigabe operation cannot be combined with another operation")
+
+    if args.freigabe_status:
+        try:
+            state = freigabe_state(args.freigabe_status)
+        except OSError as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"FREIGABE {state['state'].upper()}: {args.freigabe_status}")
+        print(f"  current_id: {state['current_id'] or '-'}")
+        print(f"  stamped_id: {state['stamped_id'] or '-'}")
+        print(f"  granted:    {state['granted'] or '-'}")
+        return 0
+
+    if args.stamp_freigabe_id:
+        try:
+            stamped = stamp_freigabe_id(args.stamp_freigabe_id)
+        except (FreigabeError, OSError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"FREIGABE_ID: {stamped} ({args.stamp_freigabe_id})")
+        return 0
+
+    if args.mark_freigabe:
+        if not args.freigabe_id:
+            parser.error("--mark-freigabe requires --freigabe-id")
+        if not args.agent:
+            parser.error("--mark-freigabe requires --agent (who recorded the approval)")
+        try:
+            granted = mark_freigabe(
+                args.mark_freigabe, freigabe_id_value=args.freigabe_id, by=args.agent)
+        except (FreigabeError, OSError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        print(f"FREIGABE ERTEILT: {granted} ({args.mark_freigabe})")
+        return 0
 
     if args.verify_claim_host:
         if (args.claim_current_host or args.mark_delegated or args.release_session
