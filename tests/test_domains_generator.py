@@ -1751,3 +1751,146 @@ description: >
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMatchUsecaseSkills(unittest.TestCase):
+    """Phase 1b, T-20260913-150720021: the boss's OWN usecases matched to
+    skills that belong to none of its experts.
+
+    The rule's whole job is not to bleed over. Measured against the live
+    corpus on 2026-09-13 (368 skills, five bosses): a first, looser version
+    -- any shared token between usecase and skill name -- produced 1 correct
+    hit and 19 wrong ones, all from generic English nouns that happen to be
+    part of a skill name (`*-care`, `*-work`, `music-*`). The rule below
+    requires the FULL skill name to appear in the usecase; on the same corpus
+    that gives 1 hit, 0 false positives, and 0 skills whose name occurs
+    verbatim in a usecase without being found.
+    """
+
+    def _comp(self, comp_id, name):
+        return {"id": comp_id, "name": name, "description": "irrelevant here"}
+
+    def test_a_single_word_skill_named_in_the_usecase_is_found(self):
+        hits = dg.match_usecase_skills(
+            ["Kalender verwaltet werden soll"],
+            [self._comp("skill:assist:kalender", "kalender")],
+        )
+        self.assertEqual(len(hits), 1)
+        self.assertEqual(hits[0]["skill"], "skill:assist:kalender")
+        self.assertEqual(hits[0]["usecase"], "Kalender verwaltet werden soll")
+        self.assertEqual(hits[0]["matched_tokens"], ["kalender"])
+
+    def test_a_generic_name_fragment_does_not_bleed_over(self):
+        """The exact regression from the live measurement: nine `*-care`
+        skills attached themselves to "plan preventive care appointments"."""
+        hits = dg.match_usecase_skills(
+            ["plan preventive care appointments",
+             "organize work and schedules"],
+            [self._comp("skill:dev:github-repo-care", "github-repo-care"),
+             self._comp("skill:infrastructure:skill-family-care", "skill-family-care"),
+             self._comp("skill:therapy:genogram-work", "genogram-work"),
+             self._comp("skill:utilities:music-composer", "music-composer")],
+        )
+        self.assertEqual(hits, [])
+
+    def test_a_multi_token_skill_name_needs_all_its_tokens_in_the_usecase(self):
+        comps = [self._comp("skill:assist:location-suche", "location-suche")]
+        self.assertEqual(
+            dg.match_usecase_skills(["Locations gesucht werden"], comps),
+            [])
+        hits = dg.match_usecase_skills(
+            ["eine Location Suche starten"], comps)
+        self.assertEqual([h["skill"] for h in hits], ["skill:assist:location-suche"])
+
+    def test_grammar_words_are_not_match_keys(self):
+        """Without the stopword filter every usecase would offer its verbs and
+        auxiliaries, and a skill named after one would attach everywhere."""
+        hits = dg.match_usecase_skills(
+            ["Termine vorbereitet werden sollen"],
+            [self._comp("skill:x:werden", "werden"),
+             self._comp("skill:x:plan", "plan")],
+        )
+        self.assertEqual(hits, [])
+
+    def test_the_global_exact_match_exclusion_is_honoured(self):
+        """A skill already resolved as an expert or tool endpoint of this
+        domain is never listed a second time as a usecase endpoint."""
+        comps = [self._comp("skill:assist:kalender", "kalender")]
+        self.assertEqual(
+            dg.match_usecase_skills(
+                ["Kalender verwaltet werden soll"], comps,
+                claimed_ids={"skill:assist:kalender"}),
+            [])
+
+    def test_each_skill_is_reported_once_even_across_several_usecases(self):
+        hits = dg.match_usecase_skills(
+            ["Kalender verwaltet werden soll", "der Kalender ist zu pflegen"],
+            [self._comp("skill:assist:kalender", "kalender")],
+        )
+        self.assertEqual(len(hits), 1)
+
+    def test_an_empty_or_stopword_only_usecase_matches_nothing(self):
+        self.assertEqual(
+            dg.match_usecase_skills(
+                ["", "werden sollen und oder"],
+                [self._comp("skill:x:a", "a")]),
+            [])
+
+
+class TestBuildDomainsUsecaseSkills(unittest.TestCase):
+    def test_the_field_is_always_present_and_purely_additive(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            boss_dir = Path(tmp) / "agents" / "alltag"
+            boss_dir.mkdir(parents=True)
+            boss_dir.joinpath("SKILL.md").write_text("""---
+name: alltag
+orchestrates:
+  experts: [haushaltsmanagement]
+  services: []
+dependencies:
+  tools: []
+  services: []
+  workflows: []
+description: >
+  Boss-Agent fuer Alltag. Nutze diesen Skill wenn:
+  (1) Kalender verwaltet werden soll, (2) Haushalt organisiert werden soll.
+---
+""", encoding="utf-8")
+            registry = Path(tmp) / "components.json"
+            registry.write_text(json.dumps({"components": [
+                {"id": "skill:assist:kalender", "name": "kalender",
+                 "description": "Kalenderpflege",
+                 "provenance": {"origin": "custom", "origin_path": None}},
+            ]}), encoding="utf-8")
+
+            result = dg.build_domains(Path(tmp) / "agents", registry,
+                                      extra_boss_dirs=["alltag"])
+            domain = result["domains"][0]
+            self.assertIn("usecase_skills", domain)
+            self.assertEqual([h["skill"] for h in domain["usecase_skills"]],
+                             ["skill:assist:kalender"])
+            # Additive: every pre-existing key is still there and unchanged in shape.
+            for key in ("id", "label", "source_boss", "description", "usecases",
+                        "services", "experts"):
+                self.assertIn(key, domain)
+
+    def test_a_domain_without_any_usecase_hit_still_carries_the_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            boss_dir = Path(tmp) / "agents" / "leer"
+            boss_dir.mkdir(parents=True)
+            boss_dir.joinpath("SKILL.md").write_text("""---
+name: leer
+orchestrates:
+  experts: [irgendwer]
+  services: []
+dependencies:
+  tools: []
+  services: []
+  workflows: []
+description: >
+  Boss ohne passende Skills.
+---
+""", encoding="utf-8")
+            result = dg.build_domains(Path(tmp) / "agents", None,
+                                      extra_boss_dirs=["leer"])
+            self.assertEqual(result["domains"][0]["usecase_skills"], [])

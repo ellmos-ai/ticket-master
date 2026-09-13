@@ -15,7 +15,15 @@
       "label": "Example Domain",
       "source_boss": "example-boss-agent",
       "description": "Example boss agent. Use this skill when: (1) doing thing one, (2) doing thing two.",
-      "usecases": ["doing thing one", "doing thing two"],
+      "usecases": ["doing thing one", "doing thing two", "managing the calendar"],
+      "_comment_usecase_skills": "Phase 1b (T-20260913-150720021): skills covering a usecase of the BOSS itself, belonging to none of its experts -- they appear in no experts[] entry. The full skill name must occur as whole tokens in the usecase text, so expect too few entries rather than wrong ones.",
+      "usecase_skills": [
+        {
+          "skill": "skill:assist:calendar",
+          "usecase": "managing the calendar",
+          "matched_tokens": ["calendar"]
+        }
+      ],
       "services": [],
       "experts": [
         {
@@ -51,6 +59,7 @@
       "source_boss": "example-boss-whole",
       "description": "Example boss agent whose sub-experts are all covered by a single, more general standalone skill.",
       "usecases": ["doing thing one", "doing thing two"],
+      "usecase_skills": [],
       "services": [],
       "experts": [
         {
@@ -70,6 +79,7 @@
       "source_boss": "example-boss-no-experts",
       "description": "Example boss agent whose frontmatter lists no sub-experts at all.",
       "usecases": ["Example boss agent whose frontmatter lists no sub-experts at all"],
+      "usecase_skills": [],
       "services": [],
       "experts": [
         {

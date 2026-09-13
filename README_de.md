@@ -622,7 +622,14 @@ Personal-Assistant-Install:
   Experten (`"match": "domain"`); ein Boss ohne orchestrierte Experten
   bekommt stattdessen einen synthetischen `"__domain__:<boss>"`-
   Pseudo-Experten, da es sonst keinen Ort gibt, an dem der Treffer hängen
-  könnte. Schema: `config/domains.example.json`. Der aktuelle Generator kann
+  könnte. Seit T-20260913-150720021 (Phase 1b) trägt jede Domäne zusätzlich
+  `usecase_skills[]`: Skills, die einen Usecase des BOSSES selbst abdecken und
+  zu keinem seiner Experten gehören — sie tauchten sonst nirgends auf. Diese
+  Zuordnung ist bewusst die strengste von allen: der vollständige Skillname
+  muss als ganze Tokens im Usecase-Text stehen. Grund ist die Form der
+  Eingabe — ein Usecase ist ein Satz, kein Name; eine lockerere erste Fassung
+  ergab am Live-Bestand 1 richtigen und 19 falsche Treffer, alle aus
+  generischen Nomen innerhalb von Skillnamen. Schema: `config/domains.example.json`. Der aktuelle Generator kann
   zusätzlich einen Modulkatalog über `--modules-catalog` und die Frontmatter
   der Skill-Bibliothek über `--skill-library-dir` lesen. Die Herkunftsdaten der
   Skill-Bibliothek sind die primäre exakte Quelle, die alte Registry bleibt
