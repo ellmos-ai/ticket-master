@@ -744,8 +744,8 @@ foreign/exclusive lock → do not spawn, move the ticket to `BLOCKED/`
 (subcategory `lock`) or wait for release instead.
 
 Measuring and working is **never** done in the working tree of the main clone.
-A main clone can have an old feature branch checked out — in the BACH clone on
-2026-09-13, it was **193 commits behind origin/main**. Anyone measuring from
+A main clone can have an old feature branch checked out — in one measured case on
+2026-09-13 it was **193 commits behind origin/main**. Anyone measuring from
 there sees a state that has not existed on the default branch for weeks and
 reports bugs that have long been resolved (three documented cases in
 T-20260913-521294194: a PR against an already merged .gitignore rule, an

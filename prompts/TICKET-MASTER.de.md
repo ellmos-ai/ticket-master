@@ -785,7 +785,7 @@ PYTHONIOENCODING=utf-8 python "<HOME>/OneDrive/_scripts/lock_scan.py" \
 ```
 
 Gemessen und gearbeitet wird **nie** im Arbeitsbaum des Hauptklons. Ein
-Hauptklon kann einen alten Feature-Branch ausgecheckt haben — im BACH-Klon
+Hauptklon kann einen alten Feature-Branch ausgecheckt haben — in einem gemessenen Fall
 waren es am 2026-09-13 **193 Commits hinter origin/main**. Wer von dort misst,
 sieht einen Stand, den es auf dem Default-Branch seit Wochen nicht mehr gibt,
 und meldet Fehler, die längst behoben sind (drei belegte Fälle in
