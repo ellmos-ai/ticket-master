@@ -250,3 +250,81 @@ class TestCleanBestand(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestNonV1Folders(unittest.TestCase):
+    """T-20260913-580105077: ein flacher Ordner mit falschem Namen faellt
+    durch jede bestehende Pruefung.
+
+    ticket_mover weist VERSCHACHTELTE Ziele (USER/decision) fail-closed ab,
+    aber `DONE/` ist syntaktisch ein voellig normales Move-Ziel. Real am
+    2026-09-13 in der Live-Queue vorgefunden (leer, vermutlich per OneDrive von
+    einem anderen Host) -- es haette beinahe ein Ticket aufgenommen, das nach
+    SOLVED gehoerte.
+    """
+
+    def _queue(self, tmp: Path, *folders: str) -> Path:
+        for name in folders:
+            (tmp / name).mkdir(parents=True)
+        return tmp
+
+    def test_an_unknown_flat_folder_is_reported(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._queue(Path(tmp), "SOLVED", "DONE")
+            found = ticket_audit.non_v1_folders(base)
+            self.assertEqual([Path(p).name for p in found], ["DONE"])
+
+    def test_every_v1_cluster_and_legacy_folder_stays_silent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._queue(
+                Path(tmp), "INBOX", "ACTIONABLE", "QUEUED", "BLOCKED", "WAITING",
+                "USER", "PARKED", "SOLVED", "PENDING", ".USER")
+            self.assertEqual(ticket_audit.non_v1_folders(base), [])
+
+    def test_underscore_and_dot_plumbing_stays_silent(self):
+        """Praefix-Regel statt gepflegter Positivliste: eine Liste veraltet,
+        sobald jemand einen Infrastrukturordner anlegt, und meldet ihn dann
+        faelschlich -- woraufhin man die Pruefung ueberliest."""
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._queue(
+                Path(tmp), "_archive", "_ATTACHMENTS", "_templates", "_logs",
+                "_remember", "_SIG-TU", "_formalisiert-2026-09", ".git")
+            self.assertEqual(ticket_audit.non_v1_folders(base), [])
+
+    def test_files_are_not_folders(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "README.md").write_text("x", encoding="utf-8")
+            self.assertEqual(ticket_audit.non_v1_folders(base), [])
+
+    def test_the_finding_reaches_the_json_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = self._queue(Path(tmp), "SOLVED", "ERLEDIGT")
+            report = ticket_audit.audit(base)
+            self.assertEqual([Path(p).name for p in report["non_v1_folders"]],
+                             ["ERLEDIGT"])
+
+    def test_a_missing_queue_root_reports_nothing_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ticket_audit.non_v1_folders(Path(tmp) / "weg"), [])
+
+
+class TestStatusWithoutACluster(unittest.TestCase):
+    """Der Pfad, auf dem `cluster` None ist -- er erreicht
+    `_unknown_subcategory` NICHT, und das soll so bleiben.
+
+    Ein Guard dort waere nicht nur toter Code: `continue` wuerde diese Tickets
+    gar nicht mehr melden. Dieser Test nagelt fest, dass sie gemeldet werden.
+    """
+
+    def test_broken_status_lines_are_reported_as_unknown_status(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp) / "BLOCKED"
+            base.mkdir(parents=True)
+            for name, status in (("T-20260802-01.txt", ""),
+                                 ("T-20260802-02.txt", "/REVIEW"),
+                                 ("T-20260802-03.txt", "123 ohne cluster")):
+                (base / name).write_text(
+                    f"ID: {name[:-4]}\nSTATUS: {status}\n", encoding="utf-8")
+            findings = ticket_audit.status_drift(Path(tmp))
+            self.assertEqual([f["kind"] for f in findings], ["unknown-status"] * 3)

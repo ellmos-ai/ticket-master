@@ -547,7 +547,11 @@ paths such as `USER/decision`. The mover refuses such destinations before any
 write, and the audit reports existing nested tickets without migrating them.
 `ticket_audit.py --json` retains the existing `nested_lifecycle_tickets` path
 list and adds source, expected flat target, and target collision for every
-finding under `nested_lifecycle_details`.
+finding under `nested_lifecycle_details`. A FLAT folder with a wrong name slips
+past that guard — it is a syntactically perfect move target — so
+`non_v1_folders` reports any root folder that is neither a v1 cluster nor
+`_`/`.`-prefixed plumbing (T-20260913-580105077: an empty `DONE/` arrived via
+cloud sync and nearly took a ticket bound for `SOLVED/`). Report-only.
 
 ### Companion Pattern
 

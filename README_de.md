@@ -570,6 +570,11 @@ Schreibaktion ab; das Audit meldet vorhandene verschachtelte Tickets, ohne sie
 zu migrieren. `ticket_audit.py --json` behält dafür die vorhandene Pfadliste
 `nested_lifecycle_tickets` und ergänzt pro Fund unter
 `nested_lifecycle_details` Quelle, erwartetes flaches Ziel und Zielkollision.
+Ein FLACHER Ordner mit falschem Namen entgeht dieser Sperre — er ist ein
+syntaktisch einwandfreies Move-Ziel —, deshalb meldet `non_v1_folders` jeden
+Wurzelordner, der weder v1-Cluster noch `_`/`.`-Infrastruktur ist
+(T-20260913-580105077: ein leeres `DONE/` kam per Cloud-Sync an und hätte
+beinahe ein Ticket aufgenommen, das nach `SOLVED/` gehörte). Nur melden.
 
 ### Companion-Muster
 
