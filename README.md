@@ -174,6 +174,7 @@ A file dropped straight into `INBOX/` without the `T-` ticket prefix is a
 a ticket header, keeps the wording byte-identical in an "ORIGINALTEXT"
 block, and archives the source to `INBOX/_formalisiert/` (never deletes it).
 Idempotent — a source already named by an existing ticket is not re-filed.
+Note that `--from-file` and `--split-from` cannot be combined with routing flags; any such invocation aborts with an error instead of silently discarding the flags, as routing and contract metadata (including transfer and fork tickets) must be created via `--title`/`--body`.
 
 ```bash
 python lib/ticket_writer.py --from-file tickets/INBOX/some-note.txt --submitter agent-x
