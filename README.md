@@ -329,10 +329,16 @@ If `config/ticket-master.config.json` lives in a folder synced across
 several machines, a literal path only resolves on the host it was written
 on. `tickets_dir` and any `project_roots[].path` may instead use the
 placeholders `<HOME>` (current user's home directory) and `<USER>` (OS user
-name) — the agent following the TICKET-MASTER prompt resolves these to the
-current host's actual values before any file access. Same convention as
+name). Who resolves them differs per key: `tickets_dir` is expanded in code by
+`lib/config_paths.py`, so every CLI and library consumer sees the real path;
+`project_roots[].path` is read by the agent following the TICKET-MASTER prompt,
+which resolves it before any file access. Same convention as
 `config/ticket-writer.config.example.json`. See
 `config/ticket-master.config.example.json` for a worked example.
+
+The same module also accepts both queue directory names, `_TICKETS` and
+`TICKETS`, while that rename is in progress — a config pointing at either one
+keeps working, and nothing is created under the name that does not exist.
 
 ### Auditable CLI (`--list` / `--intake`)
 

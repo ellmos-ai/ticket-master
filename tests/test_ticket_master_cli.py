@@ -215,6 +215,14 @@ class TicketMasterCliTests(unittest.TestCase):
             self.assertEqual(json.loads(output.getvalue()), {"count": 0, "tickets": []})
             self.assertEqual(cli.main(["--list", "--config", str(base / "missing.json")]), 2)
 
+    def test_empty_project_roots_warns_on_startup_but_does_not_block(self):
+        cli = _load_cli()
+        self.assertEqual(cli.config_warnings({"project_roots": [{"path": "x"}]}), [])
+        for cfg in ({}, {"project_roots": []}, {"project_roots": "C:/repos"}):
+            warnings = cli.config_warnings(cfg)
+            self.assertEqual(len(warnings), 1, cfg)
+            self.assertIn("project_roots", warnings[0])
+
     def test_all_starters_delegate_to_shared_resolver(self):
         for name in ("ticket-master.sh", "ticket-master.bat", "ticket-master.ps1"):
             text = (ROOT / "bin" / name).read_text(encoding="utf-8")

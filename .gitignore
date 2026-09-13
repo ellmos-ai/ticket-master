@@ -93,3 +93,6 @@ desktop.ini
 
 # Multi-Agent Lock-System (lokal, nie committen)
 LOCK*.txt
+
+# tidy-up Papierkorb (Strays werden archiviert, nie geloescht)
+_archive/

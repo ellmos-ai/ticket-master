@@ -99,7 +99,8 @@
       `teilportiert` ALLE gelisteten Skills; optionale (harness-abhängige)
       Worker-Rollen-Wahl generisch im Modul, konkret (Claude-Code-
       Subagenten) in der privaten Instanz. Tests: 9 neue (32/32 gesamt).
-- [ ] **Phase 1b — Usecase-Level-Matching (Folgepunkt, 2026-07-04):** Der
+- [ ] **Phase 1b — Usecase-Level-Matching (Folgepunkt, 2026-07-04;
+      Ticket `T-20260913-150720021`):** Der
       Generator matcht nur die EXPERTEN-Ebene gegen Skills. Boss-EIGENE
       Usecases (im BACH-Bestand z.B. Dossier/Location/Route beim
       persönlichen Assistenten) haben aber teils bereits extrahierte
@@ -164,8 +165,12 @@
 - [x] `--intake "description"` flag: validate and exclusively pre-create an
       unclaimed `INBOX/` ticket file from the command line without the shared
       intake log; `QUEUED/` starts only after a real handover.
-- [ ] Config validation on startup: warn if `project_roots` is empty or provider
-      commands are not found in PATH.
+- [x] Config validation on startup: warn if `project_roots` is empty or provider
+      commands are not found in PATH. Die PATH-Haelfte war bereits als harter
+      Fehler umgesetzt (`shutil.which` in `launch_provider`); ergaenzt wurde
+      `config_warnings()` fuer leere `project_roots` -- Warnung statt Fehler, weil
+      GATE 1 ein Projekt noch ueber eine konfigurierte `maps`-Quelle aufloesen kann
+      (Retest-Befund B2). tidy-up 2026-09-13.
 
 ## Medium-term
 
@@ -283,7 +288,8 @@ unverändert ausstehend.
 
 ## Entscheidungs-Readback vor Eskalation (2026-08-26)
 
-- [ ] **(hoch)** Vor dem Verschieben eines Tickets nach `USER/` oder dem
+- [ ] **(hoch, Ticket `T-20260913-867541218`)** Vor dem Verschieben eines
+      Tickets nach `USER/` oder dem
       Markieren „Entscheidung offen“ den kanonischen Entscheidungsindex und
       die dort angegebene Primärquelle nach Ticketbegriffen, F-/E-Kennung und
       Entscheidungs-ID durchsuchen. Lehrfall T-20260824-857836410: E8/F17
@@ -299,7 +305,8 @@ Quelle: `ellmos-ai/FolderHome` @ `f9fdb6a` (unter Judging-Lock, nur gelesen),
 `src/folderhome/application/master_agent.py::confirm_master_agent_plan`,
 `application/workflow_execution.py`. Herkunft bei Übernahme im Code-Kommentar mitführen.
 
-- [ ] **Hashgebundene Einmal-Freigabe für `USER/freigabe`**: FolderHome erzeugt
+- [ ] **Hashgebundene Einmal-Freigabe für `USER/freigabe`** (Ticket
+      `T-20260913-744071825`): FolderHome erzeugt
       `plan_id = "plan_" + sha256(plan)[:20]`; eine Freigabe gilt nur bei **exakter**
       `plan_id`-Übereinstimmung und ist einmalig (`MasterConfirmationReceipt`). Übertragen:
       Ein Ticket in `USER/freigabe` trägt `FREIGABE_ID: frg_<sha256(freizugebender
@@ -330,7 +337,7 @@ kennt.
 | 1 | `USER / uac-live-abnahme` | **nein** (zusaetzlich mit Leerzeichen) |
 | 1 | `USER/manual-hardware-restart` | **nein** |
 
-- [ ] **Unterkategorie im Audit pruefen**: Ein Wert, der im Cluster-Vokabular
+- [ ] **Unterkategorie im Audit pruefen** (Ticket `T-20260913-204557243`): Ein Wert, der im Cluster-Vokabular
       nicht vorgesehen ist, sollte als eigener Befund erscheinen (analog zum
       2026-09-02 ergaenzten `legacy-header`), nicht stillschweigend
       durchgehen. Wichtig dabei: nur MELDEN. Die drei abweichenden Werte sind
