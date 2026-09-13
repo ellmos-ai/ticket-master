@@ -44,6 +44,13 @@ All notable changes to ticket-master are documented here.
   from `DECIDED-AND-DONE.md`, titled "ControlRoom-Umbauplan: E1–E9 entschieden
   (Votum des Users)" — the decision that was submitted again as open on
   2026-08-25.
+- Whole-key matching, not substring: the old two-digit ID form
+  `T-20260808-03` is a literal prefix of the nine-digit
+  `T-20260808-031234567`, so a plain `in` test reports a hit on an unrelated
+  ticket. A false hit is worse than no gate — it blocks a legitimate escalation
+  and teaches the next person to reach for `--acknowledge-decision` without
+  reading. Found while writing the review brief, fixed before review, pinned by
+  two tests.
 - Side finding fixed in the same pass: `config/ticket-writer.config.example.json`
   pointed `decisions-chain` at `_control-center/_DECISIONS/`, a folder that has
   not existed since the 2026-09-06 move to `_control-center/_CONTROL/_DECISIONS`

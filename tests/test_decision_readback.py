@@ -218,3 +218,35 @@ class TestReadbackCli(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKeyMatchingIsWholeKey(unittest.TestCase):
+    def test_a_short_id_does_not_match_inside_a_longer_one(self):
+        """Die alte zweistellige Form ist ein Praefix der neunstelligen:
+        T-20260808-03 steckt buchstaeblich in T-20260808-031234567. Ein
+        Teilstring-Test blockiert damit eine berechtigte Eskalation -- und
+        bringt dem Naechsten bei, --acknowledge-decision ungelesen zu tippen."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260901-004", "id": "D-20260901-004",
+                "status_class": "DONE", "title": "Fremder Vorgang",
+                "source_excerpt": "Quelle: Ticket T-20260808-031234567",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260808-03.txt")
+            moved = ticket_mover.move_ticket(ticket, queue / "USER")
+            self.assertIn("NICHT GEFUNDEN", moved.read_text(encoding="utf-8"))
+
+    def test_the_same_id_at_the_end_of_a_sentence_still_matches(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260901-004", "id": "D-20260901-004",
+                "status_class": "DONE", "title": "Derselbe Vorgang",
+                "source_excerpt": "Beschlossen zu T-20260808-03.",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260808-03.txt")
+            with self.assertRaises(ticket_mover.DecisionReadbackError):
+                ticket_mover.move_ticket(ticket, queue / "USER")

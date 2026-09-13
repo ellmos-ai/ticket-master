@@ -112,9 +112,18 @@ def _keys_from_ticket(text: str, ticket_name: str) -> list[str]:
 
 
 def _entry_matches(entry: dict[str, Any], key: str) -> bool:
+    """Whole-key match only -- a plain substring test is wrong here.
+
+    IDs are digit-suffixed and of differing lengths: the old two-digit form
+    ``T-20260808-03`` is a literal prefix of the nine-digit ``T-20260808-031234567``,
+    so ``key in value`` reports a hit on an unrelated ticket. A false hit is
+    worse than no gate at all: it blocks a legitimate escalation and teaches
+    the next person to reach for --acknowledge-decision without reading.
+    """
+    pattern = re.compile(re.escape(key) + r"\b")
     for field in _SEARCHED_FIELDS:
         value = entry.get(field)
-        if isinstance(value, str) and key in value:
+        if isinstance(value, str) and pattern.search(value):
             return True
     return False
 
