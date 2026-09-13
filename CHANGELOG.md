@@ -4,6 +4,40 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Hash-bound single-use approval for `USER/freigabe` (T-20260913-744071825)
+
+- New `lib/ticket_freigabe.py` plus three `ticket_mover.py` flags:
+  `--freigabe-status` (read-only), `--stamp-freigabe-id` (assign the ID so the
+  user can quote it) and `--mark-freigabe --freigabe-id … --agent …` (record the
+  approval). Adopted from ellmos-ai/FolderHome @ f9fdb6a
+  (`confirm_master_agent_plan`), read under its judging lock, not copied; the
+  origin is carried in the module docstring as the TODO required.
+- Fail-closed throughout: a wrong, missing or outdated ID, a second use of the
+  same one, or a ticket with no section leaves the file **byte-identical** —
+  the same contract `--claim-current-host` follows. Tests assert the bytes, not
+  just the exception.
+- **The hash source is a dedicated `ZUR FREIGABE` section, not the AUFTRAG
+  section.** AUFTRAG was the obvious candidate and does not carry: of the 17
+  tickets standing in `USER/freigabe` on 2026-09-13, only 7 have real AUFTRAG
+  text, 9 hold the empty placeholder and 1 has no such section. Hashing the
+  whole file is worse — every VERLAUF line would invalidate the approval.
+- **Existing stock is deliberately not retrofitted** (the open question in the
+  ticket). Those 17 keep the formless approval they were filed under; computing
+  an ID now would fake a binding that never happened, since the user never saw
+  that text under that ID. They report as `legacy` and the CLI refuses to
+  pretend. Verified read-only against the live queue: 17/17 `legacy`, every file
+  byte-identical after the scan.
+- An unfilled `<…>` placeholder counts as *no* text. Otherwise every unfilled
+  ticket would carry the same ID — one shared "approval" for arbitrary content.
+- Named `--mark-freigabe`, not `--mark-released` as the ticket sketched: in this
+  module "release" already means handing back the host claim
+  (`release_claim`/`release_contract`/`release_claims`), and a fourth unrelated
+  meaning on that word would be a trap. `freigabe` matches the STATUS
+  subcategory, which both documentation languages already use untranslated.
+- The generated ticket template is **not** given the section — it is added when
+  escalating. Both CATEGORIES docs describe the procedure; the queue template
+  `tickets/_templates/TICKET.txt` documents the section shape.
+
 ### The audit reports undocumented subcategories (T-20260913-204557243)
 
 - `status_drift()` gained an `unknown-subcategory` kind: the token after the
