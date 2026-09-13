@@ -749,7 +749,6 @@ def create_routed_ticket(
                     "transfer/fork requires primary_ticket, original_owner and receipt_to"
                 )
         metadata = contract_metadata(
-            ticket_id=ticket_id,
             ticket_kind=ticket_kind,
             target_snapshot=snapshot,
             primary_ticket=primary_ticket or ticket_id,
