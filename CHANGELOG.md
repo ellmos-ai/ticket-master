@@ -44,6 +44,13 @@ All notable changes to ticket-master are documented here.
   from `DECIDED-AND-DONE.md`, titled "ControlRoom-Umbauplan: E1–E9 entschieden
   (Votum des Users)" — the decision that was submitted again as open on
   2026-08-25.
+- A sub-decision ID in a ticket now also searches its parent. Tickets write
+  `D-20260906-008/E01`; the register indexes the parent `D-20260906-008`.
+  Searching only the written form found nothing — a false **negative**, and
+  precisely the "not found" this gate exists to stop being mistaken for "open".
+  Measured against the live register: the day's own decisions are booked in
+  exactly that notation, so without the base key the gate would have been silent
+  in the common case. The second reviewer read this point as sound; it was not.
 - Whole-key matching, not substring: the old two-digit ID form
   `T-20260808-03` is a literal prefix of the nine-digit
   `T-20260808-031234567`, so a plain `in` test reports a hit on an unrelated
