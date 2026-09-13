@@ -194,6 +194,41 @@ class TestFormalizeInformalEntry(unittest.TestCase):
             self.assertTrue(parent.exists())
             self.assertEqual(parent.read_text(encoding="utf-8"), parent_content)
 
+    def test_from_file_mit_nur_idempotency_key_bricht_ab(self):
+        """--from-file kombiniert mit nur --idempotency-key bricht per SystemExit ab.
+
+        Das Flag allein muss den Guard ausloesen: kein Ticket angelegt,
+        die Quelldatei liegt unveraendert am Platz (T-20260913-300971098).
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            verified_queue(base)
+            (base / "INBOX").mkdir(parents=True)
+            source = base / "INBOX" / "formlos-idempotency.txt"
+            source_content = "Wortlaut einer formlosen Einreichung mit Idempotency-Key."
+            source.write_text(source_content, encoding="utf-8")
+
+            err_buf = io.StringIO()
+            with contextlib.redirect_stderr(err_buf):
+                with self.assertRaises(SystemExit) as cm:
+                    ticket_writer._cli([
+                        "--from-file", str(source),
+                        "--tickets-dir", str(base),
+                        "--idempotency-key", "client-retry-key-42",
+                    ])
+
+            self.assertEqual(cm.exception.code, 2)
+            err_msg = err_buf.getvalue()
+            self.assertIn("--idempotency-key", err_msg)
+            self.assertIn("--from-file", err_msg)
+
+            # Fail-closed: kein Ticket angelegt, Quelle liegt unveraendert am Platz
+            created = list((base / "INBOX").glob("T-*.txt"))
+            self.assertEqual(len(created), 0)
+            self.assertTrue(source.exists())
+            self.assertEqual(source.read_text(encoding="utf-8"), source_content)
+            self.assertFalse((base / "INBOX" / "_formalisiert").exists())
+
     def test_from_file_ohne_routing_flags_laeuft_weiter(self):
         """Bestehender Gutpfad: --from-file allein ohne Routing-Flags legt das Ticket an."""
         with tempfile.TemporaryDirectory() as tmp:

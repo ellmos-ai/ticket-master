@@ -874,8 +874,8 @@ def _cli(argv: list[str] | None = None) -> int:
     # Fail-closed guard: the dispatch chain below evaluates --from-file and
     # --split-from before checking routing flags. Combining routing flags with
     # either mode would silently drop all routing metadata (ticket kind, target,
-    # route alias, ledger fields, etc.) and produce an unrouted formless ticket
-    # without any warning or error (T-20260913-300971098).
+    # route alias, ledger fields, idempotency key, etc.) and produce an unrouted
+    # formless ticket without any warning or error (T-20260913-300971098).
     routing_flags = [
         ("--ticket-kind", args.ticket_kind),
         ("--target-kind", args.target_kind),
@@ -889,6 +889,7 @@ def _cli(argv: list[str] | None = None) -> int:
         ("--receipt-to", args.receipt_to),
         ("--execution-matrix", args.execution_matrix),
         ("--binding-ttl", args.binding_ttl),
+        ("--idempotency-key", args.idempotency_key),
     ]
     set_routing = [flag for flag, val in routing_flags if val is not None]
     if set_routing and (args.from_file or args.split_from):
@@ -901,8 +902,8 @@ def _cli(argv: list[str] | None = None) -> int:
         parser.error(
             f"Routing flags ({conflicts}) cannot be combined with {modes_str}: "
             f"they would be silently ignored because {modes_str} takes precedence. "
-            f"Transfer and fork tickets must be created via --title / --body, "
-            f"not {modes_str}."
+            f"Routing and contract metadata (including transfer and fork tickets) "
+            f"must be created via --title / --body, not {modes_str}."
         )
     try:
         if args.from_file:
