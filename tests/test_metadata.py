@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 498
-LAST_CHECKED = "2026-09-13"
+EXPECTED_TEST_COUNT = 508
+LAST_CHECKED = "2026-09-16"
 
 
 def test_version_consistency():
@@ -217,3 +217,97 @@ def test_utf8_encoding_cleanliness():
                 assert "\ufffd" not in decoded, f"Unicode replacement character found in {file_path.name}"
                 for seq in mojibake_sequences:
                     assert seq not in raw, f"Double-encoded sequence found in {file_path.name}"
+
+
+def test_readme_18_point_quick_navigation_and_anchor_parity():
+    """Verify README.md and README_de.md have identical 18-point numbered navigation anchors."""
+    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
+
+    expected_anchors = [
+        "1-overview",
+        "2-key-capabilities",
+        "3-target-personas--discoverability",
+        "4-comparative-matrix-vs-alternatives",
+        "5-governance--runtime-invariants",
+        "6-architecture--routing-flow",
+        "7-roles--auditor-bridge",
+        "8-informal-intake--boot-menu",
+        "9-quick-start--starters",
+        "10-configuration--multi-host",
+        "11-routing-contract-v2--score-formula",
+        "12-cloud-ready-multi-system-claim-convention",
+        "13-personal-assistant-expansion--delegation",
+        "14-test-suite--verification-gates",
+        "15-ecosystem--sibling-tools",
+        "16-third-party-licenses--transparency",
+        "17-security-policy--sla",
+        "18-license--maintainers",
+    ]
+
+    for anchor in expected_anchors:
+        assert f'href="#{anchor}"' in readme_en or f'(#{anchor})' in readme_en, f"Anchor #{anchor} missing in README.md nav"
+        assert f'href="#{anchor}"' in readme_de or f'(#{anchor})' in readme_de, f"Anchor #{anchor} missing in README_de.md nav"
+        assert f'id="{anchor}"' in readme_en, f"Anchor id={anchor} missing in README.md body"
+        assert f'id="{anchor}"' in readme_de, f"Anchor id={anchor} missing in README_de.md body"
+
+
+def test_readme_target_personas_and_discoverability():
+    """Verify README.md and README_de.md define all 4 personas."""
+    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
+
+    for persona in ["[PERSONA-01]", "[PERSONA-02]", "[PERSONA-03]", "[PERSONA-04]"]:
+        assert persona in readme_en, f"Persona {persona} missing in README.md"
+        assert persona in readme_de, f"Persona {persona} missing in README_de.md"
+
+
+def test_readme_comparative_matrix_and_governance_invariants():
+    """Verify README.md and README_de.md contain the 10-dimension comparative matrix and invariants."""
+    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
+
+    invariants = [
+        "INV-LOCAL-01", "INV-WORKFLOW-02", "INV-ROUTING-03", "INV-CLAIM-04", "INV-COMPANION-05",
+        "INV-INTAKE-06", "INV-AUDITOR-07", "INV-UNPRIV-08", "INV-PORTABLE-09", "INV-SLA-10",
+    ]
+    for inv in invariants:
+        assert inv in readme_en, f"Invariant {inv} missing in README.md"
+        assert inv in readme_de, f"Invariant {inv} missing in README_de.md"
+
+
+def test_pyproject_pep621_extended_urls():
+    """Verify pyproject.toml contains Third-Party Licenses, Marketing Log, and LLM Ready in project.urls."""
+    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"Third-Party Licenses"' in pyproject_text
+    assert '"Marketing Log"' in pyproject_text
+    assert '"LLM Ready"' in pyproject_text
+
+
+def test_marketing_log_structure_and_completeness():
+    """Verify MARKETING-LOG.txt exists, contains required sections, personas, and invariants."""
+    mkt_file = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_file.is_file(), "MARKETING-LOG.txt missing"
+    content = mkt_file.read_text(encoding="utf-8")
+
+    assert "2026-09-16" in content
+    assert "Pfad B" in content
+    for persona in ["[PERSONA-01]", "[PERSONA-02]", "[PERSONA-03]", "[PERSONA-04]"]:
+        assert persona in content
+    for inv in [
+        "INV-LOCAL-01", "INV-WORKFLOW-02", "INV-ROUTING-03", "INV-CLAIM-04", "INV-COMPANION-05",
+        "INV-INTAKE-06", "INV-AUDITOR-07", "INV-UNPRIV-08", "INV-PORTABLE-09", "INV-SLA-10",
+    ]:
+        assert inv in content
+
+
+def test_third_party_licenses_zero_copyleft_and_invariants():
+    """Verify THIRD_PARTY_LICENSES.md contains 2026-09-16 audit date, zero-copyleft guarantee, and invariants."""
+    lic_file = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
+    assert lic_file.is_file()
+    content = lic_file.read_text(encoding="utf-8")
+    assert "2026-09-16" in content
+    assert "Zero-Copyleft Guarantee" in content
+    assert "RunAsInvoker" in content
+    assert "INV-LOCAL-01" in content
+    assert "INV-SLA-10" in content

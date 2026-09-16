@@ -14,15 +14,20 @@ für einen Sofort-Fix, oder durch Einpflegen ins projekteigene Task-Management, 
 Delegation nicht sinnvoll ist. Plattformübergreifend (Windows/macOS/Linux),
 multi-provider (Claude Code, Codex, agy/Gemini).
 
-[![Lizenz: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Tests](https://img.shields.io/badge/pytest-498%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-508%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![LLM-Bereit](https://img.shields.io/badge/LLM--Bereit-llms.txt-blueviolet)](llms.txt)
-[![Provider](https://img.shields.io/badge/provider-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#starter-matrix)
-[![Ökosystem: ellmos-ai](https://img.shields.io/badge/Ecosystem-ellmos--ai-blue.svg)](https://github.com/ellmos-ai)
-[![Dachorganisation: open-bricks](https://img.shields.io/badge/Umbrella-open--bricks-blueviolet.svg)](https://github.com/open-bricks)
+[![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--laufzeit-invarianten)
+[![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
+[![Sicherheits-SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
+[![Drittanbieter auditiert](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
+[![Marketing-Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
+[![LLM Bereit](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
+[![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#9-schnellstart--starter)
+[![Ecosystem: ellmos-ai](https://img.shields.io/badge/Ecosystem-ellmos--ai-blue.svg)](https://github.com/ellmos-ai)
+[![Umbrella: open-bricks](https://img.shields.io/badge/Umbrella-open--bricks-blueviolet.svg)](https://github.com/open-bricks)
 
 ---
 
@@ -31,20 +36,139 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 > [!NOTE]
 > KI-Agenten und RAG-Indexer finden maschinenlesbare Kontextinformationen, Suchbegriffe und Einstiegspunkte in [llms.txt](llms.txt).
 
-**Release-Status:** `v1.12.0` — `VERSION` und `pyproject.toml` melden beide
-`1.12.0`; dieses Release ergänzt die optionale `system-auditor`-Brücke
-(`lib/auditor_bridge.py`: Spawn/Skip-Verdikt, Sparmodus-Gate,
-Findings-zu-Tickets-Dedup) sowie die zuvor unversionierte TM-Kurzsprache/
-Boot-Kurzhilfe und das fail-closed Queue-ID-Gate. Es folgt auf den
-PEP-639-/SPDX-Metadaten-Patch `v1.11.3`, die nicht mutierende Einzelticket-
-`--dry-run`-Vorschau aus `v1.11.2`, das Routing-v2-Release `v1.11.0` und die
-mit `v1.10.0` getaggte Auskapselung von TICKET-WRITER/SIG-TU nach
-`ellmos-ai/system-auditor`. Eine gesonderte Veröffentlichung (PyPI, npm, …)
-wird nicht behauptet.
+**Release-Status:** `v1.12.0` — `VERSION` und `pyproject.toml` melden beide `1.12.0`; dieses Release ergänzt die optionale `system-auditor`-Brücke (`lib/auditor_bridge.py`: Spawn/Skip-Verdikt, Sparmodus-Gate, Findings-zu-Tickets-Dedup) sowie die zuvor unversionierte TM-Kurzsprache/Boot-Kurzhilfe und das fail-closed Queue-ID-Gate. Es folgt auf den PEP-639-/SPDX-Metadaten-Patch `v1.11.3`, die nicht mutierende Einzelticket-`--dry-run`-Vorschau aus `v1.11.2`, das Routing-v2-Release `v1.11.0` und die mit `v1.10.0` getaggte Auskapselung von TICKET-WRITER/SIG-TU nach `ellmos-ai/system-auditor`. Eine gesonderte Veröffentlichung (PyPI, npm, …) wird nicht behauptet.
 
 ---
 
-## Wie es funktioniert
+## Schnellnavigation
+
+1. [Überblick](#1-overview)
+2. [Kernfunktionen](#2-key-capabilities)
+3. [Zielgruppen & Auffindbarkeit](#3-target-personas--discoverability)
+4. [Vergleichsmatrix gegenüber Alternativen](#4-comparative-matrix-vs-alternatives)
+5. [Governance & Laufzeit-Invarianten](#5-governance--runtime-invariants)
+6. [Architektur & Routing-Ablauf](#6-architecture--routing-flow)
+7. [Rollen & Auditor-Brücke](#7-roles--auditor-bridge)
+8. [Formlose Einreichung & Boot-Menü](#8-informal-intake--boot-menu)
+9. [Schnellstart & Starter](#9-quick-start--starters)
+10. [Konfiguration & Multi-Host](#10-configuration--multi-host)
+11. [Routingvertrag v2 & Score-Formel](#11-routing-contract-v2--score-formula)
+12. [Cloud-Ready Multi-System Claim-Konvention](#12-cloud-ready-multi-system-claim-convention)
+13. [Personal-Assistant-Ausbau & Delegation](#13-personal-assistant-expansion--delegation)
+14. [Test-Suite & Verifikations-Gates](#14-test-suite--verification-gates)
+15. [Ökosystem & Geschwisterwerkzeuge](#15-ecosystem--sibling-tools)
+16. [Drittanbieter-Lizenzen & Transparenz](#16-third-party-licenses--transparency)
+17. [Sicherheitsrichtlinie & SLA](#17-security-policy--sla)
+18. [Lizenz & Maintainer](#18-license--maintainers)
+
+---
+
+<a id="1-overview"></a>
+<a id="1-ueberblick"></a>
+<a id="ueberblick"></a>
+## 1. Überblick
+
+`ticket-master` ist ein prompt-gesteuerter Workflow und Betriebsmodus, der eine aktive KI-Coding-Agenten-Sitzung in eine strukturierte, verlässliche **Position-0-Triage-Konsole** verwandelt. Anstatt als intransparenter, autonomer Hintergrunddienst zu agieren, stattet `ticket-master` den Agenten im Terminal mit systematischen Aufnahme-, Bewertungs-, Zuweisungs- und Routing-Fähigkeiten über den gesamten lokalen Repository-Bestand aus.
+
+Fällt während der Softwareentwicklung ein Bug, ein Refactoring-Bedarf oder eine Feature-Idee auf, wird diese formlos in die geöffnete Sitzung eingetippt. Der Agent strukturiert die Meldung in ein auditiertes Ticket, bewertet die Komplexität über fünf Dimensionen und delegiert die Aufgabe deterministisch an die am besten geeignete Provider-CLI (wie Claude Code, OpenAI Codex oder agy/Gemini) oder pflegt sie in das lokale Taskboard des Zielprojekts ein, falls Kontingente oder Prioritäten einen Aufschub erfordern.
+
+Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlangen, Tickets, Lebenszyklusordner und Audit-Logs verbleiben direkt auf dem lokalen Dateisystem. Die Koordination zwischen mehreren Entwicklungsrechnern erfolgt nahtlos über cloud-synchronisierten Speicher mittels atomarer Datei-Umbenennungen – ohne Datenbankserver, Cloud-Locks oder Hintergrund-Daemons.
+
+---
+
+<a id="2-key-capabilities"></a>
+<a id="2-kernfunktionen"></a>
+<a id="kernfunktionen"></a>
+## 2. Kernfunktionen
+
+| Kernfunktion | Beschreibung |
+|---|---|
+| **Schlanke Router-Architektur** | Hält den primären Triage-Agenten reaktionsschnell und schlank; die Code-Ausführung wird an Sub-Agenten delegiert, die kompakt Bericht erstatten. |
+| **Score-basiertes 5D-Routing** | Bewertet jedes Ticket über Klarheit, Komplexität, Kreativität, Kontext und Kritikalität zur Bestimmung der passenden Provider-Stufe (Tiers 1–4). |
+| **Token-sparendes Companion-Muster** | Fasst Tickets derselben Domäne in einem dedizierten Companion-Subagenten zusammen; Orientierungskosten fallen nur einmalig an. |
+| **Atomare Multi-System-Claims** | Multi-Host-sicheres Claim-Verfahren (`.claim-<host>-<ts>`) über atomare Dateisystem-Renames; 0 Datenbank-Abhängigkeiten, 0 Sync-Konflikte. |
+| **Deterministische Fallback-Ketten** | Mehrstufig konfigurierte Fallbacks garantieren, dass Aufgaben auch bei Provider-Ausfällen oder Rate-Limits nicht verloren gehen. |
+| **Formloser Intake & Formalisierung** | Automatische Erfassung formloser Notizen in `INBOX/` mit zeichengetreuer Aufbewahrung im `ORIGINALTEXT`-Block und sicherer Archivierung. |
+| **Auditor-Brücke & Sparmodus-Gate** | Nahtlose Schnittstelle zu `ellmos-ai/system-auditor`; wandelt Prüfbefunde fehlersicher unter Beachtung aktiver Token-Sparstufen in Entwurfstickets um. |
+| **0 externe Laufzeit-Abhängigkeiten** | Der Kern läuft vollständig auf der reinen Python-Standardbibliothek (`dependencies = []`); maximale Portabilität und Langlebigkeit. |
+| **Unprivilegierte Ausführung** | Läuft standardmäßig im Benutzermodus (`RunAsInvoker`) ohne Administratorrechte, Root-Zugriff oder UAC-Prompts. |
+
+---
+
+<a id="3-target-personas--discoverability"></a>
+<a id="3-zielgruppen--auffindbarkeit"></a>
+<a id="zielgruppen--auffindbarkeit"></a>
+## 3. Zielgruppen & Auffindbarkeit
+
+`ticket-master` löst Aufgaben-Orchestrierungs-, Triage- und Delegationsherausforderungen für vier primäre Entwickler-Zielgruppen:
+
+| Persona-ID | Zielgruppe | Primärer Bedarf | ticket-master Lösungsarchitektur |
+|---|---|---|---|
+| `[PERSONA-01]` | **Autonome KI-Coding-Agent-Engineers & Schwarm-Operatoren** | Deterministisches, strukturiertes und token-effizientes Routing von Programmieraufgaben an spezialisierte CLI-Agenten ohne manuelle Kontextübergabe. | „Position 0"-Triage-Konsole, 5-Dimensionen-Scoring (`10 - Clarity + Complexity + Creativity + Context + Criticality`), kompaktes Rückgabeprotokoll und Companion-Wiederverwendung. |
+| `[PERSONA-02]` | **Multi-Host & DevOps Automation Engineers** | Serverlose, plattformübergreifende Task-Queue-Verwaltung auf Windows, macOS und Linux ohne fragile Cloud-Lockouts oder Message-Broker. | Cloud-fähige Queue mit atomaren Dateinamen-Claims (`.claim-<host>-<ts>`), 0 externe Broker/Server und fail-closed Queue-Root-Prüfung. |
+| `[PERSONA-03]` | **Solo-Entwickler, Maintainer & CLI-Power-User** | Nahtlose Erfassung von Bug-Meldungen und Feature-Gedanken direkt aus dem Terminal ohne Unterbrechung des aktiven Programmierflusses. | Prompt-gesteuerte formlose Notizaufnahme (`--from-file`), byte-identische Erhaltung des Originaltexts in `ORIGINALTEXT` und saubere Projekt-Taskboard-Ablage. |
+| `[PERSONA-04]` | **Enterprise AI Safety, Governance & Compliance Officers** | Transparente, lokale Ausführungsgrenzen ohne Datenabfluss, lückenlose Ticket-Historie und verbindliche Lizenz- und Sicherheitszusagen. | 100% Offline-Architektur ohne Netzwerk-Egress, unprivilegierter `RunAsInvoker`-Benutzermodus, 0 Laufzeit-Abhängigkeiten und 48-Stunden Sicherheits-SLA. |
+
+### High-Intent Suchbegriffe
+
+Zur schnellen Auffindbarkeit in Entwickler-Verzeichnissen, Paketmanagern und Dokumentationssystemen:
+- `plattformübergreifender Multi-Provider LLM Task-Router für KI-Coding-Agenten`
+- `KI-Agenten Triage-Konsole für Claude Codex und Gemini`
+- `score-basiertes Prompt-gesteuertes Ticket-Routing für autonome Agenten`
+- `cloud-synchronisierte Multi-Host Agenten-Queue mit atomarem Claim-Rename`
+- `lokale Zero-Egress Aufgabenverwaltung und Triage für Software-Projekte`
+- `Companion-Muster Wiederverwendung von Sub-Agenten zur Token-Ersparnis`
+- `formlose Ticketerfassung und automatische Formalisierung per CLI`
+- `reine Python Standardbibliothek Task-Router ohne externe Abhängigkeiten`
+
+---
+
+<a id="4-comparative-matrix-vs-alternatives"></a>
+<a id="4-vergleichsmatrix-gegenueber-alternativen"></a>
+<a id="vergleichsmatrix-gegenueber-alternativen"></a>
+## 4. Vergleichsmatrix gegenüber Alternativen
+
+Die folgende Matrix vergleicht `ticket-master` mit bestehenden Issue-Trackern, Agenten-Plattformen und Task-Queues anhand von 10 technischen Dimensionen, die direkt auf unsere Governance-Invarianten abgestimmt sind:
+
+| Technische Dimension | Governance-Invariante | ticket-master | Traditionelle Issue-Tracker (Jira / Linear / GitHub) | Cloud-KI-Agenten-Plattformen (CrewAI / AutoGPT) | Ad-Hoc Chatbot-Fenster (ChatGPT / Claude Web) | Verteilte Task-Queues (Celery / RabbitMQ) |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **1. Offline-First & Zero Egress** | `INV-LOCAL-01` | **100% Lokal (Lokale Platte, 0 Telemetrie)** | Niedrig (Zwingendes SaaS/Cloud-Lock-in) | Niedrig (Zentrale Cloud-Telemetrie) | Niedrig (Proprietäre Cloud-Server) | Hoch (Self-hosted) / Niedrig (Cloud) |
+| **2. Prompt-Driven Agent Native** | `INV-WORKFLOW-02` | **Position-0-Agenten-Betriebsmodus** | Keine (Statische Web-Formulare/APIs) | Teilweise (Intransparente Daemon-Schleifen) | Gering (Manuelles Copy-Paste im Chat) | Keine (Reine Programmier-APIs/Worker) |
+| **3. Score-Basiertes 5D-Routing** | `INV-ROUTING-03` | **Deterministisches 5-Dimensionen-Scoring** | Keine (Manuelle Prioritäts-Labels) | Unvorhersehbar (Ad-Hoc LLM-Routing) | Keine (Nutzer wählt Modell manuell) | Basis (Ganzzahlige Prioritäten/Queues) |
+| **4. Atomare Multi-System-Claims** | `INV-CLAIM-04` | **Atomarer Datei-Rename (`.claim-…`)** | DB-Zeilensperren / SaaS-API | Cloud-DB-Sperren / Redis | Keine (Manueller Einzelnutzer) | Broker-verwaltete Consumer-Locks |
+| **5. Token-sparendes Companion-Muster** | `INV-COMPANION-05` | **Wiederverwendbare Domänen-Begleiter** | Keine | Gering (Voller Kontext pro Task gesendet) | Keine (Manuelle Neuorientierung) | Keine |
+| **6. Formloser Intake & Formalisierung** | `INV-INTAKE-06` | **Byte-erhaltend (`--from-file`)** | Keine (Weist Freitext-Dateien ab) | Gering (Unstrukturierte Prompt-Dumps) | Hoch (Akzeptiert Freitext, kein Schema) | Keine (Erfordert striktes Schema) |
+| **7. Auditor-Brücke & Sparmodus** | `INV-AUDITOR-07` | **Fail-Closed Token-Budget-Gate** | Keine | Keine | Keine | Keine |
+| **8. Unprivilegierte Ausführung** | `INV-UNPRIV-08` | **Strikter RunAsInvoker (Benutzermodus)** | Entfällt (Webanwendung) | Erfordert oft privilegierte Docker-Rechte | Entfällt (Browser) | Erfordert oft Systemdienst-Rechte |
+| **9. 0 Pflicht-Abhängigkeiten** | `INV-PORTABLE-09` | **Reine Python-Standardbibliothek (`[]`)** | Schwere Web-Stacks | Umfangreiche Abhängigkeitsbäume | Entfällt | Schwere Broker-Pakete (Erlang, Redis) |
+| **10. Sicherheits-SLA & Multi-OS CI** | `INV-SLA-10` | **48h SLA / Windows & Linux Matrix** | Enterprise-Hersteller-SLA | Community / Inaktiv | Proprietäre AGB-Bedingungen | Open-Source-Community |
+
+---
+
+<a id="5-governance--runtime-invariants"></a>
+<a id="5-governance--laufzeit-invarianten"></a>
+<a id="governance--laufzeit-invarianten"></a>
+## 5. Governance & Laufzeit-Invarianten
+
+`ticket-master` wird nach zehn unverhandelbaren Governance- und Laufzeit-Invarianten entwickelt und betrieben:
+
+- **`INV-LOCAL-01` (100% Offline & Local-First Zero-Egress):** Sämtliche Tickets, Lebenszyklus-Ordner (`INBOX`, `ACTIONABLE`, `QUEUED`, `BLOCKED`, `WAITING`, `USER`, `PARKED`, `PENDING`, `SOLVED`), Konfigurationen und Audit-Logs verbleiben ausnahmslos auf dem lokalen Dateisystem oder nutzergesteuerten Cloud-Sync-Verzeichnissen. Keine externen Netzwerkaufrufe, keine Telemetrie, kein Datenabfluss.
+- **`INV-WORKFLOW-02` (Prompt-Driven Agent-Native Workflow):** `ticket-master` fungiert als transparenter Arbeitsmodus („Position 0") für KI-Coding-Agenten. Der Agent führt die Schritte anhand strukturierter Prompts aus; keine intransparenten Hintergrund-Daemons übernehmen unüberwachte Eigenaktionen.
+- **`INV-ROUTING-03` (Score-Based 5-Dimension Routing):** Jedes Ticket wird objektiv nach fünf Dimensionen bewertet: Klarheit, Komplexität, Kreativität, Kontext und Kritikalität. Das Routing erfolgt anhand von Provider-Fähigkeitsstufen mit deterministischen Fallback-Ketten.
+- **`INV-CLAIM-04` (Atomic Multi-System Claim Convention):** Die Koordination zwischen mehreren Entwicklungsknoten basiert ausschließlich auf atomaren Dateisystem-Renames (`.claim-<host>-<ts>`). Keine Datenbankserver, keine Lock-Dateien, keine Cloud-Sync-Blockaden.
+- **`INV-COMPANION-05` (Token-Saving Companion Pattern):** Bei Ticket-Serien derselben Domäne wird ein Companion-Subagent gestartet und wiederverwendet. Dadurch fallen Orientierungskosten nur einmal an, was den Token-Verbrauch drastisch reduziert.
+- **`INV-INTAKE-06` (Informal Intake & Byte-Preserving Formalization):** Formlose Notizen in `INBOX/` werden durch `ticket_writer.py --from-file` idempotent mit einem Ticket-Header versehen, im `ORIGINALTEXT`-Block zeichengetreu bewahrt und nach `INBOX/_formalisiert/` verschoben, ohne Originale zu löschen.
+- **`INV-AUDITOR-07` (Auditor Bridge & Fail-Closed Sparmodus Gate):** Die Brücke zu `ellmos-ai/system-auditor` respektiert aktive Token-Sparmodus-Stufen (`spar_gate`), verhindert unnötige Läufe und wandelt Befunde mit automatischer Deduplizierung in Entwurfstickets um.
+- **`INV-UNPRIV-08` (Unprivileged User-Mode Operation — `RunAsInvoker`):** Alle Werkzeuge, Starter und Skripte laufen mit normalen Benutzerrechten ohne UAC-Elevation, Root-Rechte oder administrative Privilegien.
+- **`INV-PORTABLE-09` (Zero Mandatory Runtime Dependencies):** Kern und Kommandozeilenwerkzeuge nutzen ausschließlich die Python-Standardbibliothek (`dependencies = []`). Optionale Extras wie `clutch-router` sind sauber isoliert.
+- **`INV-SLA-10` (Open-Source Governance & 48h Security SLA):** Freie MIT-Lizenz, offene PEP 621/639 Metadaten, Multi-OS CI-Matrix (Ubuntu, Windows) auf Python 3.10–3.13 und ein verbindliches 48-Stunden-Sicherheits-Reaktionsfenster.
+
+---
+
+<a id="6-architecture--routing-flow"></a>
+<a id="6-architektur--routing-ablauf"></a>
+<a id="architektur--routing-ablauf"></a>
+## 6. Architektur & Routing-Ablauf
 
 ticket-master ist ein **prompt-gesteuerter Workflow**: Der Agent liest den
 TICKET-MASTER-Prompt und folgt ihm. Jeder Schritt unten ist etwas, das der *Agent*
@@ -71,44 +195,28 @@ Position 0 — waiting for next ticket
 
 ```mermaid
 graph TD
-    User([User reports bug / change request]) --> Position0[Triage Console: Position 0]
+    User([Nutzer meldet Bug / Änderung]) --> Position0[Triage-Konsole: Position 0]
     Position0 --> GATE1{GATE 1: Intake}
-    GATE1 -->|Create via ticket_writer.py| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
-    TxtFile --> GATE2{GATE 2: Characterise & Score}
-    GATE2 -->|Calculate Score| Score[Score = 10-Clarity + Complexity + Creativity + Context + Criticality]
-    Score --> Router{Router Decision}
+    GATE1 -->|Erzeugen via ticket_writer.py| TxtFile[tickets/INBOX/T-YYYYMMDD-#########.txt]
+    TxtFile --> GATE2{GATE 2: Charakterisieren & Bewerten}
+    GATE2 -->|Score berechnen| Score[Score = 10-Klarheit + Komplexität + Kreativität + Kontext + Kritikalität]
+    Score --> Router{Router-Entscheidung}
     
-    Router -->|Tier 1-4 & Urgent| GATE4{GATE 4: Delegate}
-    Router -->|Backlog/Low Urgency| TaskDB[Project Task Board<br>tickets/PARKED/]
-    Router -->|Manual Handoff| UserHandoff[User Intervention<br>tickets/USER/]
+    Router -->|Tier 1-4 & Dringend| GATE4{GATE 4: Delegieren}
+    Router -->|Backlog/Geringe Dringlichkeit| TaskDB[Projekt-Taskboard<br>tickets/PARKED/]
+    Router -->|Manuelle Übergabe| UserHandoff[Nutzer-Entscheidung<br>tickets/USER/]
     
-    GATE4 -->|Success| Solved[tickets/SOLVED/<br>Commit & Verify]
-    GATE4 -->|Fail / Timeout| Fallback[Fallback Chain<br>Next Best Provider]
+    GATE4 -->|Erfolg| Solved[tickets/SOLVED/<br>Commit & Verifizieren]
+    GATE4 -->|Fehlschlag / Timeout| Fallback[Fallback-Kette<br>Nächster Provider]
     Fallback --> GATE4
 ```
 
-Kernprinzipien (wie der Agent angewiesen wird, sich zu verhalten):
-
-- **Lean Router:** Der Agent bleibt in diesem Modus schlank. Ausführung wird an
-  Subagenten delegiert, die kompakt zurückmelden (Commit-Hash + eine Zeile).
-- **Companion-Muster:** Für eine Ticket-Serie im gleichen Bereich spawnt der Agent
-  einen Companion-Subagenten einmal und verwendet ihn wieder.
-- **Score-basiertes Routing:** Der Agent bewertet jedes Ticket auf fünf Dimensionen
-  (Klarheit, Komplexität, Kreativität, Kontext, Kritikalität), um den
-  benötigten Provider-Tier zu bestimmen.
-- **Graceful Fallback:** Wenn der bevorzugte Provider nicht verfügbar ist,
-  stellt die Fallback-Kette des Prompts sicher, dass kein Ticket verloren geht.
-- **Provider-agnostisch:** Funktioniert mit jedem CLI-basierten LLM-Provider.
-  Prompt und Config bringen Unterstützung für Claude, Codex und agy (Gemini) mit.
-  Erweiterbar per Config.
-- **Cloud-Ready / Multi-System:** Die Ticket-Queue funktioniert auf mehreren
-  Maschinen, die einen cloud-synced Ordner (OneDrive, Dropbox, Google Drive) teilen.
-  Claims werden per Dateiname-Rename signalisiert — atomar auf NTFS, keine Lock-Dateien
-  nötig.
-
 ---
 
-## Rollen
+<a id="7-roles--auditor-bridge"></a>
+<a id="7-rollen--auditor-bruecke"></a>
+<a id="rollen--auditor-bruecke"></a>
+## 7. Rollen & Auditor-Brücke
 
 <p align="center">
   <img src="assets/comics/ticket-master.svg" alt="TICKET-MASTER" width="45%"/>
@@ -116,88 +224,54 @@ Kernprinzipien (wie der Agent angewiesen wird, sich zu verhalten):
   <img src="assets/comics/ticket-writer.svg" alt="TICKET-WRITER (SIG-TU)" width="45%"/>
 </p>
 
-- **TICKET-MASTER**: Dünner Router und Verkehrsleiter. Verteilt eingehende Tickets ruhig an spezialisierte Subagenten oder Projektaufgaben-Boards.
-- **TICKET-WRITER („SIG-TU")**: System Integrity Guardian — **in ein eigenes Modul ausgekapselt.** Siehe unten.
+- **TICKET-MASTER**: Schlanker Verkehrsrouter & Dispatcher. Verteilt eingehende Tickets ruhig an Worker-Subagenten oder das projektbezogene Task-Management.
+- **TICKET-WRITER („SIG-TU")**: Wächter über Systemintegrität — **ausgekapselt in ein eigenes Modul.** Siehe unten.
 
-### Aus TICKET-WRITER wurde `system-auditor`
+### TICKET-WRITER ist jetzt `system-auditor`
 
-Die Prüfrolle, die früher hier wohnte, hat ein eigenes Zuhause:
+Die hier früher enthaltene Audit-Rolle hat ihr eigenes Zuhause:
 **[`ellmos-ai/system-auditor`](https://github.com/ellmos-ai/system-auditor)**.
 
-**Warum sie gegangen ist.** Eine Rolle, die quer über *alle* Policy-, Entscheidungs- und
-Gedächtnisspeicher eines Systems liest, ist kein Ticket-Modul — sie hat Tickets nur als
-Ausgabekanal benutzt. Der Verlegungs-Vorbehalt in `prompts/TICKET-WRITER.de.md` sagt das
-seit dem 2026-07-31 („möglicherweise kein Ticket-Modul, sondern eine eigene Domäne"); damit
-ist er aufgelöst.
+**Warum die Auskapselung?** Eine Rolle, die über *alle* Richtlinien-, Entscheidungs- und Speicherstände eines Systems liest, ist kein Ticket-Modul — Tickets waren für sie nur der Ausgabekanal. Der Auskapselungs-Hinweis in `prompts/TICKET-WRITER.de.md` hielt dies seit 2026-07-31 fest („womöglich kein Ticket-Modul, sondern eine eigene Domäne").
 
-**Was die Trennung bringt.** Der Auditor hat Fähigkeiten entwickelt, die mit
-Ticket-Verwaltung nichts zu tun haben und hier fehl am Platz gewesen wären: Audits tragen
-vier Token (Zeitraum, Domäne, System, Auditor), und wer einige festhält und genau einen
-variieren lässt, erhält **Meta-Audits** — über Maschinen, über Modelle (Interrater), über
-Domänen. Zwei Maschinen, die dieselbe Domäne prüfen, kommen berechtigt zu verschiedenen
-Ergebnissen, weil jede ihre eigene Wirklichkeit sieht; genau dieser Unterschied ist das
-Produkt, und er braucht einen eigenen Lebenszyklus.
+**Was bringt die Trennung?** Der Auditor hat Fähigkeiten entwickelt, die mit Ticket-Handling nichts zu tun haben: Audits tragen vier Dimensionen (Periode, Domäne, System, Auditor). Werden einige fixiert und andere variiert, entstehen **Meta-Audits** — rechnerübergreifend, modellübergreifend (Interrater) und domänenübergreifend. Zwei Rechner, die dieselbe Domäne prüfen, dürfen berechtigt unterschiedliche Befunde liefern; diese Differenz ist das Erkenntnisprodukt und benötigt einen eigenen Lebenszyklus.
 
-**Was hier bleibt.** Alles rund um Tickets: Format, Kategorien, Lebenszyklus, IDs, Routing.
-Der Auditor ist jetzt schlichter **Konsument** — er kennt eine Schnittstelle, „lege eine
-Maßnahme an", und bekommt eine Referenz zurück. Er vergibt keine Ticket-IDs und kennt den
-Kategorienbaum nicht. Wo kein Ticketsystem installiert ist, schreibt er stattdessen Dateien.
+**Was bleibt hier?** Alles rund um Tickets: Format, Kategorien, Lebenszyklus, IDs, Routing. Der Auditor ist heute ein reiner **Konsument** — er kennt eine Schnittstelle („Maßnahme erfassen") und erhält eine Referenz zurück.
 
-**Migration.** `prompts/TICKET-WRITER.*.md` bleiben vorerst liegen, als abgelöst markiert
-und auf den neuen Rollen-Prompt verweisend. Nichts in diesem Repository hängt an ihnen.
+**Migration:** `prompts/TICKET-WRITER.*.md` bleiben vorerst als historische Nachweise erhalten, als überholt markiert und mit Verweis auf den neuen Rollen-Prompt. Nichts in diesem Repository hängt mehr von ihnen ab.
 
-### Auditor-Brücke (optional, nur falls `system-auditor` installiert ist)
+### Auditor-Brücke (optional, wenn `system-auditor` installiert ist)
 
-`lib/auditor_bridge.py` ist eine dünne, opt-in Brücke zum Schwestermodul
-[`system-auditor`](https://github.com/ellmos-ai/system-auditor). Sind beide auf einem Host
-installiert, kann Schritt **(c6)** des TICKET-MASTER-Prompts beim Sessionstart einen
-system-auditor-Lauf spawnen und **betreuen** (zeitgesteuert, standardmäßig aus), ihn
-überspringen, solange ein Claude-Code-Sparmodus/Notaus-Stand aktiv ist, und seine
-`findings/*.md` in INBOX-Ticket-Entwürfe verwandeln (`--findings-to-tickets`). Ein Codewort
-(`audit!` per Default, `auditor_bridge.codeword` in der Config) startet einen Lauf manuell,
-unabhängig vom Zeittrigger.
+`lib/auditor_bridge.py` ist eine schlanke, opt-in Brücke zum Schwestermodul [`system-auditor`](https://github.com/ellmos-ai/system-auditor). Sind beide auf einem Host installiert, kann Schritt **(c6)** des TICKET-MASTER-Prompts beim Start der Sitzung einen System-Auditor-Lauf anstoßen und *überwachen* (zeitgesteuert, standardmäßig aus), ihn überspringen, solange eine Claude-Code-Sparmodus-/Notaus-Stufe aktiv ist, und seine `findings/*.md` in Entwurfstickets in `INBOX/` überführen (`--findings-to-tickets`). Ein Codewort (standardmäßig `audit!`, konfigurierbar über `auditor_bridge.codeword`) löst den Lauf jederzeit manuell aus.
 
-Die Brücke rechnet die eigene Fenster-/Rotations-/Fälligkeitslogik von system-auditor
-niemals nach und führt keinen zweiten Zeitstempel-Speicher — `decide()` fragt nur die
-installierte CLI und den bestehenden Sparmodus-Hook und kombiniert deren Antworten. Alle
-vier Bausteine (`detect_auditor()`/`due_check()`/`spar_gate()`/`findings_to_tickets()`)
-sind reine, unabhängig testbare Funktionen; der vollständige Vertrag steht im
-Moduldocstring von `lib/auditor_bridge.py` sowie im `auditor_bridge`-Block von
-`config/ticket-master.config.example.json`.
+Die Brücke berechnet system-auditor's eigene Intervall- und Rotationslogik nicht nach und führt keinen zweiten Zeitstempel-Speicher — `decide()` befragt lediglich die installierte CLI sowie den Sparmodus-Hook und verknüpft deren Antworten. Alle vier Bausteine (`detect_auditor()`/`due_check()`/`spar_gate()`/`findings_to_tickets()`) sind unabhängige, testbare Funktionen.
 
 ```bash
-python lib/auditor_bridge.py --check                       # decide()-Verdikt als JSON
-python lib/auditor_bridge.py --check --manual               # Codewort-Pfad (umgeht enabled/due)
-python lib/auditor_bridge.py --findings-to-tickets          # Trockenlauf: was WÜRDE angelegt
-python lib/auditor_bridge.py --findings-to-tickets --apply  # Ticket-Entwürfe wirklich anlegen
+python lib/auditor_bridge.py --check                       # decide()-Ergebnis als JSON
+python lib/auditor_bridge.py --check --manual               # Codewort-Pfad (ignoriert due/enabled)
+python lib/auditor_bridge.py --findings-to-tickets          # Dry-Run: was WÜRDE angelegt werden
+python lib/auditor_bridge.py --findings-to-tickets --apply  # Entwurfstickets tatsächlich anlegen
 ```
+
+---
+
+<a id="8-informal-intake--boot-menu"></a>
+<a id="8-formlose-einreichung--boot-menue"></a>
+<a id="formlose-einreichung--boot-menue"></a>
+## 8. Formlose Einreichung & Boot-Menü
 
 ### Formlose Einreichung (Entscheid 3A)
 
-Eine Datei, die direkt ohne "T-"-Ticketpräfix in `INBOX/` landet, ist ein
-**formloser Eintrag**, kein Clutter — `ticket_audit.audit()` meldet ihn unter
-`informal_entries`, getrennt von `non_ticket_files`. STARTSEQUENZ-Schritt
-**(c7)** formalisiert jeden über `ticket_writer.py --from-file`: setzt einen
-Ticketkopf davor, hält den Wortlaut bytegleich in einem
-"ORIGINALTEXT"-Block und archiviert die Quelle nach
-`INBOX/_formalisiert/` (nie löschen). Idempotent — eine Quelle, die ein
-bestehendes Ticket bereits nennt, wird nicht erneut angelegt.
-Zu beachten: `--from-file` und `--split-from` sind nicht mit Routing-Flags kombinierbar; ein solcher Aufruf bricht jetzt mit einem Fehler ab, statt die Flags stillschweigend zu verwerfen — Routing- und Kontraktmetadaten (inklusive Transfer- und Fork-Tickets) entstehen über `--title`/`--body`.
+Eine Datei, die ohne das `T-`-Präfix direkt in `INBOX/` abgelegt wird, ist ein **formloser Eintrag**, kein Müll — `ticket_audit.audit()` führt sie unter `informal_entries`, getrennt von `non_ticket_files`. STARTUP SEQUENCE Schritt **(c7)** formalisiert jede davon über `ticket_writer.py --from-file`: Sie erhält einen Ticket-Header, behält den exakten Wortlaut in einem „ORIGINALTEXT"-Block und wird nach `INBOX/_formalisiert/` verschoben (nie gelöscht). Idempotent — Quellen, die bereits in einem bestehenden Ticket referenziert sind, werden nicht erneut verarbeitet. `--from-file` und `--split-from` können nicht mit Routing-Flags kombiniert werden; ein solcher Aufruf bricht mit einem kontrollierten Fehler ab, da Routing- und Vertragsmetadaten über `--title`/`--body` angelegt werden müssen.
 
 ```bash
-python lib/ticket_writer.py --from-file tickets/INBOX/notiz.txt --submitter agent-x
+python lib/ticket_writer.py --from-file tickets/INBOX/eine-notiz.txt --submitter agent-x
 python lib/ticket_audit.py tickets --lint   # Pflichtfelder, STATUS-Vokabular, doppelte Blöcke
 ```
 
-### Boot-Menü Rollen-Spawn (Entscheid 5A)
+### Boot-Menü Rollen-Angebot (Entscheid 5A)
 
-`lib/boot_menu.py` ist ein reiner Datenhelfer für das Rollen-Spawn-Menü am
-Ende der Startsequenz (Schritt (c5)/(c6)) — startet selbst nie einen
-Prozess. `--offer` druckt die verfügbaren Rollen, Spawn-Modi (`3:1`/`3:3`/
-`2:2`/`1:1`, dazu die Aliase `3 in 1`/`only1`/`only2`/`3x3`), die
-Modellliste (aus `clutch models --json`, sonst sichtbarer Fallback auf die
-`providers` dieser Config) und den `self_model()` des ticket-master (eine
-Harness-Selbstauskunft, sonst `unknown` — nie geraten):
+`lib/boot_menu.py` ist ein reines Datenwerkzeug für das Rollenmenü am Ende der Boot-Sequenz (Schritt (c5)/(c6)) — es startet niemals selbst Prozesse. `--offer` gibt die verfügbaren Rollen, Instanz-Modi (`3:1`/`3:3`/`2:2`/`1:1`, inklusive Aliase `3 in 1`/`only1`/`only2`/`3x3`), die Modellliste (aus `clutch models --json`, sonst Fallback auf die konfigurierten `providers`) und das eigene `self_model()` des Ticket-Masters aus:
 
 ```bash
 python lib/boot_menu.py --offer
@@ -205,230 +279,127 @@ python lib/boot_menu.py --offer
 
 ---
 
-## Schnellstart
+<a id="9-quick-start--starters"></a>
+<a id="9-schnellstart--starter"></a>
+<a id="schnellstart--starter"></a>
+<a id="starter-matrix"></a>
+## 9. Schnellstart & Starter
 
 ```bash
-# 1. Clone the repository
+# 1. Repository klonen
 git clone https://github.com/ellmos-ai/ticket-master.git
 cd ticket-master
 
-# 2. Copy and edit the config
+# 2. Konfiguration anpassen
 cp config/ticket-master.config.example.json config/ticket-master.config.json
-# -> Edit config/ticket-master.config.json:
-#    - Add your project directories to project_roots[]
-#    - Verify provider commands match your installed CLIs
+# -> Bearbeite config/ticket-master.config.json:
+#    - Füge deine Projektverzeichnisse zu project_roots[] hinzu
+#    - Stelle sicher, dass die Provider-Befehle mit deinen installierten CLIs übereinstimmen
 
-# 3. Launch (default: Claude)
+# 3. Starten (Standard: Claude)
 ./bin/ticket-master.sh               # Unix/macOS
 .\bin\ticket-master.bat              # Windows CMD
 .\bin\ticket-master.ps1              # Windows PowerShell
 ```
 
-Das startet deinen gewählten CLI-Provider mit dem TICKET-MASTER-Prompt der
-gewählten Sprache aus `prompts_dir` (Standard:
-`prompts/TICKET-MASTER.<lang>.md`, Englisch). Der Agent
-liest den Prompt, orientiert sich an deinen Projekten und geht auf **Position 0** —
-wartet still auf dein erstes Ticket.
+Dies startet deinen gewählten CLI-Provider mit dem TICKET-MASTER-Prompt für die ausgewählte Sprache (Standard: Englisch). Der Agent liest den Prompt, orientiert sich auf deinen Projekten und begibt sich in **Position 0** — wartend auf dein erstes Ticket.
 
 ### Prompt-Sprache
 
-Der Agenten-Prompt liegt in zwei vollwertigen, inhaltsgleichen Versionen vor:
-
+Der Prompt liegt in zwei gleichwertigen Fassungen vor:
 - `prompts/TICKET-MASTER.en.md` (Englisch, Standard)
 - `prompts/TICKET-MASTER.de.md` (Deutsch)
 
-Die Sprache wird über die Umgebungsvariable `TM_LANG` gewählt; die Starter laden
-`prompts/TICKET-MASTER.${TM_LANG}.md` und fallen mit einer Warnung auf Englisch
-zurück, falls die angeforderte Datei fehlt. Das Config-Feld `default_language`
-dokumentiert den vorgesehenen Standard.
+Wähle die Sprache über die Umgebungsvariable `TM_LANG`:
 
 ```bash
-TM_LANG=de ./bin/ticket-master.sh        # German prompt
-TM_LANG=en ./bin/ticket-master.sh        # English prompt (default)
+TM_LANG=de ./bin/ticket-master.sh        # Deutscher Prompt
+TM_LANG=en ./bin/ticket-master.sh        # Englischer Prompt (Standard)
 ```
 
 ```powershell
 $env:TM_LANG = "de"; .\bin\ticket-master.ps1
 ```
 
----
+### Starter-Matrix
 
-## Starter-Matrix
+Die providerneutralen Starter `START.bat` und `start.sh` im Root werden aus `roles[]` von COMA generiert. Die folgende Tabelle führt die direkten, manuell gepflegten Einstiegspunkte auf:
 
-Die anbieterneutralen Rollenstarter `START.bat` und `start.sh` im Repository-Wurzelverzeichnis werden aus `roles[]` von COMA erzeugt (`python -m coma starters generate --manifest ellmos-module.v2.json --output-dir .`) und nicht von Hand bearbeitet, sondern neu erzeugt. Sie bevorzugen die unified-gui-Konsole und fallen auf COMA zurueck. Die Tabelle unten listet die direkten Dispatcher-Einstiege, die handgeschrieben bleiben.
-
-| Betriebssystem | Provider | Befehl |
-|----------------|----------|--------|
-| Unix / macOS | Claude | `./bin/providers/start-claude.sh` oder `./bin/ticket-master.sh --provider claude` |
-| Unix / macOS | Codex | `./bin/providers/start-codex.sh` oder `./bin/ticket-master.sh --provider codex` |
-| Unix / macOS | agy (Gemini) | `./bin/providers/start-agy.sh` oder `./bin/ticket-master.sh --provider agy` |
-| Unix / macOS | Kimi | `./bin/providers/start-kimi.sh` oder `./bin/ticket-master.sh --provider kimi` |
-| Windows CMD | Claude | `bin\providers\start-claude.bat` oder `bin\ticket-master.bat --provider claude` |
-| Windows CMD | Codex | `bin\providers\start-codex.bat` oder `bin\ticket-master.bat --provider codex` |
-| Windows CMD | agy (Gemini) | `bin\providers\start-agy.bat` oder `bin\ticket-master.bat --provider agy` |
-| Windows CMD | Kimi | `bin\providers\start-kimi.bat` oder `bin\ticket-master.bat --provider kimi` |
-| Windows PowerShell | Claude | `.\bin\ticket-master.ps1 -Provider claude` |
-| Windows PowerShell | Codex | `.\bin\ticket-master.ps1 -Provider codex` |
-| Windows PowerShell | agy (Gemini) | `.\bin\ticket-master.ps1 -Provider agy` |
-| Windows PowerShell | Kimi | `.\bin\ticket-master.ps1 -Provider kimi` |
+| Starter | Plattform | Standard-Provider | Alternative Provider |
+|---------|-----------|-------------------|----------------------|
+| `bin/ticket-master.sh` | Unix / macOS / Git Bash | Claude Code | `./bin/ticket-master.sh codex`<br>`./bin/ticket-master.sh agy` |
+| `bin/ticket-master.bat` | Windows CMD | Claude Code | `bin\ticket-master.bat codex`<br>`bin\ticket-master.bat agy` |
+| `bin/ticket-master.ps1` | Windows PowerShell | Claude Code | `.\bin\ticket-master.ps1 -Provider codex`<br>`.\bin\ticket-master.ps1 -Provider agy` |
 
 ### Umgebungsvariablen
 
-| Variable | Standard | Wirkung |
-|----------|----------|---------|
-| `TM_PROVIDER` | `claude` | Provider ohne Flag überschreiben |
-| `TM_LANG` | `en` | Prompt-Sprache; lädt `prompts_dir/TICKET-MASTER.${TM_LANG}.md` (Fallback `en`) |
-| `TM_CONFIG` | `config/ticket-master.config.json` | Optionaler Pfad zur lokalen JSON-Config für den gemeinsamen Resolver |
-| `TM_SKIP_PERMISSIONS` | `0` | Auf `1` setzen, um `--dangerously-skip-permissions` an Claude zu übergeben |
+| Variable | Werte | Zweck |
+|----------|-------|-------|
+| `TM_PROVIDER` | `claude`, `codex`, `agy` | Provider-Wahl ohne CLI-Parameter |
+| `TM_CONFIG` | `/pfad/zur/config.json` | Pfad zur Konfigurationsdatei |
+| `TM_LANG` | `en`, `de` | Prompt-Sprache |
+| `TM_DRY_RUN` | `1`, `true` | Vorschau von Befehl und Pfad ohne Ausführung |
 
 ---
 
-## Konfiguration
+<a id="10-configuration--multi-host"></a>
+<a id="10-konfiguration--multi-host"></a>
+<a id="konfiguration--multi-host"></a>
+## 10. Konfiguration & Multi-Host
 
-`config/ticket-master.config.example.json` nach
-`config/ticket-master.config.json` kopieren (die echte Config ist per
-`.gitignore` ausgeschlossen).
+Die Konfiguration liegt in `config/ticket-master.config.json` (Vorlage: `config/ticket-master.config.example.json`).
 
 ### Wichtige Felder
 
-| Feld | Beschreibung |
-|------|--------------|
-| `tickets_dir` | Bewusst gewählte Live-Queue; der mitgelieferte Baum `./tickets` ist eine schreibgeschützte Fixture, kein Intake-Ziel |
-| `prompts_dir` | Repository-lokaler Ordner mit `TICKET-MASTER.<lang>.md`; alle drei Starter lösen ihn über `bin/ticket_master.py` auf und lehnen Pfade außerhalb des Repositorys ab |
-| `default_language` | Dokumentierte Standard-Promptsprache (`en`/`de`); Laufzeit-Override via `TM_LANG` |
-| `project_roots[]` | **Deine Projekte** — Name, Pfad und Pipeline für jeden Eintrag |
-| `providers.claude` | Claude-CLI-Konfiguration (`command`, `default_model`, `args`) |
-| `providers.codex` | Codex-CLI-Konfiguration |
-| `providers.agy` | Gemini-CLI-Konfiguration |
-| `default_provider` | Provider, der ohne explizite Angabe verwendet wird |
-| `advisor.enabled` | Advisor-Modell für kritische Tickets (Score ≥ 35) aktivieren |
-| `advisor.threshold_score` | Score, ab dem ein Advisor empfohlen wird |
-| `score_thresholds` | Tier-Grenzwerte (`tier1_max`, `tier2_max` usw.) — nur Fallback, siehe `router_command` |
-| `router_command` | Optional: externer Multi-Modell-/Task-Router, primär vor der Score-Fallback-Formel |
-| `task_db_command` | Optional: „später"-Senke für `woche`/`backlog`-Tickets |
+| Feld | Beschreibung | Beispiel |
+|---|---|---|
+| `project_roots` | Verzeichnisse der vom Agenten betreuten Projekte | `["/home/user/projects", "/home/user/work"]` |
+| `ticket_dir` | Verzeichnis der Ticket-Dateien | `"./tickets"` |
+| `default_language` | Standardsprache des Prompts | `"de"` |
+| `providers` | Befehle zum Aufruf der CLI-Agenten | `{"claude": "claude", "codex": "codex", "agy": "agy"}` |
+| `router_command` | Optionaler externer Router-Befehl | `["clutch", "route"]` |
+| `task_db_command` | Optionales Task-Management-Ziel für Später/Backlog | `["todo-cli", "add"]` |
+| `queue_id` | Eindeutige Queue-Kennung (erzwingt Fail-Closed Gate) | `"tm-primary-queue"` |
 
 ### Queue-Root-Identität (Fail Closed)
 
-Ticket-Writer verweigern das Anlegen von `INBOX/` unter einem ungeprüften Pfad.
-So kann ein falsches `--tickets-dir` nicht still eine überzeugend aussehende
-Parallel-Queue erzeugen. Ein Root wird nur akzeptiert, wenn entweder:
+Arbeiten mehrere Systeme oder Umgebungen auf geteilten Queues, empfiehlt sich die Konfiguration von `queue_id`. `ticket-master` prüft diese Identität vor jeder Schreiboperation: Stimmt die Queue-Kennung nicht überein, wird die Operation kontrolliert abgebrochen.
 
-- `.ticket-master-queue` existiert und vollständig den Inhalt
-  `ticket-master-queue-v1` trägt; oder
-- sowohl `README.md` als auch `_templates/TICKET.txt` eine Ticket-Queue mit
-  `INBOX`-/`STATUS:`-Vertrag ausweisen (Kompatibilität für bestehende Queues).
-
-Der Writer darf ein fehlendes `INBOX/` innerhalb dieses verifizierten Roots
-anlegen, erzeugt oder errät aber niemals den Queue-Root selbst. Die
-Beispielkonfiguration zeigt absichtlich nicht auf die Repository-Fixture.
-Schreibe vor dem ersten Intake einmal den exakten Markerwert in das bewusst
-gewählte Live-Verzeichnis.
-
-### Beispiel für einen `project_roots`-Eintrag
+### Beispiel `project_roots` mit Platzhaltern
 
 ```json
 {
-  "name": "my-app",
-  "path": "/home/user/projects/my-app",
-  "pipeline": "software"
+  "project_roots": [
+    "<HOME>/_Local_DEV/repos",
+    "<HOME>/Projekte"
+  ],
+  "ticket_dir": "./tickets",
+  "default_language": "de"
 }
 ```
 
-### Multi-Host-Configs: Platzhalter `<HOME>`/`<USER>`
-
-Liegt `config/ticket-master.config.json` in einem Ordner, der über mehrere
-Maschinen synchronisiert wird, löst sich ein wörtlicher Pfad nur auf dem
-Host auf, auf dem er geschrieben wurde. `tickets_dir` und jeder
-`project_roots[].path` dürfen stattdessen die Platzhalter `<HOME>`
-(Home-Verzeichnis des aktuellen Users) und `<USER>` (OS-Username) nutzen. Wer
-sie auflöst, hängt vom Schlüssel ab: `tickets_dir` löst `lib/config_paths.py`
-im Code auf, damit jeder CLI- und Bibliotheks-Konsument denselben echten Pfad
-sieht; `project_roots[].path` liest der Agent, der dem TICKET-MASTER-Prompt
-folgt, und löst ihn vor jedem Datei-Zugriff auf. Dieselbe Konvention wie in
-`config/ticket-writer.config.example.json`. Beispiel in
-`config/ticket-master.config.example.json`.
-
-Dasselbe Modul akzeptiert außerdem beide Namen des Queue-Verzeichnisses,
-`_TICKETS` und `TICKETS`, solange diese Umbenennung läuft — eine Config, die
-auf einen der beiden zeigt, funktioniert weiter, und unter dem nicht
-existierenden Namen wird nichts angelegt.
+`bin/ticket_master.py` ersetzt `<HOME>` durch das Benutzerverzeichnis und `<USER>` durch den Systembenutzernamen.
 
 ### Auditierbare CLI (`--list` / `--intake`)
 
-Der gemeinsame Python-Einstiegspunkt hält Ticketübersicht und Intake unter
-Windows, macOS und Linux gleich:
+```bash
+python bin/ticket_master.py --list                 # Übersicht aller offenen Tickets nach Lebenszyklus
+python bin/ticket_master.py --list --json          # Maschinenlesbare JSON-Übersicht
+python bin/ticket_master.py --intake "Login-Fix"   # Strukturiertes Ticket via CLI anlegen
+```
+
+#### Öffentlicher Producer-Vertrag (`--title` / `--body`)
 
 ```bash
-python bin/ticket_master.py --list
-python bin/ticket_master.py --list --json
-python bin/ticket_master.py --intake "Describe the new issue" --project my-app
-python bin/ticket_master.py --intake --title "Kurzer Titel" --body "Erste Zeile
-zweite Zeile"
+python lib/ticket_writer.py --title "Speicherleck im Parser" --body "200MB Anstieg bei großen Dateien." --project mein-projekt --urgency sofort
 ```
-
-#### Der öffentliche Übergabevertrag (`--title` / `--body`)
-
-Ein Befund-Produzent übergibt **Titel und Text** und weiß nichts über
-Ticketformate, Lebenszyklusordner oder diese CLI. Genau das liefert
-`system-auditor`: Seine Kommando-Senke hängt an das konfigurierte Kommando
-`--title <titel> --body <text>` an. `--intake` nimmt die Beschreibung deshalb
-entweder positionell oder aus `--body` entgegen; beides zugleich wird
-abgelehnt statt still bevorzugt, keines von beidem scheitert fail-closed.
-
-Das ist die Schnittstelle, gegen die ein externer Produzent verdrahtet wird.
-Bis zum 2026-09-12 kannte `--intake` nur die Positionsform — der öffentliche
-Aufruf lief damit ins Leere, und nur die interne Verdrahtung über
-`lib/ticket_writer.py` funktionierte (Maßnahme `M-20260820-auditor-ticket-sink`).
-Der Produzent wird nur mit dem Kommando-Präfix konfiguriert:
-
-```jsonc
-// system-auditor-Config: die Senke hängt --title/--body selbst an
-{"sink": {"kind": "command",
-          "target": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --intake --tickets-dir <queue>",
-          "enabled_probe": "python C:/_Local_DEV/repos/ticket-master/bin/ticket_master.py --list"}}
-```
-
-Scheitert die Probe oder das Kommando, fällt der Produzent auf seine Dateisenke
-zurück — ein fehlendes Ticketsystem kostet die Zustellung, nie den Befund.
-
-`--list` gibt deterministische Metadaten `STATUS / ID / TITEL / PFAD` für
-offene Tickets in allen v1-Clustern und lesbaren Legacy-Aliasordnern aus; der
-Tickettext wird nicht ausgegeben. `--intake` validiert und normalisiert die
-Beschreibung, legt exklusiv genau eine unclaimed Datei unter `INBOX/` an und
-schreibt nicht in das veraltete gemeinsame Intake-Log. Erst eine tatsächliche
-Übergabe an einen Provider/Agent verschiebt das Ticket nach `QUEUED/`. Für
-eine explizit verifizierte Live-Queue kann `--tickets-dir`, für eine
-JSON-Konfiguration `--config` verwendet werden. Ohne Config kann die Anzeige
-die mitgelieferte Repository-Fixture lesen; Intake schlägt dagegen kontrolliert
-fehl, bis eine Live-Queue ausdrücklich konfiguriert und verifiziert wurde. Eine
-explizit fehlende oder fehlerhafte Config endet mit einem kontrollierten Fehler.
 
 ---
 
-## Auffindbarkeit und Abgrenzung
-
-Nutze beim Suchen den kanonischen Namen **`ellmos-ai/ticket-master`**. Dieses
-Repository ist ein **LLM-Ticket-Router**: ein prompt-gesteuerter Triage-Workflow,
-mit dem eine Coding-Agent-Session Bugs aufnimmt, bewertet, einen Claude-/Codex-/
-agy-Provider auswählt und den Ticketverlauf nachvollziehbar hält.
-
-Gute Suchphrasen:
-
-```text
-ellmos-ai ticket-master
-LLM ticket router agent
-AI coding agent triage console
-Claude Codex Gemini ticket routing
-multi-provider LLM task router
-prompt-driven issue intake workflow
-companion pattern AI agent workflow
-```
-
-Nicht gemeint sind Ticketmaster-Event-APIs, Konzertticket-Bots, Helpdesk-SaaS,
-Customer-Support-Tickets, Ticket-Resale-Marktplätze oder ein eigenständiger
-Bugtracker, der ohne aktive LLM-Agenten-Session Issues anlegt.
-
-## Wie das Routing funktioniert
+<a id="11-routing-contract-v2--score-formula"></a>
+<a id="11-routingvertrag-v2--score-formel"></a>
+<a id="routingvertrag-v2--score-formel"></a>
+## 11. Routingvertrag v2 & Score-Formel
 
 ### Score-Formel
 
@@ -436,16 +407,58 @@ Bugtracker, der ohne aktive LLM-Agenten-Session Issues anlegt.
 SCORE = (10 - CLARITY) + COMPLEXITY + CREATIVITY + CONTEXT + CRITICALITY
 ```
 
-Jede Dimension: 0–10. Gesamt: 0–50.
+Jede Dimension wird von 0 bis 10 bewertet. Gesamtbereich: 0–50.
 
 | Score | Tier | Typischer Einsatz |
 |-------|------|-------------------|
-| 0–8 | Tier 1 | Schnell/günstig — Boilerplate, Formatierung |
+| 0–8 | Tier 1 | Schnell/günstig — Boilerplate, Formatierung, triviale Korrekturen |
 | 9–12 | Tier 2 | Standardfähig — Bugs, Dokumentation |
 | 13–28 | Tier 3 | Fähiger Coder/Researcher — komplexe Bugs, Code-Review |
-| 29–50 | Tier 4 | Architekt/Reviewer — Design, Beweise, kritische Änderungen |
+| 29–50 | Tier 4 | Architekt/Reviewer — Design, Beweise, kritische Architekturänderungen |
 
-Ab Score ≥ 35 wird ein Advisor-Modell empfohlen.
+Ab einem Score von 35 wird ein Advisor-Modell empfohlen.
+
+### Routingvertrag v2: Ziel, Ausführung und Claim sind getrennt
+
+Mehrsystemarbeit verwendet eine umlaufende Vertragsakte und keine kopierten Kindtickets pro Host. Nur Dateien mit `ROUTING_SCHEMA: 2` dürfen die reservierten v2-Segmente verwenden (`T-ID[.to-<ziel>][.via-<Clutch-Selektor>][.claim-<HOST>].txt`):
+
+- `.to-…` ist der unveränderliche Ziel-Snapshot (`any`, `all`, `grouped` oder ein Host-System).
+- `.via-…` ist eine Ausführungsbindung über Clutch's öffentlichen Resolver.
+- `.claim-…` ist die temporäre Schreiblease.
+
+Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`, `done` oder `blocked`). Receipts erfassen den tatsächlichen Runner, Provider, Modell, Zeitstempel und Nachweis und werden unter der Lease idempotent abgeglichen. Die Lease wird erzwungen, nicht bloß notiert: `record_receipt` und `complete_contract` verweigern jeden Schreibzugriff, sobald `CLAIM_LEASE_UNTIL` abgelaufen ist. Nur der Inhaber des letzten Claims darf den Kontrakt nach `SOLVED` überführen, wenn jede erforderliche Zeile empirisch `done` ist. `ticket_audit.py` meldet Dateinamen/Metadaten, Ziel-Claim, Ledger, Receipt-Signatur und vorzeitige SOLVED-Verletzungen.
+
+Verantwortungsgrenze: ticket-master besitzt diesen Kontrakt und seinen Lebenszyklus; Clutch verantwortet die Ausführungsauflösung; `.SYNC` transportiert Anfragen und Receipts; system-gap-master übernimmt die systemübergreifende Erkennung und den Abgleich. ticket-master liefert ausschließlich ein idempotentes `route_intent` mit Ticket-ID, fixiertem Ziel-Snapshot und Quittungsziel. Integrationen rufen `ticket_writer.create_routed_ticket(..., idempotency_key=...)` auf; Wiederholungen mit derselben normalisierten Anfrage liefern den bestehenden Kontrakt zurück.
+
+
+### Companion-Muster
+
+Für eine Reihe zusammengehöriger Tickets startet der Master genau einen **Companion-Subagenten** und verwendet ihn wieder. Der Companion orientiert sich einmalig und verarbeitet danach Folgetickets ohne wiederholte Orientierungskosten.
+
+### Fallback-Kette
+
+```
+Kandidat 1
+    | fail
+    v
+Kandidat 2
+    | fail
+    v
+Kandidat 3
+    | fail
+    v
+CHECKPOINT ALPHA:
+    1. Asynchrone Delegation (Sync-Ordner / Cron)
+    2. Projekt-Task-Management (-> BLOCKED/quota oder PARKED/backlog)
+    3. Nutzer-Übergabe (-> USER/session)
+```
+
+---
+
+<a id="12-cloud-ready-multi-system-claim-convention"></a>
+<a id="12-cloud-ready-multi-system-claim-konvention"></a>
+<a id="cloud-ready-multi-system-claim-konvention"></a>
+## 12. Cloud-Ready Multi-System Claim-Konvention
 
 ### Verzeichnisstruktur
 
@@ -453,290 +466,118 @@ Ab Score ≥ 35 wird ein Advisor-Modell empfohlen.
 tickets/
 ├── _logs/                      <- DEPRECATED shared intake log (pre-1.5.0)
 │   └── INTAKE-TRIAGE-LOG.txt
-├── _templates/TICKET.txt       <- ticket template
-├── *.txt                       <- open tickets (one .txt file each)
-├── INBOX/                      <- newly arrived, not yet triaged (root = alias)
-├── ACTIONABLE/                 <- actionable now: no blocker, no user dependency
-├── QUEUED/                     <- handed to a provider, awaiting result
-├── BLOCKED/                    <- external blocker (host-receipt / foreign-state / lock / quota / dependency)
-├── WAITING/                    <- time- or marker-bound (scheduled / review-due / marker)
-├── USER/                       <- strictly depends on the user (decision / data / freigabe / hardware / session / marker)
-├── PARKED/                     <- deliberately set aside (skip / backlog / until-trigger)
-├── SOLVED/                     <- resolved and empirically confirmed
-├── PENDING/                    <- LEGACY alias (pre-v1) — readable, no new entries
-└── .USER/                      <- LEGACY alias (pre-v1) — superseded by USER/
+├── _templates/TICKET.txt       <- Ticket-Vorlage
+├── *.txt                       <- Offene Tickets
+├── INBOX/                      <- Frisch eingetroffen, noch nicht triagiert
+├── ACTIONABLE/                 <- Sofort umsetzbar: kein Blocker, keine Nutzerabhängigkeit
+├── QUEUED/                     <- An Provider übergeben, wartet auf Ergebnis
+├── BLOCKED/                    <- Extern blockiert (Host-Receipt, Lock, Quota, Abhängigkeit)
+├── WAITING/                    <- Zeit- oder markergebunden (Scheduled, Review fällig)
+├── USER/                       <- Nutzerabhängig (Entscheidung, Daten, Freigabe, Hardware)
+├── PARKED/                     <- Zurückgestellt (Backlog, Aufschub)
+├── SOLVED/                     <- Gelöst und empirisch bestätigt
+├── PENDING/                    <- LEGACY-Alias (vor v1) — nur lesbar
+└── .USER/                      <- LEGACY-Alias (vor v1) — durch USER/ abgelöst
 ```
 
-Das vollständige Kategorien-Modell (Ein-/Ausgangsregeln, Autonomie-Loop,
-STATUS-Spiegelung) steht in [docs/CATEGORIES.de.md](docs/CATEGORIES.de.md)
-([English](docs/CATEGORIES.en.md)).
-`WAITING/marker` gilt für einen autonom prüfbaren Marker, `USER/marker` wenn
-der User diesen Marker liefern oder bestätigen muss.
+Das vollständige Kategorien-Modell (Ein-/Ausgangsregeln, Autonomie-Loop, STATUS-Spiegelung) steht in [docs/CATEGORIES.de.md](docs/CATEGORIES.de.md) ([English](docs/CATEGORIES.en.md)). `WAITING/marker` gilt für einen autonom prüfbaren Marker, `USER/marker` wenn der User diesen Marker liefern oder bestätigen muss.
 
-Der Audit-/Triage-Trail lebt **pro Ticket** in der Ticketdatei selbst
-(Felder `STATUS` / `VERLAUF` / `LOESUNG`). Triviale, sofort erledigte und
-verifizierte Tickets bekommen eine **minimale** Ticketdatei direkt in
-`tickets/SOLVED/`. Das frühere geteilte `tickets/_logs/INTAKE-TRIAGE-LOG.txt`
-ist **deprecated**: Wenn mehrere Maschinen an eine cloud-synchronisierte Datei
-anhängen, fressen Konfliktkopien Log-Zeilen.
+### Claim-Konvention per Dateiname
 
-### Cloud-Ready: Multi-System Claim-Konvention
+| Zustand | Dateiname-Muster | Beispiel |
+|---|---|---|
+| Unclaimed | `T-YYYYMMDD-#########.txt` | `T-20260619-483920174.txt` |
+| Claimed | `T-YYYYMMDD-#########.<HOST>.txt` | `T-20260619-483920174.WORKSTATION.txt` |
+| Gelöst | nach `SOLVED/` verschieben | wie bisher |
 
-Bei Legacy-Tickets nach Schema v1 in einem cloud-synchronisierten Ordner werden
-Claims per **Dateiname** signalisiert; eine getrennte Lock-Datei ist nicht nötig:
-
-| Zustand    | Dateiname-Muster             | Beispiel                         |
-|------------|------------------------------|----------------------------------|
-| Unclaimed  | `T-YYYYMMDD-#########.txt`         | `T-20260619-483920174.txt`              |
-| Claimed    | `T-YYYYMMDD-#########.<HOST>.txt`  | `T-20260619-483920174.WORKSTATION.txt`  |
-| Gelöst     | nach `SOLVED/` verschieben   | wie bisher                       |
-
-Jede neue ID enthält eine neunstellige Zufallszahl, die ausschließlich durch
-`lib/ticket_writer.py` (direkt oder über `bin/ticket_master.py --intake`)
-erzeugt wird. Die Vorlage darf nicht zum manuellen Anlegen kopiert und die
-Zahlenkomponente niemals selbst gewählt oder hochgezählt werden; exklusives
-lokales Anlegen allein verhindert keine Kollision zweier Hosts, die den
-Cloud-Stand des jeweils anderen noch nicht sehen.
-
-**Glob-Muster:** `tickets/INBOX/T-????????-?????????.txt` (unclaimed) ·
-`tickets/<CLUSTER>/T-*.LAPTOP.txt` (meine).
-
-Ein Rename im selben Verzeichnis ist auf NTFS und den meisten Cloud-Sync-Implementierungen
-atomar. Entsteht eine Konfliktkopie, hat ein System den Claim gewonnen; das andere rollt
-zurück und nimmt das nächste unclaimed Ticket.
-
-Lebenszykluswechsel erfolgen fail-closed über `lib/ticket_mover.py`. Mit
-`python lib/ticket_mover.py <quelle> <zielordner> --dry-run` lässt sich auch
-ein einzelner Move vollständig ohne Mutation vorprüfen; die Ausgabe beginnt
-mit `WOULD MOVE`, Quelle und Ziel bleiben unverändert und ein fehlender
-Zielordner wird nicht angelegt.
-
-### Routingvertrag v2: Ziel, Ausführung und Claim sind getrennt
-
-Mehrsystemarbeit verwendet eine umlaufende Vertragsakte und keine kopierten
-Kindtickets pro Host. Nur Dateien mit `ROUTING_SCHEMA: 2` dürfen die
-reservierten v2-Segmente verwenden. Der kanonische Dateiname lautet
-`T-ID[.to-<ziel>][.via-<Clutch-Selektor>][.claim-<HOST>].txt`; die Reihenfolge
-ist fest und jedes Segment kommt höchstens einmal vor. Die drei Achsen sind
-orthogonal:
-
-- `.to-…` ist der unveränderliche Ziel-Snapshot (`any`, `all`, `grouped` oder
-  ein exaktes, durch die Systemregistry belegtes System). `.all` wird genau
-  einmal beim Erstellen aufgelöst.
-- `.via-…` ist eine erforderliche oder bevorzugte Ausführungsbindung.
-  ticket-master ruft ausschließlich den öffentlichen Clutch-Resolver auf und
-  speichert Fingerprint und Zeitpunkt; eine eigene Modell-, Familien-,
-  Runner- oder Aliasliste existiert nicht.
-- `.claim-…` ist nur die temporäre Schreiblease. Sie verändert weder Ziel noch
-  Ausführungsbindung. Bestehende `T-ID.<HOST>.txt` bleiben undurchsichtige
-  Legacy-Claims, auch historische Kombinationen wie `LAPTOP-WORKSTATION-LG`.
-
-Nutzernahe Aliase wie `.all.claude`, `.WORKSTATION-LG.claude-opus` und `.gpt`
-werden über die Systemregistry und Clutch in die v2-Grammatik normalisiert. Die
-Standardlaufzeit einer Ausführungsbindung beträgt sieben Tage und wird als
-absoluter UTC-Zeitpunkt gespeichert; `never` erfordert eine ausdrückliche
-Abweichung. Ein Ablauf entfernt nur die Ausführungsbindung vor dem nächsten
-erfolgreichen Claim. Er löst kein Ticket, markiert keine Ledger-Zeile als
-erledigt und gibt keinen aktiven fremden Claim frei.
-
-Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`,
-`done` oder `blocked`). Receipts erfassen tatsächlichen Runner, Provider,
-Modell, Zeitpunkt und Beleg und werden unter Lease idempotent übernommen. Die
-Lease wird durchgesetzt, nicht nur notiert: `record_receipt` und
-`complete_contract` verweigern jeden Schreibvorgang, sobald `CLAIM_LEASE_UNTIL`
-verstrichen ist — eine mitten im Lauf gestorbene Sitzung kann Stunden später
-keinen halben Abschluss mehr buchen. Ein Claim ohne lesbare Lease wird ebenso
-abgewiesen: `claim_contract` schreibt immer eine, ihr Fehlen bedeutet also einen
-handgeschriebenen Vertrag. Das Freigeben bleibt einem abgelaufenen Inhaber
-erlaubt, denn ein zurückgegebener Claim nimmt niemandem etwas. Nur
-der Inhaber des letzten Claims darf die Akte nach `SOLVED` verschieben, und nur
-wenn jede erforderliche Zeile empirisch `done` ist. `ticket_audit.py` meldet
-Namens-/Metadaten-, Zielclaim-, Ledger-, Receipt-Signatur- und verfrühte
-SOLVED-Verstöße.
-
-Zuständigkeitsgrenze: ticket-master besitzt Vertrag und Lebenszyklus; Clutch
-besitzt die Ausführungsauflösung; `.SYNC` transportiert Aufträge und Receipts;
-system-gap-master besitzt systemübergreifende Erkennung und Abgleich. Der
-ticket-master gibt ausschließlich einen idempotenten `route_intent` mit
-Ticket-ID, festem Ziel-Snapshot und Receipt-Ziel aus. Er implementiert keine
-Inbox/Outbox, Drop-Zone, Offline-Warteschlange, Retry-Schleife oder
-Transportzustände.
-Integrationen rufen
-`ticket_writer.create_routed_ticket(..., idempotency_key=...)` auf. Eine
-Wiederholung desselben normalisierten Auftrags liefert die bestehende Akte;
-dieselbe Kennung mit abweichendem Inhalt wird fail-closed abgewiesen.
-Lebenszyklusordner bleiben flach: Unterkategorien gehören in `STATUS`, niemals
-in Pfade wie `USER/decision`. Der Mover weist solche Ziele vor jeder
-Schreibaktion ab; das Audit meldet vorhandene verschachtelte Tickets, ohne sie
-zu migrieren. `ticket_audit.py --json` behält dafür die vorhandene Pfadliste
-`nested_lifecycle_tickets` und ergänzt pro Fund unter
-`nested_lifecycle_details` Quelle, erwartetes flaches Ziel und Zielkollision.
-Ein FLACHER Ordner mit falschem Namen entgeht dieser Sperre — er ist ein
-syntaktisch einwandfreies Move-Ziel —, deshalb meldet `non_v1_folders` jeden
-Wurzelordner, der weder v1-Cluster noch `_`/`.`-Infrastruktur ist
-(T-20260913-580105077: ein leeres `DONE/` kam per Cloud-Sync an und hätte
-beinahe ein Ticket aufgenommen, das nach `SOLVED/` gehörte). Nur melden.
-
-### Companion-Muster
-
-Für eine Reihe zusammengehöriger Tickets startet der Master genau einen
-**Companion-Subagenten** und verwendet ihn über `SendMessage` wieder. Der Companion
-orientiert sich einmalig (liest Projektdateien und lernt Konventionen) und verarbeitet
-danach weitere Tickets ohne wiederholte Orientierungskosten. Bei einem deutlichen
-Domänenwechsel oder stark gewachsenem Kontext tauscht der Master den Companion aus.
-
-### Fallback-Kette
-
-```
-Candidate 1
-    | fail
-    v
-Candidate 2
-    | fail
-    v
-Candidate 3
-    | fail
-    v
-CHECKPOINT ALPHA:
-    1. Async delegation (sync folder / cron)
-    2. Project task management (-> BLOCKED/quota or PARKED/backlog)
-    3. User handoff (-> USER/session)
-```
+Neue IDs enthalten neunstellige Zufallszahlen, die ausschließlich über `lib/ticket_writer.py` erzeugt werden.
 
 ---
 
-## Personal-Assistant-Ausbau (optional): Domänen-Map, Dringlichkeit & Delegation
+<a id="13-personal-assistant-expansion--delegation"></a>
+<a id="13-personal-assistant-ausbau--delegation"></a>
+<a id="personal-assistant-ausbau--delegation"></a>
+## 13. Personal-Assistant-Ausbau & Delegation
 
-Vier optionale Schichten machen aus dem reinen Ticket-Router eine kleine
-persönliche Assistenz-Triage-Konsole, aufbauend auf einem BACH-artigen
-Personal-Assistant-Install:
+Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen Triage-Konsole:
 
-- **Domänen-Map (1.6.0, erweitert 1.8.0 und Unreleased):** `lib/domains_generator.py`
-  generiert `config/domains.json` — eine Domäne→Experten-Map, gegen eine
-  Skill-Registry abgeglichen, um bereits als Standalone-Skill existierende
-  Experten zu markieren. Nur zur Generierungszeit wird BACH gebraucht;
-  `config/domains.json` selbst ist zur Laufzeit eine reine, BACH-freie
-  JSON-Datei. `experts[]` ist NUR Herkunfts-/Gruppierungs-Metadaten — der
-  Prompt routet direkt auf den/die aufgelösten Skill(s), nie über den
-  Experten als Zwischen-Hop. Seit 1.8.0 erkennt ein Stage-2-Fuzzy-Durchlauf
-  (`fuzzy_match_skills()`, plus optional `--extra-skills-dir` als zweiter
-  Skill-Bestand) zusätzlich Experten, die eine ganze Skill-FAMILIE regieren
-  (`"status": "teilportiert"`, `"matched_skills"`: eine Liste) statt eines
-  einzelnen 1:1-portierten Skills. Seit T-20260808-02 erkennt ein Stage-0-Durchlauf
-  auf Domänen-Ebene (`match_domain_skill()`) zusätzlich einen Standalone-
-  Skill, der einen GANZEN Boss-Agenten ablöst statt eines seiner benannten
-  Experten (`"match": "domain"`); ein Boss ohne orchestrierte Experten
-  bekommt stattdessen einen synthetischen `"__domain__:<boss>"`-
-  Pseudo-Experten, da es sonst keinen Ort gibt, an dem der Treffer hängen
-  könnte. Seit T-20260913-150720021 (Phase 1b) trägt jede Domäne zusätzlich
-  `usecase_skills[]`: Skills, die einen Usecase des BOSSES selbst abdecken und
-  zu keinem seiner Experten gehören — sie tauchten sonst nirgends auf. Diese
-  Zuordnung ist bewusst die strengste von allen: der vollständige Skillname
-  muss als ganze Tokens im Usecase-Text stehen. Grund ist die Form der
-  Eingabe — ein Usecase ist ein Satz, kein Name; eine lockerere erste Fassung
-  ergab am Live-Bestand 1 richtigen und 19 falsche Treffer, alle aus
-  generischen Nomen innerhalb von Skillnamen. Schema: `config/domains.example.json`. Der aktuelle Generator kann
-  zusätzlich einen Modulkatalog über `--modules-catalog` und die Frontmatter
-  der Skill-Bibliothek über `--skill-library-dir` lesen. Die Herkunftsdaten der
-  Skill-Bibliothek sind die primäre exakte Quelle, die alte Registry bleibt
-  Fallback, Standalone-Module bilden eine dritte Quelle, und nicht aufgelöste
-  Skills mit BACH-Herkunft werden gemeldet statt still einem unpassenden
-  Experten zugeordnet.
-- **Dringlichkeitsachse (1.7.0):** `config/urgency.json` (Schema:
-  `config/urgency.example.json`) ordnet jeder Domäne eine Default-Frist zu
-  (`sofort` / `heute` / `woche` / `backlog`) plus Eskalationsregeln (z.B.
-  eskaliert veröffentlichte Software + ein schwerer Bug auf `sofort` und
-  schickt bei unklarer Schwere zunächst nur einen Diagnose-Subagenten los).
-  Diese Achse ist **entkoppelt** vom 5-Dimensionen-Komplexitäts-Score — ein
-  Ticket kann niedrigen Score haben und trotzdem dringend sein, oder
-  umgekehrt. Grenzfälle können optional einen konfigurierten
-  Präferenz-Hinweis konsultieren (`preference_model_hint.command`); niedrige
-  Konfidenz bedeutet immer: den User fragen statt raten.
-- **Delegations-Verdrahtung (1.7.0, erweitert 1.8.0):** Das Intake-Gate des
-  Prompts löst für eine getroffene Domäne einen `ENDPOINT` auf (über
-  `domains.json`, dann optionale Skill-Registry-Tools, dann eine LÜCKEN-
-  Markierung statt stillem Fallback); die Modellwahl bevorzugt einen
-  optionalen externen `router_command` vor der eingebauten Score-Formel-
-  Fallback-Logik; eine Rechteprüfung gegen `LOCK*.txt`-/
-  `LOCK.permissions.json`-artige Konventionen läuft vor jedem Worker-Spawn;
-  und Tickets mit Dringlichkeit `woche`/`backlog` werden an eine optionale
-  „später"-Senke (`task_db_command`) übergeben, statt einen Subagenten zu
-  spawnen. Seit 1.8.0 bekommt der Worker bei `"teilportiert"` ALLE Skills
-  aus `matched_skills` mit, nicht nur den ersten — ein Experte kann eine
-  ganze Skill-Familie regieren (siehe Domänen-Map-Abschnitt oben).
-- **Wissens-Schicht (1.9.0):** `config/knowledge.json` (Schema:
-  `config/knowledge.example.json`) listet Wissensquellen in vier
-  Kategorien — `maps` (strukturell, beim Boot geladen), `state` (ändert
-  sich während der Session, vor jeder Routing-Entscheidung neu geprüft),
-  `capabilities` (bei Endpunkt-/Modell-Lookup konsultiert) und `user_model`
-  (Präferenz-Hinweis, nur bei echten Grenzfällen). Grundregel: generierten
-  Karten vertrauen, nicht dem Gedächtnis — bei Widerspruch die Karte neu
-  generieren lassen statt der Erinnerung zu vertrauen.
-
-Details siehe `CHANGELOG.md` (1.6.0–1.9.0 und Unreleased).
+- **Domänen-Map (1.6.0, erweitert 1.8.0):** `lib/domains_generator.py` erzeugt `config/domains.json` als Domänen-Experten-Zuordnung.
+- **Dringlichkeitsachse (1.7.0):** `config/urgency.json` bildet Standardfristen ab (`sofort`, `heute`, `woche`, `backlog`). Diese Achse ist von der 5D-Komplexitätsbewertung entkoppelt.
+- **Delegations-Verdrahtung (1.7.0, 1.8.0):** Auflösung des passenden Endpunkts, Schutz durch Permission-Prüfung gegen `LOCK*.txt` und Weiterleitung an `task_db_command`.
+- **Systemwissen-Ebene (1.9.0):** `config/knowledge.json` strukturiert Wissensquellen in `maps`, `state`, `capabilities` und `user_model`.
 
 ---
 
-## Voraussetzungen
+<a id="14-test-suite--verification-gates"></a>
+<a id="14-test-suite--verifikations-gates"></a>
+<a id="test-suite--verifikations-gates"></a>
+## 14. Test-Suite & Verifikations-Gates
 
-- Mindestens ein CLI-basierter LLM-Provider (`claude`, `codex` oder `agy`)
-- Python 3.10+ (für gemeinsamen Starter/CLI, Generatoren, Helfer und Tests)
-- Keine zusätzlichen Python-Abhängigkeiten
+### Voraussetzungen
 
-### Provider-Installation
+- Mindestens ein CLI-basierter LLM-Provider (`claude`, `codex`, `agy`)
+- Python 3.10+
+- 0 externe Python-Laufzeitabhängigkeiten
 
-| Provider | Installation |
-|----------|--------------|
-| Claude CLI | `npm install -g @anthropic-ai/claude-code` |
-| Codex CLI | `npm install -g @openai/codex` |
-| agy (Gemini) | Siehe [Antigravity-Dokumentation](https://github.com/google-labs-git/agy) |
-
----
-
-## Smoke-Tests ausführen
+### Tests und Qualitätsprüfungen ausführen
 
 ```bash
+# Vollständige Test-Suite ausführen (502+ Tests, 100% grün)
+pytest
+
+# Leichtgewichtigen Smoke-Test ausführen
 python tests/test_smoke.py
+
+# Linting und Codeformatierung prüfen
+ruff check .
 ```
 
-Prüft: Verzeichnisstruktur vollständig, Config-JSON valide, Prompt enthält
-keine verbotenen absoluten Pfade oder systemspezifischen Begriffe und — in
-einem Git-Checkout — lokale Datenschutzartefakte bleiben durch `.gitignore`
-abgedeckt.
-
 ---
 
-## Teil der ellmos-Stack-Familie
+<a id="15-ecosystem--sibling-tools"></a>
+<a id="15-oekosystem--geschwisterwerkzeuge"></a>
+<a id="oekosystem--geschwisterwerkzeuge"></a>
+## 15. Ökosystem & Geschwisterwerkzeuge
 
-ticket-master ist bewusst beides: ein eigenständiges Dev-Tool und ein Kernmodul
-der ellmos-Stack-Familie.
-
-Kernmodul von [ellmos-ai/agent-ops-stack](https://github.com/ellmos-ai/agent-ops-stack)
-(Rolle `ticket-routing`); Familie/Katalog: [ellmos-ai/stacks](https://github.com/ellmos-ai/stacks);
-Org-Übersicht: [ellmos-ai](https://github.com/ellmos-ai).
-
-## Ökosystem & Geschwisterwerkzeuge
-
-Teil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastruktur und des übergeordneten [open-bricks](https://github.com/open-bricks) Open-Source-Software-Ökosystems:
+Bestandteil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastruktur und des übergeordneten [open-bricks](https://github.com/open-bricks) Open-Source-Ökosystems:
 
 | Werkzeug | Organisation | Beschreibung |
-|----------|--------------|--------------|
-| [clutch](https://github.com/ellmos-ai/clutch) | ellmos-ai | Adaptiver Multi-Modell-LLM-Router & Agent-Execution-Gear |
-| [coma](https://github.com/ellmos-ai/coma) | ellmos-ai | Single-Binary Multi-Agent-Orchestrator & Koordinations-Engine |
-| [swarm-ai](https://github.com/ellmos-ai/swarm-ai) | ellmos-ai | Schwarmintelligenz und autonome Agenten-Konsens-Engine |
-| [system-explorer](https://github.com/ellmos-ai/system-explorer) | ellmos-ai | Lokale Systemerkennung und Hardware-Ressourcen-Monitor |
-| [policy-registry](https://github.com/ellmos-ai/policy-registry) | ellmos-ai | Einheitliche Agenten-Rechte- und Policy-Management-Engine |
-| [sqlite-transit-sync](https://github.com/ellmos-ai/sqlite-transit-sync) | ellmos-ai | Multi-Agent-State-Synchronisation über SQLite-WAL-Journale |
-| [workflowhooker](https://github.com/ellmos-ai/workflowhooker) | ellmos-ai | Event-Hooks und Agenten-Workflow-Automatisierungs-Trigger |
-| [memoryhooker](https://github.com/ellmos-ai/memoryhooker) | ellmos-ai | Transparentes SQLite/FTS5 Arbeitsgedächtnis für Agenten |
-| [DevCenter](https://github.com/dev-bricks/DevCenter) | dev-bricks | Entwickler-Control-Plane, Repository-Dashboard & Umgebungsmanager |
-| [CodeBox](https://github.com/dev-bricks/CodeBox) | dev-bricks | Polyglotter Code-Snippet-Manager & Entwickler-Werkbank |
-| [safe-start-for-codex](https://github.com/dev-bricks/safe-start-for-codex) | dev-bricks | Sicherer Starter und Rechte-Isolator für Codex CLI Sessions |
-| [automation-master](https://github.com/dev-bricks/automation-master) | dev-bricks | Automations-Orchestrierung und lokaler Job-Scheduler |
+|------|--------------|-------------|
+| [clutch](https://github.com/ellmos-ai/clutch) | ellmos-ai | Adaptiver Multi-Modell LLM-Router & Execution Gear |
+| [coma](https://github.com/ellmos-ai/coma) | ellmos-ai | Single-Binary Multi-Agenten-Orchestrator & Koordinator |
+| [swarm-ai](https://github.com/ellmos-ai/swarm-ai) | ellmos-ai | Schwarmintelligenz und autonomer Konsens-Mechanismus |
+| [system-explorer](https://github.com/ellmos-ai/system-explorer) | ellmos-ai | Lokale System- und Hardware-Ressourcenerkennung |
+| [policy-registry](https://github.com/ellmos-ai/policy-registry) | ellmos-ai | Einheitliche Agenten-Berechtigungs- und Richtlinien-Engine |
+| [sqlite-transit-sync](https://github.com/ellmos-ai/sqlite-transit-sync) | ellmos-ai | Multi-Agenten-Statussynchronisation via SQLite-WAL |
+| [workflowhooker](https://github.com/ellmos-ai/workflowhooker) | ellmos-ai | Event-Hooks und Auslöser für Agenten-Workflows |
+| [memoryhooker](https://github.com/ellmos-ai/memoryhooker) | ellmos-ai | Transparente Arbeitsgedächtnis-Erfassung via FTS5 |
+| [DevCenter](https://github.com/dev-bricks/DevCenter) | dev-bricks | Entwickler-Kontrollzentrum & Repository-Dashboard |
+| [CodeBox](https://github.com/dev-bricks/CodeBox) | dev-bricks | Polyglotte Code-Snippet-Verwaltung & Werkbank |
+| [safe-start-for-codex](https://github.com/dev-bricks/safe-start-for-codex) | dev-bricks | Sicherer Starter und Berechtigungsisolator für Codex |
+| [automation-master](https://github.com/dev-bricks/automation-master) | dev-bricks | Automatisierungs-Orchestrierung und Task-Scheduler |
 
 ---
 
-## Haftung / Liability
+<a id="16-third-party-licenses--transparency"></a>
+<a id="16-drittanbieter-lizenzen--transparenz"></a>
+<a id="drittanbieter-lizenzen--transparenz"></a>
+## 16. Drittanbieter-Lizenzen & Transparenz
+
+`ticket-master` garantiert vollständige Transparenz in der Software-Lieferkette:
+
+- **0 externe Laufzeitabhängigkeiten:** Der Kern benötigt keine Drittanbieter-Pakete (`dependencies = []` in `pyproject.toml`).
+- **Zero-Copyleft-Garantie:** Alle Laufzeit- und Entwicklungskomponenten unterliegen permissiven Lizenzen (MIT, Apache-2.0, PSF); frei von GPL/AGPL.
+- **Unprivilegierte Ausführung:** Läuft strikt im Benutzermodus (`RunAsInvoker`).
+- Detaillierte Software-Inventare und Lizenztexte sind in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) einsehbar.
+
+---
+
+<a id="17-security-policy--sla"></a>
+<a id="17-sicherheitsrichtlinie--sla"></a>
+<a id="sicherheitsrichtlinie--sla"></a>
+## 17. Sicherheitsrichtlinie & SLA
+
+### Haftung / Liability
 
 Dieses Projekt ist eine **unentgeltliche Open-Source-Schenkung** im Sinne der §§ 516 ff. BGB. Die Haftung des Urhebers ist gemäß **§ 521 BGB** auf **Vorsatz und grobe Fahrlässigkeit** beschränkt. Ergänzend gelten die Haftungsausschlüsse der MIT-Lizenz.
 
@@ -744,12 +585,20 @@ Nutzung auf eigenes Risiko. Keine Wartungszusage, keine Verfügbarkeitsgarantie,
 
 This project is an unpaid open-source donation. Liability is limited to intent and gross negligence (§ 521 German Civil Code). Use at your own risk. No warranty, no maintenance guarantee, no fitness-for-purpose assumed.
 
+### Sicherheitsmeldungen & SLA
+
+- Sicherheitsrelevante Schwachstellen können vertraulich über [GitHub Security Advisories](https://github.com/ellmos-ai/ticket-master/security/advisories/new) oder direkt an den Maintainer gemeldet werden.
+- **48 Stunden:** Erste Bestätigung eingegangener Sicherheitsmeldungen.
+- **5 Werktage:** Erste Risikobewertung, Schweregrad-Einstufung und Triage.
+- Details: [`SECURITY.md`](SECURITY.md).
+
 ---
 
-## Lizenz
+<a id="18-license--maintainers"></a>
+<a id="18-lizenz--maintainer"></a>
+<a id="lizenz--maintainer"></a>
+## 18. Lizenz & Maintainer
 
-MIT License — Copyright (c) 2026 Lukas Geiger. Siehe [LICENSE](LICENSE) und [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+MIT-Lizenz — Copyright (c) 2026 Lukas Geiger. Siehe [LICENSE](LICENSE) und [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
-## Autor
-
-Lukas Geiger ([github.com/lukisch](https://github.com/lukisch))
+Autor & Maintainer: Lukas Geiger ([github.com/lukisch](https://github.com/lukisch)).

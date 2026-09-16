@@ -52,8 +52,12 @@ Homepage = "https://github.com/ellmos-ai/ticket-master"
 Documentation = "https://github.com/ellmos-ai/ticket-master#readme"
 Repository = "https://github.com/ellmos-ai/ticket-master.git"
 "Bug Tracker" = "https://github.com/ellmos-ai/ticket-master/issues"
+"Third-Party Licenses" = "https://github.com/ellmos-ai/ticket-master/blob/main/THIRD_PARTY_LICENSES.md"
+"Marketing Log" = "https://github.com/ellmos-ai/ticket-master/blob/main/MARKETING-LOG.txt"
+"LLM Ready" = "https://github.com/ellmos-ai/ticket-master/blob/main/llms.txt"
 
 [tool.pytest.ini_options]
+addopts = "-ra -v"
 pythonpath = "."
 testpaths = ["tests"]
 

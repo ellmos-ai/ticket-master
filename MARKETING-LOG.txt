@@ -1,0 +1,101 @@
+# MARKETING-LOG.txt — ticket-master
+# Lokales Audit-, Discoverability- und Marketing-Logbuch
+
+## 2026-09-16 — Pfad B: Discoverability, Visual Architecture, Target Personas & Comparative Matrix
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum sauber, 0 aktive Locks im kanonischen Lock-System (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (56h Ruhezeit; Pfad A zuletzt am 2026-08-21, Pfad B zuletzt am 2026-08-16 vor 31 Tagen).
+- Testbasis: 502/502 automatisierte Tests bestanden (100% grün via pytest).
+
+### 2. Zielgruppen & Personas
+- `[PERSONA-01]` Autonomous AI Coding Agent Engineers & Swarm Operators:
+  - Fokus: Deterministisches, strukturiertes und token-effizientes Routing von Code-Aufgaben, Fehlern und Feature-Wünschen an spezialisierte lokale CLI-Agenten (Claude Code, Codex, agy/Gemini) ohne manuelle Kontextübergabe.
+  - Lösung: "Position 0" Triage-Konsole, 5-Dimensionen-Scoring-Formel (`10 - Clarity + Complexity + Creativity + Context + Criticality`), deterministische Delegation mit prägnantem Status-Rückkanal und automatisierte Companion-Pattern-Sitzungen zur Reduzierung von Orientierungs-Token.
+- `[PERSONA-02]` Multi-Host & DevOps Automation Engineers:
+  - Fokus: Nahtlose, serverlose Aufgabenverteilung über mehrere Entwicklungsrechner hinweg ohne zentrale Datenbank, fragile Cloud-Lockouts oder Message-Broker-Wartungsaufwand.
+  - Lösung: Cloud-fähige Queue-Architektur basierend auf atomaren Filesystem-Renames (`.claim-<host>-<ts>`), fail-closed Queue-Root-Validierung und zero-telemetry Synchronisation über Standard-Cloudspeicher (OneDrive, Dropbox, Nextcloud).
+- `[PERSONA-03]` Solo Developers, Open-Source Maintainers & CLI Power Users:
+  - Fokus: Reibungslose Erfassung von Bug-Meldungen, Code-Problemen und Feature-Notizen direkt aus dem Terminal, ohne den Programmierfluss durch externe Web-Issue-Tracker zu unterbrechen.
+  - Lösung: Prompt-gesteuerter Intake, formlose Texteinreichung (`ticket_writer.py --from-file`) mit byte-identischer Aufbewahrung im `ORIGINALTEXT`-Block, sofortiges Triage-Feedback und automatisches Einpflegen in lokale Projekt-Taskboards bei Auslastungsgrenzen.
+- `[PERSONA-04]` Enterprise AI Safety, Compliance & Governance Officers:
+  - Fokus: Vollständige Auditierbarkeit, Zero-Data-Egress, unprivilegierte Ausführung und rechtliche Transparenz bei der Orchestrierung autonomer KI-Coding-Werkzeuge.
+  - Lösung: 100% Offline-Architektur ohne externe Netzwerkaufrufe, unprivilegierte `RunAsInvoker`-Ausführung, 0 externe Runtime-Abhängigkeiten (`dependencies = []`), PEP 639 konforme Lizenztransparenz und verbindliche 48-Stunden Sicherheits-SLA.
+
+### 3. High-Intent SEO Keywords (Bilingual EN/DE)
+- English:
+  - `cross-platform multi-provider LLM task router agent workflow`
+  - `AI coding agent triage console Claude Codex Gemini`
+  - `score-based prompt-driven ticket routing for autonomous agents`
+  - `cloud-synced multi-host agent queue with atomic rename claim`
+  - `local-first zero-egress AI task management and triage system`
+  - `companion pattern sub-agent reuse for reduced LLM token cost`
+  - `informal intake auto-formalization ticket writer CLI`
+  - `zero runtime dependency Python task router with PEP 621 639 metadata`
+- Deutsch:
+  - `plattformübergreifender Multi-Provider LLM Task-Router für KI-Coding-Agenten`
+  - `KI-Agenten Triage-Konsole für Claude Codex und Gemini`
+  - `score-basiertes Prompt-gesteuertes Ticket-Routing für autonome Agenten`
+  - `cloud-synchronisierte Multi-Host Agenten-Queue mit atomarem Claim-Rename`
+  - `lokale Zero-Egress Aufgabenverwaltung und Triage für Software-Projekte`
+  - `Companion-Muster Wiederverwendung von Sub-Agenten zur Token-Ersparnis`
+  - `formlose Ticketerfassung und automatische Formalisierung per CLI`
+  - `reine Python Standardbibliothek Task-Router ohne externe Abhängigkeiten`
+
+### 4. 10-Dimensionen-Vergleichsmatrix vs. 4 Alternativen
+- Verglichene Alternativen:
+  1. Traditional Issue Trackers (Jira, GitHub Issues, Linear)
+  2. Cloud AI Agent Platforms (CrewAI Cloud, AutoGPT, AgentOps)
+  3. Ad-Hoc Chatbot Windows / Manual Prompts (ChatGPT Web, Claude Desktop, Copilot Chat)
+  4. Distributed Task Queues (Celery, RabbitMQ, Redis Queue)
+- Technische Dimensionen gemapped auf Governance- & Laufzeit-Invarianten:
+  1. Offline-First & Zero Egress (`INV-LOCAL-01`): 100% lokal, dateibasiert, 0 Telemetrie vs. zwingende Cloud-Abhängigkeit.
+  2. Prompt-Driven Agent Native Workflow (`INV-WORKFLOW-02`): Transparenter "Position 0" Agentenmodus vs. statische Formulare oder intransparente Cloud-Daemons.
+  3. Score-Based 5-Dimension Routing (`INV-ROUTING-03`): Deterministische Formel (Clarity, Complexity, Creativity, Context, Criticality) mit Fallback-Kette vs. manuelles Zuweisen oder naive LLM-Prompts.
+  4. Atomic Multi-System Claim Convention (`INV-CLAIM-04`): Atomarer Dateiname-Rename (`.claim-<host>-<ts>`) auf NTFS/POSIX ohne Broker vs. zentrale Server oder Merge-Konflikte.
+  5. Token-Saving Companion Pattern (`INV-COMPANION-05`): Amortisierte Orientierungskosten über Ticket-Batches vs. voller Kontext-Reload bei jedem Task.
+  6. Informal Intake & Byte-Identical Formalization (`INV-INTAKE-06`): Automatische Formalisierung formloser Notizen ohne Datenverlust (`ORIGINALTEXT`) vs. strikte Formularfelder.
+  7. Auditor Bridge & Sparmodus Gate (`INV-AUDITOR-07`): Nahtlose Anbindung an `system-auditor` mit Budget-/Sparmodus-Gate vs. unkontrollierte Token-Verschwendung.
+  8. Unprivileged User-Mode Operation (`INV-UNPRIV-08`): Reine Standard-Benutzerrechte (`RunAsInvoker`), 0 UAC, 0 Root vs. Daemon-Installationen mit Admin-Rechten.
+  9. Zero Mandatory Runtime Dependencies (`INV-PORTABLE-09`): Reine Python Standardbibliothek (`dependencies = []`) vs. schwere Abhängigkeitsbäume.
+  10. Transparent Governance & Security SLA (`INV-SLA-10`): Permissive MIT-Lizenz, zweisprachige Richtlinie mit 48h SLA und Multi-OS CI-Matrix vs. unklare SLA-Bedingungen.
+
+### 5. 10 Governance- & Laufzeit-Invarianten
+- `INV-LOCAL-01` (100% Offline & Local-First Zero-Egress): Alle Tickets, Lebenszyklus-Verzeichnisse (`INBOX`, `ACTIONABLE`, `QUEUED`, `BLOCKED`, `WAITING`, `USER`, `PARKED`, `PENDING`, `SOLVED`), Logs und Konfigurationen verbleiben ausschließlich auf dem lokalen Dateisystem oder nutzergesteuerten Cloud-Sync-Pfaden. Zero externe Netzwerkaufrufe, Zero Telemetrie.
+- `INV-WORKFLOW-02` (Prompt-Driven Agent-Native Workflow): `ticket-master` ist ein transparenter Arbeitsmodus ("Position 0") für KI-Coding-Agenten. Der Agent führt die Schritte anhand strukturierter Prompts aus; kein intransparenter Hintergrund-Daemon übernimmt autonome Eigenaktionen.
+- `INV-ROUTING-03` (Score-Based 5-Dimension Routing): Tickets werden anhand von Klarheit, Komplexität, Kreativität, Kontext und Kritikalität bewertet. Das Routing erfolgt an das am besten geeignete Provider-Tier mit deterministischer Fallback-Kette.
+- `INV-CLAIM-04` (Atomic Multi-System Claim Convention): Die Multi-Host-Koordination erfolgt exklusiv über atomare Dateiumbenennungen (`.claim-<host>-<ts>`). Keine Datenbankserver, keine verteilten Sperrdienste, keine Cloud-Sync-Blockaden.
+- `INV-COMPANION-05` (Token-Saving Companion Pattern): Für Ticket-Serien derselben Domäne wird ein Companion-Sub-Agent gestartet und wiederverwendet, wodurch die Orientierungskosten nur einmal anfallen und erhebliche Tokenmengen eingespart werden.
+- `INV-INTAKE-06` (Informal Intake & Byte-Preserving Formalization): Formlose Notizen in `INBOX/` werden durch `ticket_writer.py --from-file` idempotent mit einem Ticket-Header versehen, im `ORIGINALTEXT`-Block zeichengetreu bewahrt und nach `INBOX/_formalisiert/` verschoben, ohne Originale zu löschen.
+- `INV-AUDITOR-07` (Auditor Bridge & Fail-Closed Sparmodus Gate): Die optionale Brücke zu `system-auditor` respektiert aktive Token-Sparmodus-Stufen (`spar_gate`), berechnet Audit-Fälligkeiten nicht redundant und wandelt Prüfbefunde fehlersicher in Entwurfstickets um.
+- `INV-UNPRIV-08` (Unprivileged User-Mode Operation — `RunAsInvoker`): Alle Werkzeuge, Skripte und Starter laufen mit standardmäßigen Benutzerrechten ohne UAC-Elevation, Root-Privilegien oder administrative Berechtigungen.
+- `INV-PORTABLE-09` (Zero Mandatory Runtime Dependencies): Der Kern und alle CLI-Skripte nutzen ausschließlich die Python-Standardbibliothek (`dependencies = []`). Optionale Erweiterungen wie `clutch-router` sind sauber als Extras isoliert.
+- `INV-SLA-10` (Open-Source Governance & 48h Security SLA): Freie MIT-Lizenz, offene PEP 621/639 Metadaten, Multi-OS CI-Matrix (Ubuntu, Windows) auf Python 3.10-3.13 und ein verbindliches 48-Stunden-Sicherheits-Reaktionsfenster.
+
+### 6. Zweisprachige README-Architektur & 18-Punkte-Schnellnavigation
+- 18-Punkte-Schnellnavigation in `README.md` und `README_de.md` mit 100%iger wechselseitiger Anker-Parität (#1 bis #18 inklusive standardisierter Anker-Aliase).
+- Vollständige Badges-Harmonisierung: Version 1.12.0, Pytest Status (100% bestanden), 100% Local-First Zero-Egress, RunAsInvoker Non-Elevation, 48h Security SLA, Third-Party Audited (0 Dependencies), Marketing Log Active, LLM Ready, Provider Matrix, Ecosystem ellmos-ai, Umbrella open-bricks, MIT License.
+
+### 7. Drittanbieter-Lizenzinventar & PEP 621 Metadaten
+- `THIRD_PARTY_LICENSES.md` mit aktuellem Audit-Stand (2026-09-16), Bestätigung von 0 externen Runtime-Abhängigkeiten, Zero-Copyleft-Garantie und tabellarischer Invarianten-Zuordnung.
+- `pyproject.toml` URLs um `Third-Party Licenses`, `Marketing Log` und `LLM Ready` erweitert sowie `addopts = "-ra -v"` ergänzt.
+
+### 8. Ökosystem & Geschwisterwerkzeuge
+- Enge Verzahnung im `ellmos-ai` & `open-bricks` Ökosystem:
+  - `clutch`: Multi-Provider Model Router & Dynamic Token Budgeting
+  - `system-auditor`: Periodische Integritäts- und Policy-Audits (ehem. SIG-TU)
+  - `coma`: Headless Modul-Orchestrierung & Starter-Generierung
+  - `companion-for-agy`: Antigravity CLI PTY Companion
+  - `safe-start-for-codex`: Ausführungs-Guardrails für Codex Desktop
+  - `clirec`: Headless GUI & CLI Demonstration Recorder
+  - `convergence-reconciler`: Parallele Git- und Modul-Harmonisierung
+
+### 9. Automatisierte Vertragstest-Suite
+- `tests/test_metadata.py` erweitert um umfassende Vertragstests:
+  - 18-Punkte-Navigationsparität zwischen `README.md` und `README_de.md`
+  - Target-Personas-Präsenz und Übereinstimmung
+  - 10-Dimensionen-Vergleichsmatrix und Invarianten-Abdeckung
+  - PEP 621 URL-Prüfung (`Third-Party Licenses`, `Marketing Log`, `LLM Ready`)
+  - Validierung von `MARKETING-LOG.txt` auf Struktur, Recency und Vollständigkeit.

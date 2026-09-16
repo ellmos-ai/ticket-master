@@ -1,4 +1,4 @@
-## Last-checked: 2026-09-13
+## Last-checked: 2026-09-16
 
 # ticket-master
 
@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-13: `498 passed` plus 13 subtests via
+- Local verification on 2026-09-16: `508 passed` plus 13 subtests via
   `python -m pytest -q`.
 - Optional `system-auditor` bridge (`lib/auditor_bridge.py`): opt-in
   spawn/skip decision for the sibling `ellmos-ai/system-auditor` module,
@@ -51,7 +51,8 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - `README.md`: user-facing overview, quickstart, starter matrix, routing explanation.
 - `README_de.md`: German documentation.
-- `THIRD_PARTY_LICENSES.md`: third-party license inventory and zero-runtime-dependency declaration (PEP 639).
+- `MARKETING-LOG.txt`: local audit, discoverability, target personas, 10-dimension comparative matrix, and governance invariants.
+- `THIRD_PARTY_LICENSES.md`: third-party license inventory, zero-copyleft guarantee, and 10 governance invariants (PEP 639).
 - `SKILL.md`: Claude Code skill manifest — enters the triage-console workflow
   (reads the prompt, loads config, goes to Position 0).
 - `prompts_dir/TICKET-MASTER.en.md` / `prompts_dir/TICKET-MASTER.de.md`: the

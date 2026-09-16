@@ -2,7 +2,7 @@
 
 **Project:** `ticket-master`  
 **License:** [MIT License](LICENSE)  
-**Audit Date:** 2026-09-13  
+**Audit Date:** 2026-09-16
 
 ---
 
@@ -18,6 +18,30 @@
 | *Python Standard Library* | `>=3.10` | PSF License | Built-in | `argparse`, `dataclasses`, `datetime`, `hashlib`, `json`, `os`, `pathlib`, `re`, `shutil`, `subprocess`, `sys`, `typing`, `uuid` |
 
 All network egress, remote telemetry, and external cloud services are prohibited by design.
+
+### Zero-Copyleft Guarantee & Unprivileged Execution
+
+- **Zero-Copyleft Guarantee:** All runtime code and development tooling are governed exclusively by permissive open-source licenses (MIT, Apache-2.0, PSF). The repository contains zero GPL, AGPL, or viral copyleft dependencies.
+- **Unprivileged User-Mode Operation (`RunAsInvoker`):** All components execute strictly within standard user space without requiring administrator elevation, root privileges, or UAC elevation.
+
+---
+
+## Governance & Runtime Invariants
+
+The software adheres to ten foundational governance and runtime invariants:
+
+| Invariant | Category | Description |
+|---|---|---|
+| `INV-LOCAL-01` | Local-First & Zero Egress | All tickets, lifecycles, and logs remain strictly on local disk; zero cloud telemetry. |
+| `INV-WORKFLOW-02` | Agent-Native Workflow | Transparent prompt-driven Position 0 triage mode; zero opaque background daemons. |
+| `INV-ROUTING-03` | 5-Dimension Routing | Deterministic scoring (Clarity, Complexity, Creativity, Context, Criticality) with fallback. |
+| `INV-CLAIM-04` | Multi-System Claims | Atomic filesystem renames (`.claim-<host>-<ts>`) without external databases or locks. |
+| `INV-COMPANION-05` | Companion Pattern | Domain-grouped tasks reuse companion sub-agents, amortizing orientation cost. |
+| `INV-INTAKE-06` | Informal Intake | Raw text notes in `INBOX/` formalized with byte-identical `ORIGINALTEXT` preservation. |
+| `INV-AUDITOR-07` | Auditor Bridge | Seamless `system-auditor` bridge with fail-closed sparmodus token-budget gating. |
+| `INV-UNPRIV-08` | Unprivileged Execution | Standard user-mode execution (`RunAsInvoker`); zero UAC or root privileges required. |
+| `INV-PORTABLE-09` | Zero Dependencies | Pure Python standard library (`dependencies = []`); extras cleanly isolated. |
+| `INV-SLA-10` | Transparent SLA | Permissive MIT license, automated multi-OS CI matrix, and committed 48h security SLA. |
 
 ---
 

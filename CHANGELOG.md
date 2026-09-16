@@ -4,6 +4,16 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad B: Discoverability, Target Personas, Comparative Matrix & 18-Point Architecture (2026-09-16)
+
+- **Target Personas & SEO Discovery**: Added 4 target personas (`[PERSONA-01]` Autonomous AI Coding Agent Engineers, `[PERSONA-02]` Multi-Host DevOps Integrators, `[PERSONA-03]` Solo Developers & CLI Power Users, `[PERSONA-04]` Enterprise AI Safety & Governance Officers) with bilingual high-intent SEO queries.
+- **10-Dimension Comparative Matrix**: Mapped `ticket-master` against 4 industry alternatives (Traditional Issue Trackers, Cloud AI Agent Platforms, Ad-Hoc Chatbot Prompts, Distributed Task Queues) anchored directly to 10 Governance & Runtime Invariants (`INV-LOCAL-01` through `INV-SLA-10`).
+- **18-Point Quick Navigation**: Harmonized `README.md` and `README_de.md` with full reciprocal anchor parity (#1 through #18) and standardized Shields.io status badges.
+- **Packaging & PEP 621 Standard**: Added URLs for `Third-Party Licenses`, `Marketing Log`, and `LLM Ready` to `pyproject.toml` and configured `addopts = "-ra -v"` in `[tool.pytest.ini_options]`.
+- **Local Marketing Log**: Initialized canonical `MARKETING-LOG.txt` in repository root documenting the Pfad B audit, personas, SEO keywords, invariants, and ecosystem links.
+- **License & Security Transparency**: Updated `THIRD_PARTY_LICENSES.md` and `SECURITY.md` with explicit Zero-Copyleft guarantee, unprivileged `RunAsInvoker` user-mode declaration, and the 10 Governance Invariants table.
+- **Contract Test Suite Expansion**: Added metadata contract tests in `tests/test_metadata.py` verifying anchor parity, personas, matrix, invariants, and PEP 621 URLs.
+
 ### Security & Dependency Audit: Zero-Runtime Architecture, PEP 639 & SLA Hardening (2026-09-13)
 
 - **Third-Party License Inventory**: Added `THIRD_PARTY_LICENSES.md` declaring 100% zero-runtime external dependencies (`dependencies = []` in `pyproject.toml`) and inventorying built-in Python standard library modules, optional `routing-v2` (`clutch-router`), and development tooling (`pytest`, `ruff`, `setuptools`, `build`).

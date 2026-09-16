@@ -37,6 +37,22 @@ You can expect:
 - **Provider CLI Invocation:** Starters pass bootstrap prompts to locally installed LLM CLIs. Ensure your provider CLI executables are authentic and secured.
 - **Configuration Hygiene:** `config/ticket-master.config.json` and real site configurations are gitignored. Do not commit credentials, tokens, or private endpoints.
 - **Ticket Privacy:** Runtime ticket files in lifecycle directories (`INBOX`, `ACTIONABLE`, `QUEUED`, `BLOCKED`, `WAITING`, `USER`, `PARKED`, `PENDING`, `SOLVED`) are gitignored by default to prevent leaking internal project context.
+- **Unprivileged Execution:** Runs strictly in user mode (`RunAsInvoker`) without administrative elevation.
+
+### Governance & Runtime Invariants
+
+| Invariant | Focus | Enforcement Mechanism |
+|---|---|---|
+| `INV-LOCAL-01` | Zero Egress | Pure local disk / user cloud sync; zero external telemetry. |
+| `INV-WORKFLOW-02` | Agent Native | Transparent prompt-driven Position 0 triage; no background daemons. |
+| `INV-ROUTING-03` | 5D Scoring | 5-dimension deterministic scoring with provider fallback chains. |
+| `INV-CLAIM-04` | Multi-System | Atomic filesystem renames (`.claim-<host>-<ts>`); no database locks. |
+| `INV-COMPANION-05` | Companion Pattern | Reusable companion sub-agents for batch orientation savings. |
+| `INV-INTAKE-06` | Informal Intake | Byte-identical formalization via `ticket_writer.py --from-file`. |
+| `INV-AUDITOR-07` | Auditor Bridge | Fail-closed sparmodus token budget gate for `system-auditor`. |
+| `INV-UNPRIV-08` | Non-Elevation | Strict unprivileged `RunAsInvoker` user-mode execution. |
+| `INV-PORTABLE-09` | 0 Dependencies | Pure Python standard library (`dependencies = []`). |
+| `INV-SLA-10` | 48h SLA | Committed 48-hour response SLA and multi-OS CI testing matrix. |
 
 ---
 
@@ -73,3 +89,19 @@ Bitte fügen Sie der Meldung Folgendes bei:
 - **Kein Netzwerk-Egress:** Das Modul führt standardmäßig keine Netzwerkaufrufe durch und überträgt keinerlei Telemetrie- oder Benutzerdaten.
 - **Sichere Subprozesse:** Aufrufe lokaler Provider-CLIs erfolgen mit expliziten Argumenten ohne implizite Shell-Ausführung.
 - **Lokale Datenhaltung:** Laufzeit-Tickets und reale Konfigurationsdateien sind per `.gitignore` geschützt und verbleiben ausschließlich auf dem lokalen Rechner.
+- **Unprivilegierte Ausführung:** Standardmäßige Ausführung im Benutzermodus (`RunAsInvoker`) ohne administrative Rechte.
+
+#### Governance- & Laufzeit-Invarianten
+
+| Invariante | Bereich | Durchsetzungsmechanismus |
+|---|---|---|
+| `INV-LOCAL-01` | Zero Egress | Rein lokale Datenhaltung / Nutzer-Cloud-Sync; keine Telemetrie. |
+| `INV-WORKFLOW-02` | Agent Native | Transparenter, prompt-gesteuerter Position-0-Triage-Modus; keine Daemons. |
+| `INV-ROUTING-03` | 5D Scoring | 5-Dimensionen-Scoring mit deterministischer Fallback-Kette. |
+| `INV-CLAIM-04` | Multi-System | Atomares Filesystem-Rename (`.claim-<host>-<ts>`); keine DB-Locks. |
+| `INV-COMPANION-05` | Companion Pattern | Wiederverwendbare Companion-Sub-Agenten zur Orientierungs-Ersparnis. |
+| `INV-INTAKE-06` | Formloser Intake | Zeichengetreue Formalisierung via `ticket_writer.py --from-file`. |
+| `INV-AUDITOR-07` | Auditor-Brücke | Fail-Closed Token-Sparmodus-Gate für `system-auditor`. |
+| `INV-UNPRIV-08` | Keine Elevation | Strikte unprivilegierte `RunAsInvoker`-Benutzermodus-Ausführung. |
+| `INV-PORTABLE-09` | 0 Abhängigkeiten | Reine Python-Standardbibliothek (`dependencies = []`). |
+| `INV-SLA-10` | 48h SLA | Verbindliche 48h-Sicherheits-Reaktionszeit und Multi-OS-CI-Matrix. |
