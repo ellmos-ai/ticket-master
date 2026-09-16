@@ -21,6 +21,15 @@ from .unicorn_intake import (
     submit_intake,
     validate_route_intent,
 )
+from .unicorn_adapter import (
+    AdapterResponse,
+    render_form,
+    tray_preview,
+    tray_submit,
+    web_dispatch,
+    web_preview,
+    web_submit,
+)
 
 __all__ = [
     "build_route_intent",
@@ -29,10 +38,17 @@ __all__ = [
     "create",
     "create_routed_ticket",
     "IntakeValidationError",
+    "AdapterResponse",
     "load_contract",
     "preview_intake",
+    "render_form",
     "record_receipt",
     "release_contract",
     "submit_intake",
+    "tray_preview",
+    "tray_submit",
     "validate_route_intent",
+    "web_dispatch",
+    "web_preview",
+    "web_submit",
 ]

@@ -269,6 +269,20 @@ python lib/ticket_writer.py --from-file tickets/INBOX/eine-notiz.txt --submitter
 python lib/ticket_audit.py tickets --lint   # Pflichtfelder, STATUS-Vokabular, doppelte Blöcke
 ```
 
+### Unicorn-Web-/Tray-Adapter (Phase 2)
+
+`lib/unicorn_adapter.py` stellt eine kleine, framework-neutrale Grenze für
+Web- und Tray-Clients bereit. `GET /unicorn` liefert ein barrierearmes
+Formular; `POST /unicorn/preview` liefert ausschließlich die öffentliche
+Vorschau; `POST /unicorn/submit` liefert ausschließlich den
+`ellmos.unicorn.intake-receipt.v1`-Receipt. Tray-Clients verwenden dieselben
+`tray_preview()`- und `tray_submit()`-Funktionen wie der Webpfad.
+
+Der Adapter startet keinen Server und besitzt keine Worker-, Task-, Claim-,
+Modell-, Lock-, Transport- oder Runtime-Steuerung. Die Validierung,
+ID-Vergabe und Wiederholungs-Idempotenz bleiben im Unicorn-Kern und im
+kanonischen Ticket-Writer.
+
 ### Boot-Menü Rollen-Angebot (Entscheid 5A)
 
 `lib/boot_menu.py` ist ein reines Datenwerkzeug für das Rollenmenü am Ende der Boot-Sequenz (Schritt (c5)/(c6)) — es startet niemals selbst Prozesse. `--offer` gibt die verfügbaren Rollen, Instanz-Modi (`3:1`/`3:3`/`2:2`/`1:1`, inklusive Aliase `3 in 1`/`only1`/`only2`/`3x3`), die Modellliste (aus `clutch models --json`, sonst Fallback auf die konfigurierten `providers`) und das eigene `self_model()` des Ticket-Masters aus:
