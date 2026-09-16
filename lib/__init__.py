@@ -15,6 +15,14 @@ from .routing_contract import (
     release_contract,
 )
 from .ticket_writer import create, create_routed_ticket
+from .trithon_shadow import (
+    OUTCOME_RECEIPT_SCHEMA,
+    ROUTE_INTENT_SCHEMA,
+    TASK_PROJECTION_SCHEMA,
+    ShadowStore,
+    SourceDocument,
+    load_source,
+)
 
 __all__ = [
     "build_route_intent",
@@ -25,4 +33,10 @@ __all__ = [
     "load_contract",
     "record_receipt",
     "release_contract",
+    "ShadowStore",
+    "SourceDocument",
+    "load_source",
+    "OUTCOME_RECEIPT_SCHEMA",
+    "ROUTE_INTENT_SCHEMA",
+    "TASK_PROJECTION_SCHEMA",
 ]

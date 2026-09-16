@@ -17,7 +17,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-508%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-525%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--laufzeit-invarianten)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -90,6 +90,7 @@ Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlang
 | **Deterministische Fallback-Ketten** | Mehrstufig konfigurierte Fallbacks garantieren, dass Aufgaben auch bei Provider-Ausfällen oder Rate-Limits nicht verloren gehen. |
 | **Formloser Intake & Formalisierung** | Automatische Erfassung formloser Notizen in `INBOX/` mit zeichengetreuer Aufbewahrung im `ORIGINALTEXT`-Block und sicherer Archivierung. |
 | **Auditor-Brücke & Sparmodus-Gate** | Nahtlose Schnittstelle zu `ellmos-ai/system-auditor`; wandelt Prüfbefunde fehlersicher unter Beachtung aktiver Token-Sparstufen in Entwurfstickets um. |
+| **Trithon-Shadow-Projektion (Phase 1)** | Erstellt eine lokale, pointer-only SQLite-Projektion mit atomaren Rebuilds, idempotenten Imports, Crash-Recovery und einem No-op-Mock-Executor; Ticketdateien und Produktionslaufzeit bleiben unverändert. |
 | **0 externe Laufzeit-Abhängigkeiten** | Der Kern läuft vollständig auf der reinen Python-Standardbibliothek (`dependencies = []`); maximale Portabilität und Langlebigkeit. |
 | **Unprivilegierte Ausführung** | Läuft standardmäßig im Benutzermodus (`RunAsInvoker`) ohne Administratorrechte, Root-Zugriff oder UAC-Prompts. |
 
@@ -394,6 +395,34 @@ python bin/ticket_master.py --intake "Login-Fix"   # Strukturiertes Ticket via C
 python lib/ticket_writer.py --title "Speicherleck im Parser" --body "200MB Anstieg bei großen Dateien." --project mein-projekt --urgency sofort
 ```
 
+### Lokaler Trithon-Shadow-Modus (Phase 1)
+
+`lib/trithon_shadow.py` stellt für die Vorbereitung von Trithon/Muschelgrund
+eine host-lokale, pointer-only Projektion bereit. Sie verarbeitet
+`ellmos.ticket.route-intent.v1` sowie die geschlossenen Phase-0-Umschläge
+`ellmos.trithon.task-projection.v1` und
+`ellmos.trithon.outcome-receipt.v1`. In einer ausdrücklich gewählten
+SQLite-Datei werden nur Routing-Metadaten, Checkpoints, Aufgabenhistorie und
+Transport-Receipts gespeichert. Tickettexte, Prompts, Credentials, rohe
+Transkripte, lokale Pfade und ungültige Vertragsfelder werden vor jedem
+Schreiben abgewiesen. Imports und vollständige Rebuilds sind transaktional und
+idempotent; reine Delivery-Retries werden über ihren stabilen
+Idempotenzschlüssel erkannt. Der Mock-Executor protokolliert ausschließlich
+ein synthetisches No-op-Ereignis und startet weder Prozesse noch Dateien,
+Ollama oder Netzwerkzugriffe. Einen Ticketstatus verändert er nicht.
+
+```bash
+python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 \
+  import --source /absoluter/pfad/route-intent.json
+python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 verify
+python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 \
+  rebuild --source /absoluter/pfad/route-intent.json
+```
+
+Die Phase-1-Grenze bleibt bewusst lokal und synthetisch: Kein BACH-Hostdienst,
+keine Salt-Aktion, keine Live-Datenbank, kein produktiver Modellaufruf und
+keine Transportzustellung werden durch diese Projektion behauptet.
+
 ---
 
 <a id="11-routing-contract-v2--score-formula"></a>
@@ -522,7 +551,7 @@ Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen 
 ### Tests und Qualitätsprüfungen ausführen
 
 ```bash
-# Vollständige Test-Suite ausführen (502+ Tests, 100% grün)
+# Vollständige Test-Suite ausführen (525 Tests, 100% grün)
 pytest
 
 # Leichtgewichtigen Smoke-Test ausführen

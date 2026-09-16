@@ -4,6 +4,18 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Trithon/Muschelgrund Phase 1: lokaler Shadow-Modus (2026-09-16)
+
+- Added `lib/trithon_shadow.py`, a standard-library-only, pointer-only SQLite
+  projection for explicit route-intent, Phase-0 task-projection, and
+  outcome-receipt sources.
+- Imports, full rebuilds, checkpoints, task history, receipt reconciliation,
+  crash rollback, and concurrent idempotence are covered by focused tests.
+- The mock executor is synthetic and local; the module never reads ticket
+  bodies, mutates ticket status, starts a process, contacts Ollama, or delivers
+  transport. Productive BACH/Salt/live-database execution remains outside this
+  Phase-1 boundary.
+
 ### Pfad B: Discoverability, Target Personas, Comparative Matrix & 18-Point Architecture (2026-09-16)
 
 - **Target Personas & SEO Discovery**: Added 4 target personas (`[PERSONA-01]` Autonomous AI Coding Agent Engineers, `[PERSONA-02]` Multi-Host DevOps Integrators, `[PERSONA-03]` Solo Developers & CLI Power Users, `[PERSONA-04]` Enterprise AI Safety & Governance Officers) with bilingual high-intent SEO queries.
