@@ -15,6 +15,12 @@ from .routing_contract import (
     release_contract,
 )
 from .ticket_writer import create, create_routed_ticket
+from .unicorn_intake import (
+    IntakeValidationError,
+    preview_intake,
+    submit_intake,
+    validate_route_intent,
+)
 
 __all__ = [
     "build_route_intent",
@@ -22,7 +28,11 @@ __all__ = [
     "complete_contract",
     "create",
     "create_routed_ticket",
+    "IntakeValidationError",
     "load_contract",
+    "preview_intake",
     "record_receipt",
     "release_contract",
+    "submit_intake",
+    "validate_route_intent",
 ]
