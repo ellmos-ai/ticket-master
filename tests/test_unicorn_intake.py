@@ -71,6 +71,11 @@ def test_preview_rejects_unsupported_or_unsafe_input(bad):
         intake.preview_intake(bad)
 
 
+def test_preview_rejects_mixed_non_string_unknown_keys_fail_closed():
+    with pytest.raises(intake.IntakeValidationError, match="unsupported Unicorn fields"):
+        intake.preview_intake({"title": "x", "body": "y", 1: "bad", "unknown": "bad"})
+
+
 def test_submit_is_idempotent_and_returns_only_a_valid_intake_receipt(tmp_path):
     verified_queue(tmp_path)
     first = intake.submit_intake(

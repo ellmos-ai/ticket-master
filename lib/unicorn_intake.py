@@ -81,11 +81,15 @@ def _text(
 def _request(payload: Mapping[str, Any]) -> IntakeRequest:
     if not isinstance(payload, Mapping):
         raise IntakeValidationError("Unicorn intake must be a JSON object")
-    unknown = sorted(set(payload) - _PUBLIC_FIELDS)
+    unknown = [key for key in payload if key not in _PUBLIC_FIELDS]
     if unknown:
-        raise IntakeValidationError(
-            "unsupported Unicorn fields: " + ", ".join(map(str, unknown))
-        )
+        # Mapping callers can provide non-string keys even though decoded JSON
+        # objects cannot.  Keep the public error deterministic and avoid a
+        # mixed-type ``sorted``/stringification failure at the boundary.
+        labels = sorted(key for key in unknown if isinstance(key, str))
+        if any(not isinstance(key, str) for key in unknown):
+            labels.append("<non-string>")
+        raise IntakeValidationError("unsupported Unicorn fields: " + ", ".join(labels))
 
     title = _text(payload.get("title"), "title", maximum=_MAX_TITLE)
     body = _text(payload.get("body"), "body", maximum=_MAX_BODY, multiline=True)
