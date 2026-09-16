@@ -1,0 +1,221 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ellmos.local/trithon/ellmos.trithon.agents-heart-dispatch.v1.schema.json",
+  "title": "Trithon to agents-heart dispatch v1",
+  "description": "A bounded assignment request. agents-heart remains the admission and rights authority and must deny unknown fields or expanded rights.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "dispatch_id",
+    "assignment_id",
+    "task_ref",
+    "authorization",
+    "executor",
+    "delivery",
+    "idempotency_key"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ellmos.trithon.agents-heart-dispatch.v1"
+    },
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^dsp-[a-f0-9]{32}$"
+    },
+    "assignment_id": {
+      "type": "string",
+      "pattern": "^asgn-[a-f0-9]{32}$"
+    },
+    "task_ref": {
+      "$ref": "#/$defs/task_ref"
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role_id",
+        "role_revision",
+        "mode",
+        "required_rights",
+        "capability",
+        "budget"
+      ],
+      "properties": {
+        "role_id": {
+          "const": "hintergrund_worker"
+        },
+        "role_revision": {
+          "const": "v1"
+        },
+        "mode": {
+          "enum": ["safe", "full"]
+        },
+        "required_rights": {
+          "type": "array",
+          "items": {
+            "enum": ["task.claim", "task.execute"]
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "uniqueItems": true
+        },
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){0,7}$",
+          "maxLength": 96
+        },
+        "budget": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wall_seconds", "max_attempts", "max_output_bytes"],
+          "properties": {
+            "wall_seconds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3600
+            },
+            "max_attempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3
+            },
+            "max_output_bytes": {
+              "type": "integer",
+              "minimum": 1024,
+              "maximum": 1048576
+            }
+          }
+        }
+      }
+    },
+    "executor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "agent_instance_id",
+        "backend_id",
+        "model_id",
+        "slot_id",
+        "session_id",
+        "initiated_by"
+      ],
+      "properties": {
+        "agent_instance_id": {
+          "$ref": "#/$defs/opaque_id"
+        },
+        "backend_id": {
+          "$ref": "#/$defs/opaque_id"
+        },
+        "model_id": {
+          "$ref": "#/$defs/opaque_id"
+        },
+        "slot_id": {
+          "$ref": "#/$defs/opaque_id"
+        },
+        "session_id": {
+          "$ref": "#/$defs/opaque_id"
+        },
+        "initiated_by": {
+          "type": "string",
+          "pattern": "^trithon:[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        }
+      }
+    },
+    "delivery": {
+      "$ref": "#/$defs/delivery"
+    },
+    "idempotency_key": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{8}-[0-9]{9}(?:_[A-Za-z0-9][A-Za-z0-9_-]*)?$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^trithon-task:[A-Za-z0-9][A-Za-z0-9:._-]{8,191}$"
+    },
+    "projection_id": {
+      "type": "string",
+      "pattern": "^proj-[a-f0-9]{32}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "opaque_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]{0,127}$"
+    },
+    "task_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_id",
+        "task_id",
+        "ticket_id",
+        "ticket_revision",
+        "receipt_to"
+      ],
+      "properties": {
+        "projection_id": {
+          "$ref": "#/$defs/projection_id"
+        },
+        "task_id": {
+          "$ref": "#/$defs/task_id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/ticket_id"
+        },
+        "ticket_revision": {
+          "$ref": "#/$defs/sha256"
+        },
+        "receipt_to": {
+          "$ref": "#/$defs/ticket_id"
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "publisher_id",
+        "publisher_epoch",
+        "sequence",
+        "attempt",
+        "emitted_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^evt-[a-f0-9]{32}$"
+        },
+        "publisher_id": {
+          "type": "string",
+          "pattern": "^trithon@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "publisher_epoch": {
+          "type": "string",
+          "pattern": "^epoch-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "emitted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

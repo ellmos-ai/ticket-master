@@ -1,0 +1,15 @@
+{
+  "record_kind": "ticket-master.accepted-outcome.v1",
+  "outcome_receipt_id": "rcpt-00000000000000000000000000000001",
+  "projection_id": "proj-00000000000000000000000000000001",
+  "dispatch_id": "dsp-00000000000000000000000000000001",
+  "assignment_id": "asgn-00000000000000000000000000000001",
+  "ticket_id": "T-20990101-123456789",
+  "ticket_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+  "task_id": "trithon-task:T-20990101-123456789:222222222222",
+  "receipt_to": "T-20990101-123456789",
+  "outcome": "completed",
+  "applied_ticket_status": "SOLVED",
+  "accepted_by": "ticket-master@TEST-NODE",
+  "accepted_at": "2099-01-01T00:07:00Z"
+}

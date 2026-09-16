@@ -1,0 +1,41 @@
+{
+  "contract": "ellmos.trithon.agents-heart-dispatch.v1",
+  "dispatch_id": "dsp-00000000000000000000000000000001",
+  "assignment_id": "asgn-00000000000000000000000000000001",
+  "task_ref": {
+    "projection_id": "proj-00000000000000000000000000000001",
+    "task_id": "trithon-task:T-20990101-123456789:222222222222",
+    "ticket_id": "T-20990101-123456789",
+    "ticket_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "receipt_to": "T-20990101-123456789"
+  },
+  "authorization": {
+    "role_id": "hintergrund_worker",
+    "role_revision": "v1",
+    "mode": "safe",
+    "required_rights": ["task.claim", "task.execute"],
+    "capability": "software.contracts",
+    "budget": {
+      "wall_seconds": 900,
+      "max_attempts": 1,
+      "max_output_bytes": 262144
+    }
+  },
+  "executor": {
+    "agent_instance_id": "worker-test-instance",
+    "backend_id": "synthetic-backend",
+    "model_id": "synthetic-model-v1",
+    "slot_id": "contract-test-slot",
+    "session_id": "trithon-test-session-001",
+    "initiated_by": "trithon:contract-test"
+  },
+  "delivery": {
+    "event_id": "evt-00000000000000000000000000000009",
+    "publisher_id": "trithon@TEST-NODE",
+    "publisher_epoch": "epoch-test-0001",
+    "sequence": 21,
+    "attempt": 2,
+    "emitted_at": "2099-01-01T00:03:30Z"
+  },
+  "idempotency_key": "sha256:4c43ba48080e0d6228c92465308cf79bb0b482740ac96edcc21950320e703a46"
+}

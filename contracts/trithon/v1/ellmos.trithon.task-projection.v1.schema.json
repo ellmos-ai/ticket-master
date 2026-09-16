@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ellmos.local/trithon/ellmos.trithon.task-projection.v1.schema.json",
+  "title": "Trithon task projection v1",
+  "description": "A privacy-minimized, derived task projection from one ticket-master route intent. It is not a ticket or lifecycle authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "projection_id",
+    "source",
+    "task",
+    "target_snapshot",
+    "receipt_to",
+    "delivery",
+    "idempotency_key"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ellmos.trithon.task-projection.v1"
+    },
+    "projection_id": {
+      "type": "string",
+      "pattern": "^proj-[a-f0-9]{32}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "route_intent",
+        "ticket_id",
+        "ticket_revision",
+        "route_intent_idempotency_key",
+        "source_status"
+      ],
+      "properties": {
+        "route_intent": {
+          "const": "ellmos.ticket.route-intent.v1"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/ticket_id"
+        },
+        "ticket_revision": {
+          "$ref": "#/$defs/sha256"
+        },
+        "route_intent_idempotency_key": {
+          "$ref": "#/$defs/sha256"
+        },
+        "source_status": {
+          "const": "ACTIONABLE"
+        }
+      }
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_id", "capability", "priority", "task_state"],
+      "properties": {
+        "task_id": {
+          "$ref": "#/$defs/task_id"
+        },
+        "capability": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(?:[._-][a-z0-9]+){0,7}$",
+          "maxLength": 96
+        },
+        "priority": {
+          "enum": ["low", "normal", "high", "urgent"]
+        },
+        "task_state": {
+          "const": "ready"
+        }
+      }
+    },
+    "target_snapshot": {
+      "$ref": "#/$defs/target_snapshot"
+    },
+    "receipt_to": {
+      "$ref": "#/$defs/ticket_id"
+    },
+    "delivery": {
+      "$ref": "#/$defs/delivery"
+    },
+    "idempotency_key": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{8}-[0-9]{9}(?:_[A-Za-z0-9][A-Za-z0-9_-]*)?$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^trithon-task:[A-Za-z0-9][A-Za-z0-9:._-]{8,191}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "target_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "systems", "at", "source_ref", "fingerprint"],
+      "properties": {
+        "kind": {
+          "enum": ["any", "all", "grouped", "exact"]
+        },
+        "systems": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+          },
+          "uniqueItems": true,
+          "maxItems": 64
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "source_ref": {
+          "type": "string",
+          "pattern": "^(?!.*\\.\\.)(?:inventory|fixture|registry):[A-Za-z0-9][A-Za-z0-9._-]{0,191}$"
+        },
+        "fingerprint": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "publisher_id",
+        "publisher_epoch",
+        "sequence",
+        "attempt",
+        "emitted_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^evt-[a-f0-9]{32}$"
+        },
+        "publisher_id": {
+          "type": "string",
+          "pattern": "^ticket-master@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "publisher_epoch": {
+          "type": "string",
+          "pattern": "^epoch-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "emitted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

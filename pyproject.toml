@@ -45,6 +45,8 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6.0",
     "build>=1.2.0",
+    "jsonschema>=4.18,<5",
+    "rfc3339-validator>=0.1.4,<0.2",
 ]
 
 [project.urls]
@@ -63,6 +65,17 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["lib*"]
+
+[tool.setuptools.data-files]
+"share/ticket-master/contracts/trithon/v1" = [
+    "contracts/trithon/v1/*.json",
+]
+"share/ticket-master/contracts/trithon/v1/fixtures" = [
+    "contracts/trithon/v1/fixtures/*.json",
+]
+"share/ticket-master/docs" = [
+    "docs/TRITHON_PHASE0_CONTRACTS.de.md",
+]
 
 [tool.ruff]
 target-version = "py310"

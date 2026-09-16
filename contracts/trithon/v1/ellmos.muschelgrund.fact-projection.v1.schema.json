@@ -1,0 +1,274 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ellmos.local/muschelgrund/ellmos.muschelgrund.fact-projection.v1.schema.json",
+  "title": "Muschelgrund curated fact projection v1",
+  "description": "A curated memory projection from an outcome already accepted by ticket-master. It is not a task or lifecycle record.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "projection_id",
+    "source",
+    "entry",
+    "privacy_gate",
+    "evidence_refs",
+    "data_classes",
+    "delivery",
+    "idempotency_key"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ellmos.muschelgrund.fact-projection.v1"
+    },
+    "projection_id": {
+      "type": "string",
+      "pattern": "^memproj-[a-f0-9]{32}$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome_receipt_id",
+        "ticket_master_acceptance_ref",
+        "ticket_master_acceptance_digest",
+        "projection_id",
+        "dispatch_id",
+        "assignment_id",
+        "ticket_id",
+        "ticket_revision",
+        "task_id",
+        "receipt_to",
+        "outcome",
+        "accepted_ticket_status",
+        "accepted_by",
+        "accepted_at"
+      ],
+      "properties": {
+        "outcome_receipt_id": {
+          "type": "string",
+          "pattern": "^rcpt-[a-f0-9]{32}$"
+        },
+        "ticket_master_acceptance_ref": {
+          "type": "string",
+          "pattern": "^urn:ticket-master-acceptance:[a-f0-9]{64}$"
+        },
+        "ticket_master_acceptance_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "projection_id": {
+          "type": "string",
+          "pattern": "^proj-[a-f0-9]{32}$"
+        },
+        "dispatch_id": {
+          "type": "string",
+          "pattern": "^dsp-[a-f0-9]{32}$"
+        },
+        "assignment_id": {
+          "type": "string",
+          "pattern": "^asgn-[a-f0-9]{32}$"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/ticket_id"
+        },
+        "ticket_revision": {
+          "$ref": "#/$defs/sha256"
+        },
+        "task_id": {
+          "$ref": "#/$defs/task_id"
+        },
+        "receipt_to": {
+          "$ref": "#/$defs/ticket_id"
+        },
+        "outcome": {
+          "const": "completed"
+        },
+        "accepted_ticket_status": {
+          "const": "SOLVED"
+        },
+        "accepted_by": {
+          "type": "string",
+          "pattern": "^ticket-master@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "accepted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "subject",
+        "statement",
+        "language",
+        "privacy_class",
+        "editorial_status",
+        "redaction_status",
+        "content_digest"
+      ],
+      "properties": {
+        "kind": {
+          "enum": ["fact", "lesson", "working_note"]
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "statement": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "language": {
+          "enum": ["de", "en"]
+        },
+        "privacy_class": {
+          "enum": ["internal", "public"]
+        },
+        "editorial_status": {
+          "const": "accepted"
+        },
+        "redaction_status": {
+          "const": "reviewed"
+        },
+        "content_digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "privacy_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "policy",
+        "scanner_id",
+        "scanner_revision",
+        "scanned_content_digest",
+        "curation_receipt_ref",
+        "curation_receipt_digest",
+        "decision",
+        "findings_count",
+        "checked_at"
+      ],
+      "properties": {
+        "policy": {
+          "const": "ellmos.privacy.allowlist.v1"
+        },
+        "scanner_id": {
+          "type": "string",
+          "pattern": "^privacy-gate@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "scanner_revision": {
+          "const": "v1"
+        },
+        "scanned_content_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "curation_receipt_ref": {
+          "type": "string",
+          "pattern": "^urn:privacy-curation:[a-f0-9]{64}$"
+        },
+        "curation_receipt_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "decision": {
+          "const": "allow"
+        },
+        "findings_count": {
+          "const": 0
+        },
+        "checked_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^urn:[A-Za-z0-9][A-Za-z0-9:._-]{1,255}$"
+      },
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true
+    },
+    "data_classes": {
+      "type": "array",
+      "items": {
+        "enum": [
+          "curated_statement",
+          "opaque_ticket_reference",
+          "opaque_task_reference",
+          "opaque_evidence_reference",
+          "provenance_timestamp"
+        ]
+      },
+      "minItems": 1,
+      "maxItems": 5,
+      "uniqueItems": true
+    },
+    "delivery": {
+      "$ref": "#/$defs/delivery"
+    },
+    "idempotency_key": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{8}-[0-9]{9}(?:_[A-Za-z0-9][A-Za-z0-9_-]*)?$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^trithon-task:[A-Za-z0-9][A-Za-z0-9:._-]{8,191}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "publisher_id",
+        "publisher_epoch",
+        "sequence",
+        "attempt",
+        "emitted_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^evt-[a-f0-9]{32}$"
+        },
+        "publisher_id": {
+          "type": "string",
+          "pattern": "^trithon@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "publisher_epoch": {
+          "type": "string",
+          "pattern": "^epoch-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "emitted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

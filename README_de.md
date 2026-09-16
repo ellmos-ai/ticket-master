@@ -17,7 +17,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-508%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-582%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--laufzeit-invarianten)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -429,6 +429,13 @@ Mehrsystemarbeit verwendet eine umlaufende Vertragsakte und keine kopierten Kind
 Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`, `done` oder `blocked`). Receipts erfassen den tatsächlichen Runner, Provider, Modell, Zeitstempel und Nachweis und werden unter der Lease idempotent abgeglichen. Die Lease wird erzwungen, nicht bloß notiert: `record_receipt` und `complete_contract` verweigern jeden Schreibzugriff, sobald `CLAIM_LEASE_UNTIL` abgelaufen ist. Nur der Inhaber des letzten Claims darf den Kontrakt nach `SOLVED` überführen, wenn jede erforderliche Zeile empirisch `done` ist. `ticket_audit.py` meldet Dateinamen/Metadaten, Ziel-Claim, Ledger, Receipt-Signatur und vorzeitige SOLVED-Verletzungen.
 
 Verantwortungsgrenze: ticket-master besitzt diesen Kontrakt und seinen Lebenszyklus; Clutch verantwortet die Ausführungsauflösung; `.SYNC` transportiert Anfragen und Receipts; system-gap-master übernimmt die systemübergreifende Erkennung und den Abgleich. ticket-master liefert ausschließlich ein idempotentes `route_intent` mit Ticket-ID, fixiertem Ziel-Snapshot und Quittungsziel. Integrationen rufen `ticket_writer.create_routed_ticket(..., idempotency_key=...)` auf; Wiederholungen mit derselben normalisierten Anfrage liefern den bestehenden Kontrakt zurück.
+
+Die Phase-0-Verträge für eine abgeleitete Trithon-Taskprojektion, den
+agents-heart-Dispatch, den Outcome-Vorschlag und die kuratierte
+Muschelgrund-Projektion liegen unter `contracts/trithon/v1/`. Sie definieren
+noch keine Laufzeit. Feldabbildung, Autoritätsgrenzen, Datenschutz-Allowlist und
+Gefahrenmodell stehen in
+[`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
 
 
 ### Companion-Muster

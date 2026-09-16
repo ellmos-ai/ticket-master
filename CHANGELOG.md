@@ -4,6 +4,30 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Trithon/Muschelgrund Phase 0 contracts (T-20260916-735219043)
+
+- Added four closed Draft 2020-12 schemas for the ticket-master → Trithon task
+  projection, Trithon → agents-heart dispatch, Trithon → ticket-master outcome
+  proposal, and accepted completion → Muschelgrund fact projection.
+- Added a leaf-complete `route-intent.v1` mapping and an evidence-labelled map
+  of the existing BACH-HERZ-01 assignment seam. Missing capability, budget and
+  replay checks remain explicit Phase-3 adapter gates rather than being
+  reported as already implemented.
+- Added synthetic initial, retry and error fixtures plus contract tests for
+  stable idempotency, duplicate receipts, revision/epoch mismatch, rights and
+  budget expansion, lifecycle authority and privacy leakage. No Trithon
+  runtime, host service, Salt state, push or deployment is included.
+- Source distributions and wheels include the schemas, fixtures and Phase-0
+  contract guide under `share/ticket-master/`; they are data contracts, not an
+  imported runtime package.
+- The cross-platform test workflow now installs the repository's declared
+  `[dev]` extra, so Draft 2020-12 validation runs on every supported Python/OS
+  matrix entry instead of relying on an undeclared host package.
+- Independent review hardening binds every ticket/task/dispatch/assignment and
+  receipt identifier end to end, resolves Muschelgrund acceptance against the
+  ticket-master canon, recomputes privacy and idempotency gates, rejects stale
+  publisher sequences, and pins complete outcome tuples plus RFC 3339 checks.
+
 ### Pfad B: Discoverability, Target Personas, Comparative Matrix & 18-Point Architecture (2026-09-16)
 
 - **Target Personas & SEO Discovery**: Added 4 target personas (`[PERSONA-01]` Autonomous AI Coding Agent Engineers, `[PERSONA-02]` Multi-Host DevOps Integrators, `[PERSONA-03]` Solo Developers & CLI Power Users, `[PERSONA-04]` Enterprise AI Safety & Governance Officers) with bilingual high-intent SEO queries.

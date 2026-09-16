@@ -1,0 +1,112 @@
+{
+  "mapping_contract": "ellmos.trithon.route-intent-mapping.v1",
+  "source_contract": "ellmos.ticket.route-intent.v1",
+  "target_contract": "ellmos.trithon.task-projection.v1",
+  "mappings": [
+    {
+      "source_pointer": "/route_intent",
+      "target_pointer": "/source/route_intent",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/ticket_id",
+      "target_pointer": "/source/ticket_id",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/target_snapshot/kind",
+      "target_pointer": "/target_snapshot/kind",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/target_snapshot/systems",
+      "target_pointer": "/target_snapshot/systems",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/target_snapshot/at",
+      "target_pointer": "/target_snapshot/at",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/target_snapshot/source",
+      "target_pointer": "/target_snapshot/source_ref",
+      "mode": "validate_opaque_registry_ref"
+    },
+    {
+      "source_pointer": "/target_snapshot/fingerprint",
+      "target_pointer": "/target_snapshot/fingerprint",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/receipt_to",
+      "target_pointer": "/receipt_to",
+      "mode": "copy"
+    },
+    {
+      "source_pointer": "/idempotency_key",
+      "target_pointer": "/source/route_intent_idempotency_key",
+      "mode": "copy"
+    }
+  ],
+  "bridge_enrichments": [
+    {
+      "target_pointer": "/contract",
+      "authority": "bridge-contract",
+      "rule": "constant ellmos.trithon.task-projection.v1"
+    },
+    {
+      "target_pointer": "/projection_id",
+      "authority": "trithon-projection",
+      "rule": "stable opaque projection ID; preserved across delivery retries"
+    },
+    {
+      "target_pointer": "/source/ticket_revision",
+      "authority": "ticket-master",
+      "rule": "sha256 of the exact ticket bytes read for projection"
+    },
+    {
+      "target_pointer": "/source/source_status",
+      "authority": "ticket-master",
+      "rule": "must equal ACTIONABLE at the same compare-and-swap checkpoint"
+    },
+    {
+      "target_pointer": "/task/task_id",
+      "authority": "trithon-projection",
+      "rule": "deterministic opaque ID from ticket_id and ticket_revision"
+    },
+    {
+      "target_pointer": "/task/capability",
+      "authority": "ticket-master-policy",
+      "rule": "allowlisted metadata only; never inferred from copied ticket full text"
+    },
+    {
+      "target_pointer": "/task/priority",
+      "authority": "ticket-master-policy",
+      "rule": "normalized from the ticket priority vocabulary"
+    },
+    {
+      "target_pointer": "/task/task_state",
+      "authority": "trithon-projection",
+      "rule": "initial projection is exactly ready"
+    },
+    {
+      "target_pointer": "/delivery",
+      "authority": "ticket-master-publisher",
+      "rule": "new event and attempt per delivery; epoch and sequence are monotonic publisher data"
+    },
+    {
+      "target_pointer": "/idempotency_key",
+      "authority": "bridge-contract",
+      "rule": "sha256 of every stable top-level field; delivery and idempotency_key are excluded"
+    }
+  ],
+  "forbidden_enrichments": [
+    "ticket_full_text",
+    "prompt",
+    "tool_transcript",
+    "secret",
+    "credential",
+    "local_path"
+  ]
+}

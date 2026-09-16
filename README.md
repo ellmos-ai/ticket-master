@@ -16,7 +16,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-508%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-582%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--runtime-invariants)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -434,6 +434,12 @@ Multi-system work uses one circulating contract, not one copied child ticket per
 Each target has exactly one `SYSTEM_LEDGER` row (`pending`, `claimed`, `done`, or `blocked`). Receipts record the actual runner, provider, model, time and evidence and are reconciled idempotently under the lease. The lease is enforced, not merely recorded: `record_receipt` and `complete_contract` refuse to write once `CLAIM_LEASE_UNTIL` has passed, so a session that died mid-run cannot book half a completion hours later. A claim without a readable lease is refused the same way — `claim_contract` always writes one, so its absence means a hand-edited contract. Releasing stays open to an expired holder, since handing a claim back takes nothing from anyone. Only the holder of the last claim may move the contract to `SOLVED`, and only when every required row is empirically `done`. `ticket_audit.py` reports filename/metadata, target-claim, ledger, receipt-signature and premature-SOLVED violations.
 
 Responsibility boundary: ticket-master owns this contract and its lifecycle; Clutch owns execution resolution; `.SYNC` transports requests and receipts; system-gap-master owns cross-system discovery/reconciliation. ticket-master provides only an idempotent `route_intent` containing the ticket ID, fixed target snapshot and receipt destination. It implements no inbox/outbox, drop-zone, offline queue, retry loop or transport delivery state. Integrations call `ticket_writer.create_routed_ticket(..., idempotency_key=...)`; retries with the same normalized request return the existing contract, while reuse of the key for different content fails closed.
+
+The Phase-0-only contracts for the derived Trithon task projection,
+agents-heart dispatch, outcome proposal and curated Muschelgrund projection are
+under `contracts/trithon/v1/`. They define no runtime. The field mapping,
+authority boundaries, privacy allowlist and threat model are documented in
+[`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
 
 
 ### Companion Pattern
