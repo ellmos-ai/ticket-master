@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-16: `525 passed` via `python -m pytest -q`.
+- Local verification on 2026-09-16: `529 passed` via `python -m pytest -q`.
 - Optional `system-auditor` bridge (`lib/auditor_bridge.py`): opt-in
   spawn/skip decision for the sibling `ellmos-ai/system-auditor` module,
   gated by a three-valued sparmodus read and never recomputing
@@ -43,7 +43,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
   absolute SQLite path, pointer-only route/receipt metadata, support for the
   Phase-0 task-projection and outcome-receipt envelopes, atomic/idempotent
   import and rebuild, checkpoint drift guard, crash rollback, delivery-only
-  retry handling, and synthetic mock execution. It never reads ticket bodies
+  retry handling, explicit trusted-publisher checkpoints, and synthetic mock execution. It never reads ticket bodies
   or mutates ticket status and does not start BACH, Ollama, Salt, a live
   database, or network transport.
 - New ticket IDs use a 9-digit random value and must be minted through

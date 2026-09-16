@@ -11,6 +11,9 @@ All notable changes to ticket-master are documented here.
   outcome-receipt sources.
 - Imports, full rebuilds, checkpoints, task history, receipt reconciliation,
   crash rollback, and concurrent idempotence are covered by focused tests.
+- Delivery envelopes require an explicit trusted-publisher allowlist and
+  monotonic publisher epoch/sequence checkpoints; future database versions,
+  foreign publishers, stale deliveries, and raw mock evidence fail closed.
 - The mock executor is synthetic and local; the module never reads ticket
   bodies, mutates ticket status, starts a process, contacts Ollama, or delivers
   transport. Productive BACH/Salt/live-database execution remains outside this

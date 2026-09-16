@@ -19,6 +19,7 @@ from lib.trithon_shadow import (
     SourceConflictError,
     SourceDocument,
     TASK_PROJECTION_SCHEMA,
+    load_source,
     main,
 )
 
@@ -249,7 +250,10 @@ def test_duplicate_target_systems_fail_closed(tmp_path: Path):
 
 
 def test_phase0_projection_and_outcome_contracts_are_imported_and_bound(tmp_path: Path):
-    store = ShadowStore(tmp_path / "shadow.sqlite3")
+    store = ShadowStore(
+        tmp_path / "shadow.sqlite3",
+        trusted_publishers={"ticket-master@ASUS-GEI", "trithon@ASUS-GEI"},
+    )
     projection = document(phase0_projection(), "memory://phase0-projection")
     outcome = document(phase0_outcome(), "memory://phase0-outcome")
 
@@ -268,7 +272,10 @@ def test_phase0_projection_and_outcome_contracts_are_imported_and_bound(tmp_path
 
 
 def test_phase0_delivery_retry_changes_only_transport_and_remains_idempotent(tmp_path: Path):
-    store = ShadowStore(tmp_path / "shadow.sqlite3")
+    store = ShadowStore(
+        tmp_path / "shadow.sqlite3",
+        trusted_publishers={"ticket-master@ASUS-GEI", "trithon@ASUS-GEI"},
+    )
     projection_payload = phase0_projection()
     outcome_payload = phase0_outcome()
     store.import_documents(
@@ -295,6 +302,46 @@ def test_phase0_delivery_retry_changes_only_transport_and_remains_idempotent(tmp
     assert replay.unchanged == 1
     assert replay.receipt_unchanged == 1
     assert store.verify()["counts"] == {"tasks": 1, "receipts": 1, "history": 2, "checkpoints": 2}
+    assert store.reset_checkpoints() == 8
+    after_reset = store.import_documents(
+        [
+            document(projection_payload, "memory://phase0-retry-projection"),
+            document(outcome_payload, "memory://phase0-retry-outcome"),
+        ]
+    )
+    assert after_reset.unchanged == 1
+    assert after_reset.receipt_unchanged == 1
+
+
+def test_delivery_checkpoint_rejects_untrusted_publisher_epoch_and_sequence(tmp_path: Path):
+    projection_payload = phase0_projection()
+    foreign = json.loads(json.dumps(projection_payload))
+    foreign["delivery"]["publisher_id"] = "ticket-master@FOREIGN-HOST"
+    foreign_store = ShadowStore(
+        tmp_path / "foreign.sqlite3", trusted_publishers={"ticket-master@ASUS-GEI"}
+    )
+    with pytest.raises(InvalidSourceError, match="untrusted delivery publisher"):
+        foreign_store.import_documents([document(foreign, "memory://foreign-delivery")])
+    assert foreign_store.verify()["counts"] == {"tasks": 0, "receipts": 0, "history": 0, "checkpoints": 0}
+
+    store = ShadowStore(
+        tmp_path / "trusted.sqlite3", trusted_publishers={"ticket-master@ASUS-GEI"}
+    )
+    source_uri = "memory://delivery-checkpoint"
+    store.import_documents([document(projection_payload, source_uri)])
+    assert store.verify()["delivery"] == {"events": 1, "publishers": 1}
+
+    stale = json.loads(json.dumps(projection_payload))
+    stale["delivery"].update(event_id="evt-" + "7" * 32, sequence=9)
+    with pytest.raises(SourceConflictError, match="stale publisher sequence"):
+        store.import_documents([document(stale, source_uri)])
+
+    wrong_epoch = json.loads(json.dumps(projection_payload))
+    wrong_epoch["delivery"].update(
+        event_id="evt-" + "6" * 32, sequence=12, publisher_epoch="epoch-foreign"
+    )
+    with pytest.raises(SourceConflictError, match="publisher epoch changed"):
+        store.import_documents([document(wrong_epoch, source_uri)])
 
 
 def test_unknown_source_shape_is_rejected_instead_of_becoming_a_checkpoint(tmp_path: Path):
@@ -378,6 +425,30 @@ def test_corrupt_database_fails_closed(tmp_path: Path):
         ShadowStore(path)
 
 
+def test_load_source_and_from_payload_share_the_canonical_digest(tmp_path: Path):
+    payload = route(idempotency_key="sha256:canonical-source")
+    source_path = tmp_path / "formatted.json"
+    source_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+    loaded = load_source(source_path)
+    constructed = document(payload, source_path.as_uri())
+    assert loaded.digest == constructed.digest
+
+
+def test_future_schema_version_fails_closed(tmp_path: Path):
+    path = tmp_path / "future.sqlite3"
+    ShadowStore(path)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            "UPDATE shadow_meta SET value = '999' WHERE key = 'schema_version'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    with pytest.raises(CorruptStoreError, match="newer than supported"):
+        ShadowStore(path)
+
+
 def test_receipt_conflicts_and_transactional_unknown_reference(tmp_path: Path):
     store = ShadowStore(tmp_path / "shadow.sqlite3")
     route_data = route(idempotency_key="sha256:route-three")
@@ -434,13 +505,25 @@ def test_receipt_evidence_is_a_pointer_and_mock_cannot_overwrite_receipt(tmp_pat
 
 def test_mock_executor_is_local_noop_and_idempotent(tmp_path: Path):
     store = ShadowStore(tmp_path / "shadow.sqlite3")
-    store.import_documents([document(route())])
+    store.import_documents([document(route(), "synthetic://routes")])
     identifier = task_id("sha256:route-one")
     first = store.mock_execute(identifier, evidence="mock://run/one")
     second = store.mock_execute(identifier, evidence="mock://run/one")
     assert first == second == {"task_id": identifier, "status": "done", "evidence": "mock://run/one"}
     assert store.tasks()[0]["shadow_state"] == "mock-done"
     assert store.verify()["counts"] == {"tasks": 1, "receipts": 0, "history": 2, "checkpoints": 1}
+
+
+def test_mock_executor_rejects_non_synthetic_tasks_and_raw_evidence(tmp_path: Path):
+    store = ShadowStore(tmp_path / "shadow.sqlite3")
+    store.import_documents([document(route(), "ticket-master://T-20260916-100000001")])
+    with pytest.raises(InvalidSourceError, match="synthetic"):
+        store.mock_execute(task_id("sha256:route-one"))
+
+    synthetic_store = ShadowStore(tmp_path / "synthetic.sqlite3")
+    synthetic_store.import_documents([document(route(), "synthetic://raw-evidence")])
+    with pytest.raises(InvalidSourceError, match="URI/pointer"):
+        synthetic_store.mock_execute(task_id("sha256:route-one"), evidence="raw execution output")
 
 
 def test_ticket_source_is_never_opened_or_changed(tmp_path: Path):

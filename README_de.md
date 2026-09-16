@@ -17,7 +17,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-525%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-529%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--laufzeit-invarianten)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -413,15 +413,22 @@ Ollama oder Netzwerkzugriffe. Einen Ticketstatus verändert er nicht.
 
 ```bash
 python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 \
+  --trusted-publisher ticket-master@LOKALER-HOST \
   import --source /absoluter/pfad/route-intent.json
 python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 verify
 python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 \
   rebuild --source /absoluter/pfad/route-intent.json
+python lib/trithon_shadow.py --db /absoluter/pfad/trithon-shadow.sqlite3 \
+  reset-checkpoints
 ```
 
 Die Phase-1-Grenze bleibt bewusst lokal und synthetisch: Kein BACH-Hostdienst,
 keine Salt-Aktion, keine Live-Datenbank, kein produktiver Modellaufruf und
 keine Transportzustellung werden durch diese Projektion behauptet.
+Vertragsumschläge werden nur für ausdrücklich konfigurierte Publisher-IDs
+angenommen. Der Reset löscht Quell- und Delivery-Checkpoints, behält aber
+Projektion und Historie; eine geänderte stabile Projektion erfordert weiterhin
+den ausdrücklich aufgerufenen `rebuild`.
 
 ---
 
@@ -551,7 +558,7 @@ Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen 
 ### Tests und Qualitätsprüfungen ausführen
 
 ```bash
-# Vollständige Test-Suite ausführen (525 Tests, 100% grün)
+# Vollständige Test-Suite ausführen (529 Tests, 100% grün)
 pytest
 
 # Leichtgewichtigen Smoke-Test ausführen

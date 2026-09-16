@@ -9,9 +9,10 @@ or network transport is hidden here.
 
 The public contract is ``trithon.shadow.v1``.  A source document may contain a
 single ``route_intent`` object, a Phase-0 task-projection or outcome-receipt
-envelope, or ``route_intents``/``receipts`` arrays.  Source bytes are
-fingerprinted, and a changed document at the same URI fails closed until the
-caller explicitly performs a rebuild or resets its checkpoints.
+envelope, or ``route_intents``/``receipts`` arrays.  Canonical source payloads
+are fingerprinted, and a changed stable document at the same URI fails closed
+until the caller explicitly performs a rebuild. Delivery-only retries use the
+stable contract idempotency key and remain replayable.
 """
 
 from __future__ import annotations
@@ -304,9 +305,9 @@ def _normalised_equivalent(left: Mapping[str, Any], right: Mapping[str, Any]) ->
 
     ignored = set()
     if left.get("projection_id") is not None and right.get("projection_id") is not None:
-        ignored.update({"source_uri", "source_sha256"})
+        ignored.update({"delivery", "source_uri", "source_sha256"})
     if left.get("receipt_idempotency_key") is not None and right.get("receipt_idempotency_key") is not None:
-        ignored.update({"occurred_at", "source_uri", "source_sha256"})
+        ignored.update({"delivery", "occurred_at", "source_uri", "source_sha256"})
     return _canonical({key: value for key, value in left.items() if key not in ignored}) == _canonical(
         {key: value for key, value in right.items() if key not in ignored}
     )
@@ -345,7 +346,8 @@ def load_source(path: str | Path) -> SourceDocument:
     if not isinstance(payload, Mapping):
         raise InvalidSourceError("source root must be a JSON object")
     _assert_pointer_only(payload)
-    return SourceDocument(source_path.as_uri(), _sha256(raw), dict(payload))
+    canonical = (_canonical(payload) + "\n").encode("utf-8")
+    return SourceDocument(source_path.as_uri(), _sha256(canonical), dict(payload))
 
 
 def _route_records(document: SourceDocument) -> list[Mapping[str, Any]]:
@@ -508,7 +510,7 @@ def _normalise_task_projection(document: SourceDocument, record: Mapping[str, An
     receipt_to = _scalar(record.get("receipt_to"), field="task_projection.receipt_to")
     if receipt_to is None or not _TICKET_ID_RE.fullmatch(receipt_to) or receipt_to != ticket_id:
         raise InvalidSourceError("task_projection.receipt_to must match source.ticket_id")
-    _normalise_delivery(record.get("delivery"), publisher_prefix="ticket-master")
+    delivery = _normalise_delivery(record.get("delivery"), publisher_prefix="ticket-master")
 
     stable = {key: value for key, value in record.items() if key not in {"delivery", "idempotency_key"}}
     idempotency_key = _digest(record.get("idempotency_key"), field="task_projection.idempotency_key")
@@ -530,6 +532,7 @@ def _normalise_task_projection(document: SourceDocument, record: Mapping[str, An
         "route_intent_idempotency_key": route_key,
         "source_status": source_status,
         "target_fingerprint": target_fingerprint,
+        "delivery": delivery,
     }
 
 
@@ -600,7 +603,7 @@ def _normalise_outcome_receipt(document: SourceDocument, record: Mapping[str, An
         _digest(item.get("digest"), field=f"outcome_receipt.evidence[{index}].digest")
         evidence_refs.append(reference)
 
-    _normalise_delivery(record.get("delivery"), publisher_prefix="trithon")
+    delivery = _normalise_delivery(record.get("delivery"), publisher_prefix="trithon")
     stable = {key: value for key, value in record.items() if key not in {"delivery", "idempotency_key"}}
     idempotency_key = _digest(record.get("idempotency_key"), field="outcome_receipt.idempotency_key")
     if idempotency_key != _sha256(_canonical(stable).encode("utf-8")):
@@ -632,6 +635,7 @@ def _normalise_outcome_receipt(document: SourceDocument, record: Mapping[str, An
         "evidence_refs": evidence_refs,
         "receipt_idempotency_key": idempotency_key,
         "receipt_to": receipt_to,
+        "delivery": delivery,
     }
 
 
@@ -669,6 +673,7 @@ def _normalise_receipt(document: SourceDocument, record: Mapping[str, Any]) -> d
         "source_sha256": document.digest,
         "receipt_to": None,
         "receipt_idempotency_key": None,
+        "delivery": None,
     }
 
 
@@ -756,12 +761,24 @@ class ImportResult:
 class ShadowStore:
     """A local SQLite projection with transactionally idempotent imports."""
 
-    def __init__(self, db_path: str | Path):
+    def __init__(
+        self,
+        db_path: str | Path,
+        *,
+        trusted_publishers: Iterable[str] | None = None,
+    ):
         path = Path(db_path).expanduser()
         if not path.is_absolute():
             raise InvalidSourceError("db_path must be absolute; choose the local shadow store explicitly")
         if path.name in {"", ".", ".."}:
             raise InvalidSourceError("db_path must name a database file")
+        if isinstance(trusted_publishers, (str, bytes)):
+            raise InvalidSourceError("trusted_publishers must be an iterable of publisher IDs")
+        publishers = tuple(trusted_publishers or ())
+        for publisher in publishers:
+            if not isinstance(publisher, str) or not _PUBLISHER_ID_RE.fullmatch(publisher):
+                raise InvalidSourceError(f"invalid trusted publisher: {publisher!r}")
+        self.trusted_publishers = frozenset(publishers)
         self.path = path.resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._ensure_schema()
@@ -825,6 +842,22 @@ class ShadowStore:
                 )
                 """,
                 """
+                CREATE TABLE IF NOT EXISTS publisher_checkpoints (
+                    publisher_id TEXT PRIMARY KEY,
+                    publisher_epoch TEXT NOT NULL,
+                    last_sequence INTEGER NOT NULL
+                )
+                """,
+                """
+                CREATE TABLE IF NOT EXISTS publisher_events (
+                    event_id TEXT PRIMARY KEY,
+                    publisher_id TEXT NOT NULL,
+                    publisher_epoch TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    stable_key TEXT NOT NULL
+                )
+                """,
+                """
                 CREATE TABLE IF NOT EXISTS receipts (
                     signature TEXT PRIMARY KEY,
                     task_id TEXT NOT NULL REFERENCES tasks(task_id),
@@ -852,6 +885,7 @@ class ShadowStore:
                 "CREATE INDEX IF NOT EXISTS idx_tasks_ticket_id ON tasks(ticket_id)",
                 "CREATE INDEX IF NOT EXISTS idx_history_task_id ON task_history(task_id)",
                 "CREATE INDEX IF NOT EXISTS idx_receipts_task_id ON receipts(task_id)",
+                "CREATE INDEX IF NOT EXISTS idx_publisher_events_order ON publisher_events(publisher_id, publisher_epoch, sequence)",
                 ):
                 connection.execute(statement)
             task_columns = {
@@ -874,6 +908,18 @@ class ShadowStore:
                 )
             elif row[0] != SHADOW_SCHEMA:
                 raise CorruptStoreError(f"unsupported shadow schema: {row[0]}")
+            version_row = connection.execute(
+                "SELECT value FROM shadow_meta WHERE key = 'schema_version'"
+            ).fetchone()
+            if version_row is not None:
+                try:
+                    stored_version = int(version_row[0])
+                except (TypeError, ValueError) as exc:
+                    raise CorruptStoreError("shadow schema version is not an integer") from exc
+                if stored_version > SHADOW_SCHEMA_VERSION:
+                    raise CorruptStoreError(
+                        f"shadow schema version {stored_version} is newer than supported {SHADOW_SCHEMA_VERSION}"
+                    )
             connection.execute(
                 "INSERT OR REPLACE INTO shadow_meta(key, value) VALUES('schema_version', ?)",
                 (str(SHADOW_SCHEMA_VERSION),),
@@ -911,8 +957,82 @@ class ShadowStore:
         ).fetchone()
         if row is not None and row[0] != _checkpoint_fingerprint(document):
             raise SourceConflictError(
-                f"source changed at {document.uri}; rebuild or reset checkpoints explicitly"
+                f"source changed at {document.uri}; rebuild explicitly to replace the projection"
             )
+
+    def _record_delivery(
+        self,
+        connection: sqlite3.Connection,
+        delivery: Mapping[str, Any] | None,
+        *,
+        stable_key: str,
+    ) -> bool:
+        """Accept one trusted, monotonic delivery or replay an exact event."""
+
+        if delivery is None:
+            return False
+        publisher_id = delivery["publisher_id"]
+        if publisher_id not in self.trusted_publishers:
+            raise InvalidSourceError(f"untrusted delivery publisher: {publisher_id}")
+        existing_event = connection.execute(
+            "SELECT * FROM publisher_events WHERE event_id = ?", (delivery["event_id"],)
+        ).fetchone()
+        if existing_event is not None:
+            expected = (
+                publisher_id,
+                delivery["publisher_epoch"],
+                delivery["sequence"],
+                stable_key,
+            )
+            actual = tuple(existing_event[key] for key in (
+                "publisher_id", "publisher_epoch", "sequence", "stable_key"
+            ))
+            if actual != expected:
+                raise SourceConflictError(f"delivery event changed: {delivery['event_id']}")
+            return False
+
+        same_sequence = connection.execute(
+            """
+            SELECT event_id FROM publisher_events
+            WHERE publisher_id = ? AND publisher_epoch = ? AND sequence = ?
+            """,
+            (publisher_id, delivery["publisher_epoch"], delivery["sequence"]),
+        ).fetchone()
+        if same_sequence is not None:
+            raise SourceConflictError(
+                f"publisher sequence already belongs to another event: {publisher_id}:{delivery['sequence']}"
+            )
+        checkpoint = connection.execute(
+            "SELECT * FROM publisher_checkpoints WHERE publisher_id = ?", (publisher_id,)
+        ).fetchone()
+        if checkpoint is not None:
+            if checkpoint["publisher_epoch"] != delivery["publisher_epoch"]:
+                raise SourceConflictError(f"publisher epoch changed: {publisher_id}")
+            if delivery["sequence"] <= checkpoint["last_sequence"]:
+                raise SourceConflictError(f"stale publisher sequence: {publisher_id}:{delivery['sequence']}")
+            connection.execute(
+                "UPDATE publisher_checkpoints SET last_sequence = ? WHERE publisher_id = ?",
+                (delivery["sequence"], publisher_id),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO publisher_checkpoints(publisher_id, publisher_epoch, last_sequence)
+                VALUES (?, ?, ?)
+                """,
+                (publisher_id, delivery["publisher_epoch"], delivery["sequence"]),
+            )
+        connection.execute(
+            """
+            INSERT INTO publisher_events(event_id, publisher_id, publisher_epoch, sequence, stable_key)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                delivery["event_id"], publisher_id, delivery["publisher_epoch"],
+                delivery["sequence"], stable_key,
+            ),
+        )
+        return True
 
     @staticmethod
     def _history(
@@ -989,6 +1109,24 @@ class ShadowStore:
         projected = unchanged = receipt_count = receipt_unchanged = 0
         for document in docs:
             self._checkpoint_guard(connection, document)
+
+        deliveries = [
+            (route["delivery"], route["idempotency_key"])
+            for route in routes
+            if route.get("delivery") is not None
+        ] + [
+            (receipt["delivery"], receipt.get("receipt_idempotency_key") or receipt["signature"])
+            for receipt in receipts
+            if receipt.get("delivery") is not None
+        ]
+        for delivery, stable_key in sorted(
+            deliveries,
+            key=lambda item: (
+                item[0]["publisher_id"], item[0]["publisher_epoch"],
+                item[0]["sequence"], item[0]["event_id"],
+            ),
+        ):
+            self._record_delivery(connection, delivery, stable_key=stable_key)
 
         for route in sorted(routes, key=lambda item: item["task_id"]):
             existing = connection.execute(
@@ -1187,6 +1325,8 @@ class ShadowStore:
             connection.execute("DELETE FROM task_history")
             connection.execute("DELETE FROM tasks")
             connection.execute("DELETE FROM checkpoints")
+            connection.execute("DELETE FROM publisher_events")
+            connection.execute("DELETE FROM publisher_checkpoints")
             result = self._import_in_transaction(
                 connection, docs, routes, receipts, failure_hook=failure_hook
             )
@@ -1202,14 +1342,17 @@ class ShadowStore:
             connection.close()
 
     def reset_checkpoints(self) -> int:
-        """Forget source fingerprints while retaining derived tasks/history."""
+        """Forget source and delivery checkpoints while retaining projections/history."""
 
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
             cursor = connection.execute("DELETE FROM checkpoints")
+            removed = cursor.rowcount
+            removed += connection.execute("DELETE FROM publisher_events").rowcount
+            removed += connection.execute("DELETE FROM publisher_checkpoints").rowcount
             connection.execute("COMMIT")
-            return cursor.rowcount
+            return removed
         except Exception:
             try:
                 connection.execute("ROLLBACK")
@@ -1231,14 +1374,20 @@ class ShadowStore:
         task_value = _scalar(task_id, field="task_id")
         status_value = _scalar(status, field="status")
         if status_value not in _STATUSES:
-            raise InvalidSourceError("mock status must be done or blocked")
+            raise InvalidSourceError("mock status is not a supported shadow status")
         evidence_value = _scalar(evidence or f"mock://{task_value}", field="evidence")
+        if evidence_value is None or not _POINTER_URI_RE.fullmatch(evidence_value):
+            raise InvalidSourceError("mock evidence must be a URI/pointer")
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
             task = connection.execute("SELECT * FROM tasks WHERE task_id = ?", (task_value,)).fetchone()
             if task is None:
                 raise InvalidSourceError(f"unknown shadow task: {task_value}")
+            if not task["source_uri"].startswith(("synthetic://", "fixture://", "memory://")):
+                raise InvalidSourceError(
+                    "mock executor accepts synthetic, fixture, or memory source tasks only"
+                )
             real_receipt = connection.execute(
                 "SELECT signature FROM receipts WHERE task_id = ?", (task_value,)
             ).fetchone()
@@ -1286,6 +1435,10 @@ class ShadowStore:
                 "history": connection.execute("SELECT COUNT(*) FROM task_history").fetchone()[0],
                 "checkpoints": connection.execute("SELECT COUNT(*) FROM checkpoints").fetchone()[0],
             }
+            delivery_counts = {
+                "events": connection.execute("SELECT COUNT(*) FROM publisher_events").fetchone()[0],
+                "publishers": connection.execute("SELECT COUNT(*) FROM publisher_checkpoints").fetchone()[0],
+            }
             orphan_receipts = connection.execute(
                 "SELECT COUNT(*) FROM receipts r LEFT JOIN tasks t ON t.task_id = r.task_id WHERE t.task_id IS NULL"
             ).fetchone()[0]
@@ -1297,6 +1450,7 @@ class ShadowStore:
                 "db": str(self.path),
                 "integrity": "ok",
                 "counts": counts,
+                "delivery": delivery_counts,
                 "orphan_receipts": orphan_receipts,
                 "orphan_history": orphan_history,
                 "ok": orphan_receipts == 0 and orphan_history == 0,
@@ -1337,12 +1491,21 @@ class ShadowStore:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Local pointer-only Trithon shadow store")
     parser.add_argument("--db", required=True, help="absolute path to the local shadow SQLite database")
+    parser.add_argument(
+        "--trusted-publisher",
+        action="append",
+        default=[],
+        help="exact delivery publisher ID allowed for contract envelopes; repeatable",
+    )
     sub = parser.add_subparsers(dest="command", required=True)
     for name in ("import", "rebuild"):
         command = sub.add_parser(name, help=f"{name} explicit JSON source documents")
         command.add_argument("--source", action="append", required=True, help="JSON source path; repeatable")
     sub.add_parser("verify", help="verify SQLite integrity and projection invariants")
-    sub.add_parser("reset-checkpoints", help="clear source fingerprints without deleting projections")
+    sub.add_parser(
+        "reset-checkpoints",
+        help="clear source and delivery fingerprints without deleting projections",
+    )
     mock = sub.add_parser("mock-execute", help="record a no-op shadow execution")
     mock.add_argument("--task-id", required=True)
     mock.add_argument("--status", choices=sorted(_STATUSES), default="done")
@@ -1352,7 +1515,7 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
-        store = ShadowStore(args.db)
+        store = ShadowStore(args.db, trusted_publishers=args.trusted_publisher)
         if args.command in {"import", "rebuild"}:
             documents = [load_source(path) for path in args.source]
             result = (
