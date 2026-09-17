@@ -92,6 +92,19 @@ quoting the ticket id. These greps miss that; `ticket_audit.py` reports it as
 small). **Many small items / features** = lean towards task management or batch
 to ONE companion (not N inline edits — that bloats the master).
 
+### Claim sequence for INBOX tickets (T-20260906-543388409)
+
+`--claim-current-host` rejects tickets sitting in `INBOX/` fail-closed
+(`current-host claims are allowed only in QUEUED, ACTIONABLE`). A newly arrived
+ticket must be triaged before it can be claimed:
+1. **Triage:** Move ticket from `INBOX/` to `ACTIONABLE/`:
+   `python lib/ticket_mover.py tickets/INBOX/<ticket> ACTIONABLE`
+2. **Claim:** Acquire claim on the current host:
+   `python lib/ticket_mover.py --claim-current-host tickets/ACTIONABLE/<ticket> --host <HOST> --sync-root <sync-root>`
+3. **Queue / Delegation:** When delegating to a worker, move to `QUEUED/` and mark delegation:
+   `python lib/ticket_mover.py tickets/ACTIONABLE/<ticket>.<HOST>.txt QUEUED`
+   `python lib/ticket_mover.py --mark-delegated tickets/QUEUED/<ticket>.<HOST>.txt --agent <agent>@<host>`
+
 ---
 
 ## MULTI-SYSTEM CLAIM CONVENTION
@@ -136,12 +149,14 @@ the next unclaimed ticket.
 **Host verification is mandatory immediately before every first claim, for
 both legacy and routing v2.** The asserted `<HOST>` must match the live system
 hostname and its unique canonical self-slot snapshot plus `repos.json`:
-`python lib/ticket_mover.py --verify-claim-host <HOST> --sync-root
-<canonical-self-slot-root>`. Missing or conflicting evidence fails closed. Legacy
-claims can combine verification and rename with `--claim-current-host <ticket>
---host <HOST> --sync-root <...>`; routing v2 invokes `claim_contract()` directly
-after the universal preflight. Session context, model memory and environment
-variables are not host authorities.
+`python lib/ticket_mover.py --verify-claim-host <HOST> --sync-root <sync-root>`.
+Important: `--sync-root` requires the sync root folder itself (where `_config-state/snapshots/*.json`
+resides) — **not** a host subfolder like `<sync-root>/workstation`. `resolve_live_host()` discovers the
+slot from the snapshots (example: `snapshot=<sync-root>/_config-state/snapshots/<slot>.json`).
+Missing or conflicting evidence fails closed. Legacy claims can combine verification and rename with
+`python lib/ticket_mover.py --claim-current-host <ticket> --host <HOST> --sync-root <sync-root>`;
+routing v2 invokes `claim_contract()` directly after the universal preflight.
+Session context, model memory and environment variables are not host authorities.
 
 **REQUIRED (since T-20260808-03): never hand-copy or hand-overwrite.**
 Moving a ticket between lifecycle folders (e.g. into `SOLVED/`) must never be
@@ -251,10 +266,13 @@ under its claimed name rather than letting the unblocking fail.
   `STATUS-DRIFT` (cluster in the STATUS field ≠ lifecycle folder, unknown
   STATUS value such as `GELOEST`/`/REVIEW`, missing STATUS). Run it once at
   boot. Fix a drift either by moving the file with `ticket_mover.py` into the
-  folder its STATUS claims, or by updating STATUS when the folder is right —
-  after every `ticket_mover.py` move **always** update the STATUS line, the
-  mover does not touch it. Old drift in `SOLVED/` is history and is not
-  groomed.
+  folder its STATUS claims, or by updating STATUS when the folder is right.
+  `ticket_mover.py` updates the cluster token and date during moves (or warns
+  on stderr), but custom suffix text and VERLAUF/HISTORY logs remain manual.
+  Use `lib/ticket_note.py` (`python lib/ticket_note.py <ticket> --status "<STATUS>" --verlauf "<entry>"`)
+  to atomically update STATUS and insert the progress note before the
+  LOESUNG/SOLUTION block (preserving CRLF/LF and UTF-8). Old drift in
+  `SOLVED/` is history and is not groomed.
 
 ---
 
