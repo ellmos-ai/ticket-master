@@ -15,8 +15,10 @@ from .routing_contract import (
     release_contract,
 )
 from .ticket_writer import create, create_routed_ticket
+from .ticket_note import append_ticket_note, update_ticket_note
 
 __all__ = [
+    "append_ticket_note",
     "build_route_intent",
     "claim_contract",
     "complete_contract",
@@ -25,4 +27,5 @@ __all__ = [
     "load_contract",
     "record_receipt",
     "release_contract",
+    "update_ticket_note",
 ]
