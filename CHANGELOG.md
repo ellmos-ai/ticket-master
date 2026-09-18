@@ -4,6 +4,15 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad A: Technische Hygiene, CI-Workflow-Härtung, Stale Lifecycle & Multi-Host Gitignore (2026-09-18)
+
+- **CI-Workflow-Bereitstellung & -Härtung**: Added `timeout-minutes: 15` and concurrency control (`cancel-in-progress: true`) to `.github/workflows/tests.yml`; deployed `.github/workflows/stale.yml` (`actions/stale@v9`, daily cron `30 1 * * *`, `timeout-minutes: 10`, concurrency group `stale`) and `.github/workflows/welcome.yml` (`actions/first-interaction@v3`, `timeout-minutes: 5`, concurrency group `welcome`).
+- **Multi-Host Cloud-Sync-, Lock- und Cache-Gitignore-Schutz**: Hardened `.gitignore` against cloud sync conflict copies (`*conflicted copy*`, `* (Kopie)*`, `* (Copy)*`, `* (kopie)*`, `* (copy)*`, `*-WORKSTATION*`, `*-ASUS*`, `*-LAPTOP*`, `*-Mac Studio*`, `*-MacBook*`), canonical multi-agent locks (`LOCK`, `LOCK.*`, `LOCK*.txt`, `LOCK.permissions.json`, `LOCK.user.*`, `LOCK.until.*`, `LOCK.condition.*`, `uv.lock`, preserving `!package-lock.json`), and test/coverage caches (`.coverage`, `.coverage.*`, `htmlcov/`, `.hypothesis/`, `.turbo/`, `.nyc_output/`, `.tox/`, `.mypy_cache/`).
+- **Pytest-Konfigurationshärtung**: Configured `minversion = "7.0"` and explicit `norecursedirs` in `pyproject.toml` under `[tool.pytest.ini_options]`.
+- **Lokales Marketing- & Governance-Log**: Documented technical hygiene audit, invariants, and guardrail additions in `MARKETING-LOG.txt` (2026-09-18).
+- **Drittanbieter-Lizenzinventar & Governance-Audit**: Re-audited `THIRD_PARTY_LICENSES.md` (Stand 2026-09-18) confirming 0 runtime dependencies, unprivileged `RunAsInvoker` mode, Zero-Copyleft guarantee, and invariants `INV-LOCAL-01` through `INV-SLA-10`.
+- **Vertragstest-Suite-Ausbau**: Added comprehensive contract tests in `tests/test_metadata.py` verifying CI timeouts, concurrency, workflow presence, extended gitignore defenses, pytest configuration, and changelog recency.
+
 ### Unicorn Web/Tray Adapter (2026-09-16)
 
 - Added the inert, framework-neutral `lib/unicorn_adapter.py` boundary with

@@ -57,9 +57,11 @@ Repository = "https://github.com/ellmos-ai/ticket-master.git"
 "LLM Ready" = "https://github.com/ellmos-ai/ticket-master/blob/main/llms.txt"
 
 [tool.pytest.ini_options]
+minversion = "7.0"
 addopts = "-ra -v"
 pythonpath = "."
 testpaths = ["tests"]
+norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", "tickets"]
 
 [tool.setuptools.packages.find]
 include = ["lib*"]

@@ -1,6 +1,31 @@
 # MARKETING-LOG.txt — ticket-master
 # Lokales Audit-, Discoverability- und Marketing-Logbuch
 
+## 2026-09-18 — Pfad A: Technische Hygiene, CI-Workflow Bereitstellung & Härtung, Multi-Host Sync-Schutz & Testsuite-Ausbau
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum 100% sauber, 0 aktive Locks (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (55h Ruhezeit; Pfad A zuletzt am 2026-08-21, Pfad B zuletzt am 2026-09-16).
+- Testbasis: 508/508 Tests bestanden (100% grün via pytest).
+
+### 2. Technische Hygiene- & Härtungsmaßnahmen
+- **CI-Workflow-Bereitstellung & -Härtung**:
+  - `tests.yml`: Concurrency-Group mit `cancel-in-progress: true` und Job-Timeout `timeout-minutes: 15` ergänzt.
+  - `stale.yml`: GitHub Actions Workflow basierend auf `actions/stale@v9` bereitgestellt (täglicher Schedule um 01:30 UTC, 30 Tage Stale, 7 Tage Close, Concurrency-Schutz, `timeout-minutes: 10`).
+  - `welcome.yml`: GitHub Actions Erstkontakt-Workflow basierend auf `actions/first-interaction@v3` für Erst-Issues und PRs bereitgestellt (`timeout-minutes: 5`, Concurrency `welcome`).
+- **Multi-Host Cloud-Sync-, Lock- und Cache-Gitignore-Schutz**:
+  - Schutz vor Sync-Konfliktkopien erweitert (`*conflicted copy*`, `* (Kopie)*`, `* (Copy)*`, `* (kopie)*`, `* (copy)*`, `*-WORKSTATION*`, `*-ASUS*`, `*-LAPTOP*`, `*-Mac Studio*`, `*-MacBook*`).
+  - Lock-Schutz für das kanonische Multi-Agenten-Sperrsystem gehärtet (`LOCK`, `LOCK.*`, `LOCK*.txt`, `LOCK.permissions.json`, `LOCK.user.*`, `LOCK.until.*`, `LOCK.condition.*`, `uv.lock`, `!package-lock.json`).
+  - Test- und Coverage-Caches abgesichert (`.coverage`, `.coverage.*`, `htmlcov/`, `.hypothesis/`, `.turbo/`, `.nyc_output/`, `.tox/`, `.mypy_cache/`).
+- **Pytest-Konfigurationshärtung**:
+  - `[tool.pytest.ini_options]` in `pyproject.toml` um `minversion = "7.0"` und `norecursedirs` ergänzt.
+- **Drittanbieter-Lizenzinventar & Governance-Audit**:
+  - Audit-Stand in `THIRD_PARTY_LICENSES.md` auf 2026-09-18 aktualisiert; Bestätigung von 0 externen Runtime-Abhängigkeiten, Zero-Copyleft-Garantie, unprivilegierter `RunAsInvoker`-Ausführung und Einhaltung aller zehn Governance-Invarianten `INV-LOCAL-01` bis `INV-SLA-10`.
+- **Vertragstest-Suite-Ausbau**:
+  - Neue Vertragstests in `tests/test_metadata.py` zur Verifikation von CI-Timeouts, Concurrency, Workflows, Gitignore-Schutzregeln und Changelog-Aktualität.
+
 ## 2026-09-16 — Pfad B: Discoverability, Visual Architecture, Target Personas & Comparative Matrix
 
 ### 1. Ausgangslage & Kriterien

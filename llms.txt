@@ -1,4 +1,4 @@
-## Last-checked: 2026-09-16
+## Last-checked: 2026-09-18
 
 # ticket-master
 
@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-16: `508 passed` plus 13 subtests via
+- Local verification on 2026-09-18: `541 passed` plus 13 subtests via
   `python -m pytest -q`.
 - Optional `system-auditor` bridge (`lib/auditor_bridge.py`): opt-in
   spawn/skip decision for the sibling `ellmos-ai/system-auditor` module,

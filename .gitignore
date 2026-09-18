@@ -81,9 +81,21 @@ tickets/.ticket-master-queue
 **/.ticket-master-queue
 
 # Multi-Host Sync & Conflict Artifacts
+*conflicted copy*
+* (Kopie)*
+* (Copy)*
+* (kopie)*
+* (copy)*
+*-WORKSTATION*
+*-WORKSTATION-LG*
 *-WORKSTATION-LG.*
+*-ASUS*
+*-ASUS-GEI*
 *-ASUS-GEI.*
+*-LAPTOP*
 *-LAPTOP.*
+*-Mac Studio*
+*-MacBook*
 *.sync-conflict-*
 *.conflict
 *.orig
@@ -113,7 +125,25 @@ Thumbs.db
 desktop.ini
 
 # Multi-Agent Lock-System (lokal, nie committen)
+LOCK
+LOCK.*
 LOCK*.txt
+LOCK.permissions.json
+LOCK.user.*
+LOCK.until.*
+LOCK.condition.*
+uv.lock
+!package-lock.json
+
+# Test, Coverage & Build Caches
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+.turbo/
+.nyc_output/
+.tox/
+.mypy_cache/
 
 # tidy-up Papierkorb (Strays werden archiviert, nie geloescht)
 _archive/

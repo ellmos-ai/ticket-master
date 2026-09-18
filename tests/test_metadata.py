@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 508
-LAST_CHECKED = "2026-09-16"
+EXPECTED_TEST_COUNT = 541
+LAST_CHECKED = "2026-09-18"
 
 
 def test_version_consistency():
@@ -74,6 +74,8 @@ def test_ci_workflow_integrity():
     assert "ubuntu-latest" in content and "windows-latest" in content
     assert "ruff check ." in content
     assert "pytest" in content
+    assert "timeout-minutes: 15" in content
+    assert "cancel-in-progress: true" in content
 
 
 def test_pyproject_pep621_metadata():
@@ -302,12 +304,89 @@ def test_marketing_log_structure_and_completeness():
 
 
 def test_third_party_licenses_zero_copyleft_and_invariants():
-    """Verify THIRD_PARTY_LICENSES.md contains 2026-09-16 audit date, zero-copyleft guarantee, and invariants."""
+    """Verify THIRD_PARTY_LICENSES.md contains 2026-09-18 audit date, zero-copyleft guarantee, and invariants."""
     lic_file = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
     assert lic_file.is_file()
     content = lic_file.read_text(encoding="utf-8")
-    assert "2026-09-16" in content
+    assert "2026-09-18" in content
     assert "Zero-Copyleft Guarantee" in content
     assert "RunAsInvoker" in content
     assert "INV-LOCAL-01" in content
     assert "INV-SLA-10" in content
+
+
+def test_ci_workflow_stale_and_welcome_automations():
+    """Verify stale.yml and welcome.yml workflows exist with timeouts, concurrency, and least privilege."""
+    stale_path = REPO_ROOT / ".github" / "workflows" / "stale.yml"
+    assert stale_path.is_file(), "stale.yml workflow missing"
+    stale_content = stale_path.read_text(encoding="utf-8")
+    assert "actions/stale@v9" in stale_content
+    assert "timeout-minutes: 10" in stale_content
+    assert "cancel-in-progress: true" in stale_content
+    assert "issues: write" in stale_content
+    assert "pull-requests: write" in stale_content
+    assert "cron: '30 1 * * *'" in stale_content
+
+    welcome_path = REPO_ROOT / ".github" / "workflows" / "welcome.yml"
+    assert welcome_path.is_file(), "welcome.yml workflow missing"
+    welcome_content = welcome_path.read_text(encoding="utf-8")
+    assert "actions/first-interaction@v3" in welcome_content
+    assert "timeout-minutes: 5" in welcome_content
+    assert "cancel-in-progress: true" in welcome_content
+    assert "issues: write" in welcome_content
+    assert "pull-requests: write" in welcome_content
+
+
+def test_extended_gitignore_multi_host_and_lock_defense():
+    """Verify .gitignore contains patterns for conflict copies, host tokens, canonical locks, and caches."""
+    gitignore_path = REPO_ROOT / ".gitignore"
+    assert gitignore_path.is_file()
+    content = gitignore_path.read_text(encoding="utf-8")
+    for pattern in [
+        "*conflicted copy*",
+        "* (Kopie)*",
+        "* (Copy)*",
+        "*-WORKSTATION*",
+        "*-ASUS*",
+        "*-LAPTOP*",
+        "*-Mac Studio*",
+        "LOCK",
+        "LOCK.*",
+        "LOCK.permissions.json",
+        "uv.lock",
+        "!package-lock.json",
+        ".coverage",
+        ".coverage.*",
+        "htmlcov/",
+        ".hypothesis/",
+        ".mypy_cache/",
+    ]:
+        assert pattern in content, f"Extended pattern '{pattern}' missing in .gitignore"
+
+
+def test_pyproject_pytest_guardrails():
+    """Verify pyproject.toml enforces minversion and norecursedirs in pytest.ini_options."""
+    pyproject_path = REPO_ROOT / "pyproject.toml"
+    assert pyproject_path.is_file()
+    content = pyproject_path.read_text(encoding="utf-8")
+    assert 'minversion = "7.0"' in content
+    assert "norecursedirs" in content
+    assert '".pytest_cache"' in content or "'.pytest_cache'" in content
+
+
+def test_changelog_recent_pfad_a_entry():
+    """Verify CHANGELOG.md contains the 2026-09-18 Pfad A technical hygiene entry."""
+    changelog_path = REPO_ROOT / "CHANGELOG.md"
+    assert changelog_path.is_file()
+    content = changelog_path.read_text(encoding="utf-8")
+    assert "Pfad A: Technische Hygiene" in content
+    assert "2026-09-18" in content
+
+
+def test_marketing_log_recent_hygiene_entry():
+    """Verify MARKETING-LOG.txt contains the 2026-09-18 Pfad A technical hygiene audit entry."""
+    mkt_path = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_path.is_file()
+    content = mkt_path.read_text(encoding="utf-8")
+    assert "2026-09-18 — Pfad A" in content
+    assert "CI-Workflow Bereitstellung & Härtung" in content
