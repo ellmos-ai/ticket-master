@@ -252,6 +252,21 @@ under its claimed name rather than letting the unblocking fail.
   waiting to be formalized via `ticket_writer.py --from-file` (see STARTUP
   SEQUENCE (c7)).
 
+### Commentary duty and current readback
+
+- Every new HISTORY/LOG line is
+  `YYYY-MM-DD | actor@host | statement — evidence`. During triage, read the
+  date, actor, and evidence together; a text assertion alone is not a current
+  system state.
+- A STATUS line carrying a state claim includes its measurement date, for
+  example `ACTIONABLE (measured on 2026-09-20)`. **Lock**, **hold**, and
+  **completed** may only be derived from a current lock/measurement readback or
+  an equivalent receipt, never from stale register text.
+- Superseded claims are extended at their original location with a dated
+  `NACHTRAG`/`SUPERSEDED` block naming the actor, ticket, and evidence.
+  Historical lines are never silently rewritten. Use
+  `python lib/ticket_audit.py <tickets_dir> --lint` as the warning check.
+
 ### Booking duty: status-quo decisions, ID reconciliation, STATUS drift (T-20260830-517795746)
 
 - **A "no" is booked like a "yes".** Every ID put in front of the user

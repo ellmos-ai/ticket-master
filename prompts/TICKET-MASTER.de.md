@@ -264,6 +264,20 @@ seinem geclaimten Namen weiter, statt die Entblockung scheitern zu lassen.
   wartet auf Formalisierung über `ticket_writer.py --from-file` (siehe
   STARTSEQUENZ (c7)).
 
+### Kommentierungspflicht und aktueller Readback
+
+- Jede neue VERLAUF-Zeile lautet `YYYY-MM-DD | akteur@host | Aussage — Beleg`.
+  Lies bei der Triage Datum, Akteur und Beleg zusammen; ein bloßer Textstand
+  ist kein aktueller Systemzustand.
+- Die STATUS-Zeile trägt bei einer Zustandsaussage den Messzeitpunkt, zum
+  Beispiel `ACTIONABLE (gemessen am 2026-09-20)`. **Sperre**, **Hold** und
+  **abgeschlossen** dürfen nur aus einem aktuellen Lock-/Mess-Readback oder
+  einem gleichwertigen Receipt abgeleitet werden, nicht aus altem Registertext.
+- Überholte Aussagen werden am Fundort mit einem datierten
+  `NACHTRAG`-/`SUPERSEDED`-Block, Akteur, Ticket und Beleg fortgeschrieben.
+  Historische Zeilen werden nicht still umgeschrieben. Nutze
+  `python lib/ticket_audit.py <tickets_dir> --lint` als Warnprüfung.
+
 ### Buchungspflicht: Status-quo-Entscheide, Kennungsabgleich, STATUS-Drift (T-20260830-517795746)
 
 - **Ein „Nein" wird gebucht wie ein „Ja".** Jede dem User vorgelegte Kennung

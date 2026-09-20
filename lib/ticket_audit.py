@@ -600,6 +600,7 @@ def audit(base: Path | str, *, scan_sources: bool = False,
         "non_v1_folders": non_v1_folders(base),
         "status_drift": status_drift(base),
         "progress_drift": progress_drift(base),
+        "commentary_lint": commentary_lint(base),
         # Opt-in: ein git grep je Repo ueber alle Arbeitsbaeume kostet
         # Sekunden, und ein Audit, das niemand mehr startet, faengt nichts.
         "source_reference_drift": (
@@ -631,6 +632,114 @@ _DUPLICATE_HEADING_PATTERNS: dict[str, re.Pattern] = {
     "LOESUNG": re.compile(r"^LOESUNG\b.*$", re.MULTILINE),
 }
 
+# Commentary is deliberately linted without rewriting it. A historical line
+# may remain in its original form, but a reader must be able to see that its
+# date/actor/evidence contract is incomplete. The canonical form is:
+# ``YYYY-MM-DD | actor@host | statement — evidence``.
+_COMMENTARY_HEADING_RE = re.compile(
+    r"^(?:VERLAUF\s*/\s*LOG|HISTORY\s*/\s*LOG)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_COMMENTARY_END_RE = re.compile(
+    r"^(?:LOESUNG|LÖSUNG|SOLUTION)\b.*$", re.IGNORECASE | re.MULTILINE,
+)
+_COMMENTARY_DATE_RE = re.compile(r"^\s*\d{4}-\d{2}-\d{2}\b")
+_COMMENTARY_STATE_RE = re.compile(
+    r"\b(?:status|sperre|hold|abgeschlossen(?:e|en|er|es)?)\b",
+    re.IGNORECASE,
+)
+_COMMENTARY_EVIDENCE_RE = re.compile(
+    r"(?:\b(?:beleg|belegt|gemessen|messung|readback|receipt|evidence|measured|"
+    r"sha(?:-?256)?|hash|pytest|tests?|git|commit|pr\b|issue\b|quelle)\b|"
+    r"\block[\s_-]+status\b|https?://|`[^`]+`|[A-Za-z]:\\)",
+    re.IGNORECASE,
+)
+
+
+def _commentary_lines(text: str) -> list[tuple[int, str]]:
+    """Return non-empty lines from the first HISTORY/VERLAUF block."""
+    heading = _COMMENTARY_HEADING_RE.search(text)
+    if heading is None:
+        return []
+    body_start = heading.end()
+    end = _COMMENTARY_END_RE.search(text, body_start)
+    body_end = end.start() if end is not None else len(text)
+    body = text[body_start:body_end]
+    first_line = text[:body_start].count("\n") + 1
+    result: list[tuple[int, str]] = []
+    for offset, line in enumerate(body.splitlines(), start=first_line):
+        stripped = line.strip()
+        if not stripped or set(stripped) <= {"-", "="}:
+            continue
+        result.append((offset, line))
+    return result
+
+
+def _lint_commentary(entry: Path, text: str) -> list[dict[str, str | int]]:
+    """Lint progress-log metadata while preserving the source text."""
+    findings: list[dict[str, str | int]] = []
+    for line_number, line in _commentary_lines(text):
+        stripped = line.strip()
+        if not _COMMENTARY_DATE_RE.match(stripped):
+            findings.append({
+                "path": str(entry),
+                "kind": "commentary-missing-date",
+                "line": line_number,
+                "text": stripped[:200],
+            })
+
+        fields = stripped.split("|", 2)
+        actor = fields[1].strip() if len(fields) >= 2 else ""
+        if "@" not in actor or any(char.isspace() for char in actor):
+            findings.append({
+                "path": str(entry),
+                "kind": "commentary-missing-actor",
+                "line": line_number,
+                "text": stripped[:200],
+            })
+
+        statement = fields[2].strip() if len(fields) >= 3 else stripped
+        evidence = statement.split("—", 1)[1] if "—" in statement else ""
+        for state_match in _COMMENTARY_STATE_RE.finditer(statement):
+            if not _COMMENTARY_EVIDENCE_RE.search(evidence):
+                findings.append({
+                    "path": str(entry),
+                    "kind": "commentary-state-without-evidence",
+                    "line": line_number,
+                    "state": state_match.group(0),
+                    "text": stripped[:200],
+                })
+                break
+    return findings
+
+
+def commentary_lint(base: Path | str) -> list[dict[str, str | int]]:
+    """Report dated/attributed/evidenced commentary violations.
+
+    This is a report-only check. It never normalizes or edits old history;
+    callers can add a dated NACHTRAG/SUPERSEDED entry instead.
+    """
+    base = Path(base)
+    findings: list[dict[str, str | int]] = []
+    for sub in _LIFECYCLE_SUBDIRS:
+        directory = base / sub if sub else base
+        if not directory.is_dir():
+            continue
+        for entry in directory.iterdir():
+            if not entry.is_file():
+                continue
+            if not _LOOKS_LIKE_TICKET_RE.match(entry.name):
+                try:
+                    parse_ticket_name(entry.name)
+                except RoutingContractError:
+                    continue
+            try:
+                text = entry.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            findings.extend(_lint_commentary(entry, text))
+    return sorted(findings, key=lambda f: (str(f["path"]), int(f["line"]), str(f["kind"])))
+
 
 def _lint_ticket(entry: Path, text: str) -> list[dict[str, str | int]]:
     findings: list[dict[str, str | int]] = []
@@ -652,6 +761,7 @@ def _lint_ticket(entry: Path, text: str) -> list[dict[str, str | int]]:
                 "path": str(entry), "kind": "duplicate-block",
                 "heading": heading, "count": count,
             })
+    findings.extend(_lint_commentary(entry, text))
     return findings
 
 
@@ -791,6 +901,17 @@ def _print_human(report: dict) -> None:
             print(f"    TICKET: {finding['ticket']}  SEEN-AT: {finding['location']}")
     else:
         print("SOURCE-REFERENCE-DRIFT: none")
+
+    commentary_findings = report.get("commentary_lint", [])
+    if commentary_findings:
+        print(f"COMMENTARY-LINT ({len(commentary_findings)}):")
+        for finding in commentary_findings:
+            print(f"  {finding['path']}:{finding['line']}")
+            detail = {k: v for k, v in finding.items()
+                      if k not in ("path", "line", "kind")}
+            print(f"    KIND: {finding['kind']}  {detail}")
+    else:
+        print("COMMENTARY-LINT: none")
 
 
 def _cli(argv: list[str] | None = None) -> int:

@@ -245,6 +245,19 @@ python lib/auditor_bridge.py --findings-to-tickets          # dry run: what WOUL
 python lib/auditor_bridge.py --findings-to-tickets --apply  # actually file the draft tickets
 ```
 
+### Commentary, supersession and current readback
+
+Every new `HISTORY / LOG` line uses
+`YYYY-MM-DD | actor@host | statement — evidence`. State claims such as
+**status**, **lock**, **hold**, or **completed** require a concrete measurement
+or readback. `lib/ticket_audit.py --lint` reports missing dates, actors, and
+evidence-free state words; it never rewrites historical lines.
+
+When an older entry is no longer current, keep it at its original location and
+add a dated `NACHTRAG` or `SUPERSEDED` block naming the ticket, actor, and
+evidence. A current STATUS field alone is not a readback of the underlying
+state.
+
 ---
 
 <a id="8-informal-intake--boot-menu"></a>

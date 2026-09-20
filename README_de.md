@@ -253,6 +253,20 @@ python lib/auditor_bridge.py --findings-to-tickets          # Dry-Run: was WÜRD
 python lib/auditor_bridge.py --findings-to-tickets --apply  # Entwurfstickets tatsächlich anlegen
 ```
 
+### Kommentierung, Nachträge und aktueller Readback
+
+Jede neue Zeile in `VERLAUF / LOG` folgt dem Format
+`YYYY-MM-DD | akteur@host | Aussage — Beleg`. Zustandsaussagen wie **Status**,
+**Sperre**, **Hold** oder **abgeschlossen** brauchen einen konkreten Mess- oder
+Readback-Beleg. `lib/ticket_audit.py --lint` meldet fehlendes Datum, fehlenden
+Akteur und unbelegte Zustandswörter; historische Zeilen werden dabei nicht
+überschrieben.
+
+Wenn ein älterer Eintrag nicht mehr gilt, bleibt er am Fundort erhalten und
+wird durch einen datierten `NACHTRAG`- oder `SUPERSEDED`-Block mit Ticket,
+Akteur und Beleg fortgeschrieben. Ein aktuelles STATUS-Feld allein ersetzt
+keinen Readback des zugrunde liegenden Zustands.
+
 ---
 
 <a id="8-informal-intake--boot-menu"></a>
