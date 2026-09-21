@@ -8,7 +8,8 @@
   "visibility": "public",
   "provides": [
     "control.tickets",
-    "workflow.ticket-triage"
+    "workflow.ticket-triage",
+    "tickets.capture"
   ],
   "requires": [],
   "optional": [
