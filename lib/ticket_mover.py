@@ -557,11 +557,17 @@ def _decision_readback_gate(source: Path, dest_dir: Path,
         rendered = "; ".join(
             f"{hit['id']} [{hit['status']}] {hit['title']!r} in {hit['source']}"
             for hit in unhandled)
+        # T-20260920-716303992: hit["id"] is the qualified "D-ID@source" form
+        # (see decision_readback._entry_matches / entry["key"]), not the bare
+        # D-ID used everywhere else in the ticket conventions. Spelling the
+        # exact flags out here (instead of a generic "<ID>" placeholder) saves
+        # the caller from guessing wrong and being refused again silently.
+        flags = " ".join(f"--acknowledge-decision {hit['id']!r}" for hit in unhandled)
         raise DecisionReadbackError(
             f"the decision register already answers this ticket: {rendered}. "
-            "Read it; if it does not apply, say so with "
-            "--acknowledge-decision <ID> (repeatable) and the acknowledgement "
-            "is recorded in the ticket.")
+            "Read it; if it does not apply, quote the id exactly as shown "
+            f"above (including any '@source' suffix) with: {flags} "
+            "-- the acknowledgement is then recorded in the ticket.")
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     return readback_log_line(result, stamp=stamp, acknowledged=acknowledged)
 
