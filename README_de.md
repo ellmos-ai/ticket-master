@@ -15,17 +15,20 @@ Delegation nicht sinnvoll ist. Plattformübergreifend (Windows/macOS/Linux),
 multi-provider (Claude Code, Codex, agy/Gemini).
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-541%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-552%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
-[![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#5-governance--laufzeit-invarianten)
+[![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Sicherheits-SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Drittanbieter auditiert](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
+[![Verifiziert](https://img.shields.io/badge/Verified-2026--09--26-blue.svg)](MARKETING-LOG.txt)
+[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--09--26-success.svg)](MARKETING-LOG.txt)
 [![Marketing-Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Bereit](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
-[![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#9-schnellstart--starter)
+[![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
 [![Ecosystem: ellmos-ai](https://img.shields.io/badge/Ecosystem-ellmos--ai-blue.svg)](https://github.com/ellmos-ai)
 [![Umbrella: open-bricks](https://img.shields.io/badge/Umbrella-open--bricks-blueviolet.svg)](https://github.com/open-bricks)
 
@@ -63,6 +66,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 
 ---
 
+<a id="sec-01"></a>
 <a id="1-overview"></a>
 <a id="1-ueberblick"></a>
 <a id="ueberblick"></a>
@@ -76,6 +80,7 @@ Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlang
 
 ---
 
+<a id="sec-02"></a>
 <a id="2-key-capabilities"></a>
 <a id="2-kernfunktionen"></a>
 <a id="kernfunktionen"></a>
@@ -95,6 +100,7 @@ Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlang
 
 ---
 
+<a id="sec-03"></a>
 <a id="3-target-personas--discoverability"></a>
 <a id="3-zielgruppen--auffindbarkeit"></a>
 <a id="zielgruppen--auffindbarkeit"></a>
@@ -123,6 +129,7 @@ Zur schnellen Auffindbarkeit in Entwickler-Verzeichnissen, Paketmanagern und Dok
 
 ---
 
+<a id="sec-04"></a>
 <a id="4-comparative-matrix-vs-alternatives"></a>
 <a id="4-vergleichsmatrix-gegenueber-alternativen"></a>
 <a id="vergleichsmatrix-gegenueber-alternativen"></a>
@@ -145,6 +152,7 @@ Die folgende Matrix vergleicht `ticket-master` mit bestehenden Issue-Trackern, A
 
 ---
 
+<a id="sec-05"></a>
 <a id="5-governance--runtime-invariants"></a>
 <a id="5-governance--laufzeit-invarianten"></a>
 <a id="governance--laufzeit-invarianten"></a>
@@ -165,6 +173,7 @@ Die folgende Matrix vergleicht `ticket-master` mit bestehenden Issue-Trackern, A
 
 ---
 
+<a id="sec-06"></a>
 <a id="6-architecture--routing-flow"></a>
 <a id="6-architektur--routing-ablauf"></a>
 <a id="architektur--routing-ablauf"></a>
@@ -213,6 +222,7 @@ graph TD
 
 ---
 
+<a id="sec-07"></a>
 <a id="7-roles--auditor-bridge"></a>
 <a id="7-rollen--auditor-bruecke"></a>
 <a id="rollen--auditor-bruecke"></a>
@@ -269,6 +279,7 @@ keinen Readback des zugrunde liegenden Zustands.
 
 ---
 
+<a id="sec-08"></a>
 <a id="8-informal-intake--boot-menu"></a>
 <a id="8-formlose-einreichung--boot-menue"></a>
 <a id="formlose-einreichung--boot-menue"></a>
@@ -307,6 +318,7 @@ python lib/boot_menu.py --offer
 
 ---
 
+<a id="sec-09"></a>
 <a id="9-quick-start--starters"></a>
 <a id="9-schnellstart--starter"></a>
 <a id="schnellstart--starter"></a>
@@ -370,6 +382,7 @@ Die providerneutralen Starter `START.bat` und `start.sh` im Root werden aus `rol
 
 ---
 
+<a id="sec-10"></a>
 <a id="10-configuration--multi-host"></a>
 <a id="10-konfiguration--multi-host"></a>
 <a id="konfiguration--multi-host"></a>
@@ -424,6 +437,7 @@ python lib/ticket_writer.py --title "Speicherleck im Parser" --body "200MB Ansti
 
 ---
 
+<a id="sec-11"></a>
 <a id="11-routing-contract-v2--score-formula"></a>
 <a id="11-routingvertrag-v2--score-formel"></a>
 <a id="routingvertrag-v2--score-formel"></a>
@@ -483,6 +497,7 @@ CHECKPOINT ALPHA:
 
 ---
 
+<a id="sec-12"></a>
 <a id="12-cloud-ready-multi-system-claim-convention"></a>
 <a id="12-cloud-ready-multi-system-claim-konvention"></a>
 <a id="cloud-ready-multi-system-claim-konvention"></a>
@@ -522,6 +537,7 @@ Neue IDs enthalten neunstellige Zufallszahlen, die ausschließlich über `lib/ti
 
 ---
 
+<a id="sec-13"></a>
 <a id="13-personal-assistant-expansion--delegation"></a>
 <a id="13-personal-assistant-ausbau--delegation"></a>
 <a id="personal-assistant-ausbau--delegation"></a>
@@ -536,6 +552,7 @@ Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen 
 
 ---
 
+<a id="sec-14"></a>
 <a id="14-test-suite--verification-gates"></a>
 <a id="14-test-suite--verifikations-gates"></a>
 <a id="test-suite--verifikations-gates"></a>
@@ -562,6 +579,7 @@ ruff check .
 
 ---
 
+<a id="sec-15"></a>
 <a id="15-ecosystem--sibling-tools"></a>
 <a id="15-oekosystem--geschwisterwerkzeuge"></a>
 <a id="oekosystem--geschwisterwerkzeuge"></a>
@@ -586,6 +604,7 @@ Bestandteil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastr
 
 ---
 
+<a id="sec-16"></a>
 <a id="16-third-party-licenses--transparency"></a>
 <a id="16-drittanbieter-lizenzen--transparenz"></a>
 <a id="drittanbieter-lizenzen--transparenz"></a>
@@ -600,6 +619,7 @@ Bestandteil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastr
 
 ---
 
+<a id="sec-17"></a>
 <a id="17-security-policy--sla"></a>
 <a id="17-sicherheitsrichtlinie--sla"></a>
 <a id="sicherheitsrichtlinie--sla"></a>
@@ -622,6 +642,7 @@ This project is an unpaid open-source donation. Liability is limited to intent a
 
 ---
 
+<a id="sec-18"></a>
 <a id="18-license--maintainers"></a>
 <a id="18-lizenz--maintainer"></a>
 <a id="lizenz--maintainer"></a>

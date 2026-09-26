@@ -11,7 +11,7 @@ authors = [
     { name = "dev-bricks" }
 ]
 license = "MIT"
-license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]
+license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
@@ -26,15 +26,26 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules"
 ]
 keywords = [
-    "ticket-router",
-    "ai-agent",
-    "llm",
+    "agent-orchestration",
+    "ai-agents",
+    "automation",
     "claude",
+    "claude-code",
+    "cli",
+    "cloud-sync",
     "codex",
-    "gemini",
-    "triage-console",
-    "workflow",
-    "local-first"
+    "codex-cli",
+    "cross-platform",
+    "developer-tools",
+    "gemini-cli",
+    "llm",
+    "multi-agent",
+    "multi-system",
+    "routing",
+    "task-routing",
+    "ticket-system",
+    "triage",
+    "workflow"
 ]
 requires-python = ">=3.10"
 dependencies = []
@@ -52,16 +63,17 @@ Homepage = "https://github.com/ellmos-ai/ticket-master"
 Documentation = "https://github.com/ellmos-ai/ticket-master#readme"
 Repository = "https://github.com/ellmos-ai/ticket-master.git"
 "Bug Tracker" = "https://github.com/ellmos-ai/ticket-master/issues"
+Notice = "https://github.com/ellmos-ai/ticket-master/blob/main/NOTICE"
 "Third-Party Licenses" = "https://github.com/ellmos-ai/ticket-master/blob/main/THIRD_PARTY_LICENSES.md"
 "Marketing Log" = "https://github.com/ellmos-ai/ticket-master/blob/main/MARKETING-LOG.txt"
 "LLM Ready" = "https://github.com/ellmos-ai/ticket-master/blob/main/llms.txt"
 
 [tool.pytest.ini_options]
 minversion = "7.0"
-addopts = "-ra -v"
+addopts = "-ra -v --basetemp=.pytest_temp"
 pythonpath = "."
 testpaths = ["tests"]
-norecursedirs = [".git", ".pytest_cache", "__pycache__", "build", "dist", "tickets"]
+norecursedirs = [".git", ".pytest_cache", ".pytest_temp", "__pycache__", "build", "dist", "tickets"]
 
 [tool.setuptools.packages.find]
 include = ["lib*"]

@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 541
-LAST_CHECKED = "2026-09-18"
+EXPECTED_TEST_COUNT = 552
+LAST_CHECKED = "2026-09-26"
 
 
 def test_version_consistency():
@@ -95,7 +95,7 @@ def test_pyproject_pep621_metadata():
 
     assert 'requires = ["setuptools>=77.0.3"]' in content
     assert 'license = "MIT"' in content
-    assert 'license-files = ["LICENSE", "THIRD_PARTY_LICENSES.md"]' in content
+    assert 'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]' in content
     assert 'dependencies = []' in content
     assert "license = {" not in content
     assert '"License ::' not in content
@@ -390,3 +390,82 @@ def test_marketing_log_recent_hygiene_entry():
     content = mkt_path.read_text(encoding="utf-8")
     assert "2026-09-18 — Pfad A" in content
     assert "CI-Workflow Bereitstellung & Härtung" in content
+
+def test_canonical_notice_attribution():
+    """Verify NOTICE file exists and declares Lukas Geiger, ellmos-ai family, open-bricks umbrella, and MIT license."""
+    notice_path = REPO_ROOT / "NOTICE"
+    assert notice_path.is_file(), "Root NOTICE file missing"
+    content = notice_path.read_text(encoding="utf-8")
+    assert "ticket-master" in content
+    assert "Copyright (c) 2026 Lukas Geiger" in content
+    assert "ellmos-ai" in content
+    assert "open-bricks" in content
+    assert "MIT License" in content
+
+
+def test_readme_reciprocal_dual_html_anchors_sec01_sec18():
+    """Verify README.md and README_de.md both define dual reciprocal anchors sec-01 through sec-18."""
+    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
+
+    for i in range(1, 19):
+        sec_anchor = f'id="sec-{i:02d}"'
+        assert sec_anchor in readme_en, f"Anchor {sec_anchor} missing in README.md"
+        assert sec_anchor in readme_de, f"Anchor {sec_anchor} missing in README_de.md"
+
+
+def test_pep621_20_keywords_saturation():
+    """Verify pyproject.toml saturates 20 keywords matching remote GitHub repository topics and defines Notice URL."""
+    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    expected_keywords = [
+        "agent-orchestration",
+        "ai-agents",
+        "automation",
+        "claude",
+        "claude-code",
+        "cli",
+        "cloud-sync",
+        "codex",
+        "codex-cli",
+        "cross-platform",
+        "developer-tools",
+        "gemini-cli",
+        "llm",
+        "multi-agent",
+        "multi-system",
+        "routing",
+        "task-routing",
+        "ticket-system",
+        "triage",
+        "workflow",
+    ]
+    for kw in expected_keywords:
+        assert f'"{kw}"' in pyproject_text, f"Keyword '{kw}' missing in pyproject.toml"
+
+    assert 'Notice = "https://github.com/ellmos-ai/ticket-master/blob/main/NOTICE"' in pyproject_text
+
+
+def test_third_party_licenses_audit_recency_and_notice_cross_reference():
+    """Verify THIRD_PARTY_LICENSES.md contains 2026-09-26 audit date and links to NOTICE."""
+    tpl_path = REPO_ROOT / "THIRD_PARTY_LICENSES.md"
+    assert tpl_path.is_file()
+    content = tpl_path.read_text(encoding="utf-8")
+    assert "2026-09-26" in content
+    assert "[NOTICE](NOTICE)" in content
+
+
+def test_marketing_log_recent_pfad_b_entry():
+    """Verify MARKETING-LOG.txt contains the 2026-09-26 Pfad B audit entry."""
+    mkt_path = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_path.is_file()
+    content = mkt_path.read_text(encoding="utf-8")
+    assert "2026-09-26 — Pfad B" in content
+    assert "Discoverability, Visual Architecture, Canonical NOTICE & Metadata Saturation" in content
+
+
+def test_changelog_recent_pfad_b_entry():
+    """Verify CHANGELOG.md contains the 2026-09-26 Pfad B entry under ## [Unreleased]."""
+    changelog_path = REPO_ROOT / "CHANGELOG.md"
+    assert changelog_path.is_file()
+    content = changelog_path.read_text(encoding="utf-8")
+    assert "### Pfad B: Discoverability, Visual Architecture, Canonical NOTICE & 20/20 Metadata Saturation (2026-09-26)" in content

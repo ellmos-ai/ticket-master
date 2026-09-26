@@ -2,7 +2,8 @@
 
 **Project:** `ticket-master`  
 **License:** [MIT License](LICENSE)  
-**Audit Date:** 2026-09-18 (Prior audit: 2026-09-16)
+**Audit Date:** 2026-09-26 (Prior audits: 2026-09-18, 2026-09-16)
+**Attribution:** [NOTICE](NOTICE) (Lukas Geiger, ellmos-ai family, open-bricks umbrella)
 
 ---
 
@@ -23,6 +24,7 @@ All network egress, remote telemetry, and external cloud services are prohibited
 
 - **Zero-Copyleft Guarantee:** All runtime code and development tooling are governed exclusively by permissive open-source licenses (MIT, Apache-2.0, PSF). The repository contains zero GPL, AGPL, or viral copyleft dependencies.
 - **Unprivileged User-Mode Operation (`RunAsInvoker`):** All components execute strictly within standard user space without requiring administrator elevation, root privileges, or UAC elevation.
+- **Attribution & Provenance:** Canonical author, maintainer, and ecosystem attribution is declared in [`NOTICE`](NOTICE).
 
 ---
 

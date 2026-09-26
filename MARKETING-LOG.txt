@@ -1,6 +1,32 @@
 # MARKETING-LOG.txt — ticket-master
 # Lokales Audit-, Discoverability- und Marketing-Logbuch
 
+## 2026-09-26 — Pfad B: Discoverability, Visual Architecture, Canonical NOTICE & Metadata Saturation
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0 (strikte Versionsfreeze-Disziplin nach T-20260920-167562623)
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum 100% sauber, 0 aktive Locks (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (125h Ruhezeit; Pfad B zuletzt am 2026-09-16).
+- Testbasis: 546/546 Tests bestanden (100% grün via pytest).
+
+### 2. Discoverability-, Design- & Paritätsmaßnahmen
+- **Kanonische NOTICE Attributionsdatei**:
+  - Im Repository-Root als verbindliche Open-Source-Attributionsdatei bereitgestellt (`NOTICE`): Urheber Lukas Geiger, Produktfamilie `ellmos-ai`, Dachorganisation `open-bricks`.
+  - In `pyproject.toml` unter `license-files` und `project.urls` (`Notice`) verankert.
+  - In `THIRD_PARTY_LICENSES.md` mit Audit-Stand 2026-09-26 und Querverweis formalisiert.
+- **18-Punkte Navigationsparität mit dualen HTML-Ankern**:
+  - `README.md` und `README_de.md` mit reziproken dualen HTML-Ankern (`<a id="sec-01"></a>` bis `<a id="sec-18"></a>`) ausgestattet, sodass standardisierte Quick-Navigation und Querverweise geräte- und sprachübergreifend synchron funktionieren.
+- **20/20 PEP 621 & GitHub Topics Sättigung**:
+  - Synchronisation der `keywords` in `pyproject.toml` auf volle 20/20 Termini, exakt abgestimmt auf die Remote-Topics: `agent-orchestration`, `ai-agents`, `automation`, `claude`, `claude-code`, `cli`, `cloud-sync`, `codex`, `codex-cli`, `cross-platform`, `developer-tools`, `gemini-cli`, `llm`, `multi-agent`, `multi-system`, `routing`, `task-routing`, `ticket-system`, `triage`, `workflow`.
+- **Level 1 SBOM Re-Audit & Invarianten-Matrix**:
+  - `THIRD_PARTY_LICENSES.md` auf Stand 2026-09-26 aktualisiert; Re-Auditiert mit Bestätigung von 0 externen Runtime-Abhängigkeiten, Zero-Copyleft-Garantie, unprivilegierter `RunAsInvoker`-Ausführung und allen zehn Governance-Invarianten `INV-LOCAL-01` bis `INV-SLA-10`.
+- **Shields.io Badges & RAG-Kontext (llms.txt)**:
+  - Shields.io Status-Badges synchronisiert (`Attribution-NOTICE-blue.svg`, `Verified-2026--09--26-blue.svg`, `Last--Checked-2026--09--26-success.svg`).
+  - `llms.txt` auf Stand 2026-09-26 aktualisiert mit aktualisierter Test-Baseline, NOTICE-Attribution und gesetzlichem Gefälligkeitshinweis (§ 521 BGB).
+- **Automatisierte Vertragstests**:
+  - Testsuite in `tests/test_metadata.py` um neue Contract-Tests für kanonische NOTICE-Attribution, 18-Punkte-Navigationsanker `sec-01`..`sec-18`, 20/20 PEP 621 Keywords, SBOM Re-Audit-Datum 2026-09-26 sowie CHANGELOG/MARKETING-LOG Einträge erweitert.
+
 ## 2026-09-18 — Pfad A: Technische Hygiene, CI-Workflow Bereitstellung & Härtung, Multi-Host Sync-Schutz & Testsuite-Ausbau
 
 ### 1. Ausgangslage & Kriterien

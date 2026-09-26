@@ -1,4 +1,4 @@
-## Last-checked: 2026-09-18
+## Last-checked: 2026-09-26
 
 # ticket-master
 
@@ -19,8 +19,13 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-18: `541 passed` plus 13 subtests via
-  `python -m pytest -q`.
+- Local verification on 2026-09-26: `552 passed` plus 13 subtests via
+  `python -m pytest -q` (100% green).
+- Canonical root attribution: [`NOTICE`](NOTICE) formalizes Lukas Geiger as author,
+  `ellmos-ai` family, and `open-bricks` open-source umbrella.
+- Statutory liability disclaimer: unpaid open-source donation under § 521 BGB
+  (liability limited to intent and gross negligence).
+- Committed security response SLA: 48-hour initial response, 5 business days triage.
 - Optional `system-auditor` bridge (`lib/auditor_bridge.py`): opt-in
   spawn/skip decision for the sibling `ellmos-ai/system-auditor` module,
   gated by a three-valued sparmodus read and never recomputing
@@ -49,6 +54,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 ## Useful Entry Points
 
+- `NOTICE`: canonical open-source author, copyright, and ecosystem attribution.
 - `README.md`: user-facing overview, quickstart, starter matrix, routing explanation.
 - `README_de.md`: German documentation.
 - `MARKETING-LOG.txt`: local audit, discoverability, target personas, 10-dimension comparative matrix, and governance invariants.

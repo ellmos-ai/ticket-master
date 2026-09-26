@@ -4,6 +4,16 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad B: Discoverability, Visual Architecture, Canonical NOTICE & 20/20 Metadata Saturation (2026-09-26)
+
+- **Kanonische NOTICE-Attributionsdatei**: Added root `NOTICE` file formalizing Lukas Geiger as author, `ellmos-ai` family, and `open-bricks` umbrella; bound via `license-files` and `project.urls.Notice` in `pyproject.toml` and cross-referenced in `THIRD_PARTY_LICENSES.md`.
+- **18-Punkte Navigationsparität mit dualen HTML-Ankern**: Implemented reciprocal dual HTML anchor system (`<a id="sec-01"></a>` through `<a id="sec-18"></a>`) across `README.md` and `README_de.md` for consistent cross-language linking and automated contract verification.
+- **20/20 PEP 621 Keywords & GitHub Topics Saturation**: Saturated `keywords` in `pyproject.toml` with 20 curated terms matching remote GitHub repository topics (`agent-orchestration`, `ai-agents`, `automation`, `claude`, `claude-code`, `cli`, `cloud-sync`, `codex`, `codex-cli`, `cross-platform`, `developer-tools`, `gemini-cli`, `llm`, `multi-agent`, `multi-system`, `routing`, `task-routing`, `ticket-system`, `triage`, `workflow`).
+- **Level 1 SBOM Re-Audit**: Re-audited `THIRD_PARTY_LICENSES.md` (Stand 2026-09-26) with explicit `NOTICE` attribution link, unprivileged `RunAsInvoker` mode, Zero-Copyleft guarantee, and validation of invariants `INV-LOCAL-01` through `INV-SLA-10`.
+- **Shields.io Badges & RAG Context Synchronization**: Synchronized status badges across English and German READMEs (`Attribution-NOTICE-blue.svg`, `Verified-2026--09--26-blue.svg`, `Last--Checked-2026--09--26-success.svg`); updated `llms.txt` with latest verification baseline, statutory disclaimer (§ 521 BGB), and NOTICE attribution.
+- **Contract Test Suite Expansion**: Added metadata contract tests in `tests/test_metadata.py` verifying canonical NOTICE attribution, 18-point dual HTML anchors `sec-01`..`sec-18`, 20/20 keyword saturation, and audit recency.
+- **Strict Version Freeze Discipline**: Retained version `1.12.0` frozen per flotta-wide governance rule T-20260920-167562623.
+
 ### Pfad A: Technische Hygiene, CI-Workflow-Härtung, Stale Lifecycle & Multi-Host Gitignore (2026-09-18)
 
 - **CI-Workflow-Bereitstellung & -Härtung**: Added `timeout-minutes: 15` and concurrency control (`cancel-in-progress: true`) to `.github/workflows/tests.yml`; deployed `.github/workflows/stale.yml` (`actions/stale@v9`, daily cron `30 1 * * *`, `timeout-minutes: 10`, concurrency group `stale`) and `.github/workflows/welcome.yml` (`actions/first-interaction@v3`, `timeout-minutes: 5`, concurrency group `welcome`).
