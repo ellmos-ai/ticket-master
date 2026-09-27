@@ -278,3 +278,47 @@ class TestSubDecisionIds(unittest.TestCase):
                                     "T-20260913-000000001.txt")
         self.assertEqual(keys, ["T-20260913-000000001", "D-20260906-008/E01",
                                 "D-20260906-008", "D-20260731-010"])
+
+
+class TestAcknowledgeMessageNamesTheQuotableId(unittest.TestCase):
+    """T-20260920-716303992: das echte Register vergibt fuer jeden Eintrag ein
+    qualifiziertes "key" (D-ID@Quelldatei), nicht die nackte D-ID -- belegt an
+    D-20260916-004@DECIDED-AND-DONE, D-20260827-003@DECIDED-AND-DONE u.a. Die
+    alte Fehlermeldung nannte nur den Platzhalter "--acknowledge-decision <ID>"
+    und liess offen, ob damit die nackte oder die qualifizierte Form gemeint
+    ist -- drei Fehlversuche am 2026-09-20 waren die Folge. Die Meldung muss
+    die tatsaechlich quittierbare, kopierbare Kennung selbst nennen."""
+
+    def test_the_refusal_quotes_the_exact_qualified_id_to_acknowledge(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260916-004@DECIDED-AND-DONE", "id": "D-20260916-004",
+                "status_class": "DONE", "title": "Cluster-Planungsrahmen",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "WAITING", "T-20260920-000000001.txt",
+                             "Bezug D-20260916-004.")
+            with self.assertRaises(ticket_mover.DecisionReadbackError) as refused:
+                ticket_mover.move_ticket(ticket, queue / "USER")
+            message = str(refused.exception)
+            # Die Meldung muss die volle, quittierbare Kennung als fertigen,
+            # kopierbaren Flag enthalten -- nicht nur einen "<ID>"-Platzhalter
+            # und nicht nur die nackte D-ID ohne Quelle.
+            self.assertIn(
+                "--acknowledge-decision 'D-20260916-004@DECIDED-AND-DONE'",
+                message)
+            self.assertNotIn("<ID>", message)
+            # Die nackte D-ID allein (ohne @Quelle) darf weiterhin NICHT
+            # quittieren -- sonst waere die Meldung nur kosmetisch, das Gate
+            # aber weiter unbenutzbar mit dem, was es selbst empfiehlt.
+            with self.assertRaises(ticket_mover.DecisionReadbackError):
+                ticket_mover.move_ticket(
+                    ticket, queue / "USER",
+                    acknowledged_decisions=["D-20260916-004"])
+            # Die aus der Meldung kopierte, qualifizierte Kennung muss
+            # tatsaechlich funktionieren.
+            moved = ticket_mover.move_ticket(
+                ticket, queue / "USER",
+                acknowledged_decisions=["D-20260916-004@DECIDED-AND-DONE"])
+            self.assertTrue(moved.exists())

@@ -111,8 +111,10 @@ FREIGABE_ID:   frg_<set by `ticket_mover.py --stamp-freigabe-id`, never by hand>
 --------------------------------------------------------------
 HISTORY / LOG
 --------------------------------------------------------------
-YYYY-MM-DD  Created.
-YYYY-MM-DD  ...
+# Progress entries are dated and attributed. Keep old lines; supersede them
+# with a dated NACHTRAG/SUPERSEDED entry instead of editing history in place.
+YYYY-MM-DD | actor@host | Statement — Evidence / readback.
+YYYY-MM-DD | ...
 
 --------------------------------------------------------------
 SOLUTION / RESULT  (fill before moving to SOLVED/)
