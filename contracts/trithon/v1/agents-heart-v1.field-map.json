@@ -1,0 +1,126 @@
+{
+  "mapping_contract": "ellmos.trithon.agents-heart-field-map.v1",
+  "observed_source": {
+    "repository": "ellmos-ai/bach",
+    "commit": "9d4df01",
+    "path": "system/hub/_services/agents_heart.py",
+    "origin_main_observation": "not_present_on_2026-09-16"
+  },
+  "target_contract": "ellmos.trithon.agents-heart-dispatch.v1",
+  "field_mappings": [
+    {
+      "dispatch_pointer": "/assignment_id",
+      "agents_heart_field": "Assignment.assignment_id",
+      "compatibility": "adapter_must_preserve_or_echo_the_preallocated_id"
+    },
+    {
+      "dispatch_pointer": "/authorization/role_id",
+      "agents_heart_field": "begin_assignment.role_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/authorization/role_revision",
+      "agents_heart_field": "RoleContract.revision",
+      "compatibility": "must_match"
+    },
+    {
+      "dispatch_pointer": "/authorization/mode",
+      "agents_heart_field": "begin_assignment.mode",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/authorization/required_rights",
+      "agents_heart_field": "RoleContract.rights",
+      "compatibility": "requested_subset_only"
+    },
+    {
+      "dispatch_pointer": "/authorization/capability",
+      "agents_heart_field": "future_admission_input",
+      "compatibility": "phase_3_extension_required"
+    },
+    {
+      "dispatch_pointer": "/authorization/budget",
+      "agents_heart_field": "future_admission_input",
+      "compatibility": "phase_3_extension_required"
+    },
+    {
+      "dispatch_pointer": "/executor/agent_instance_id",
+      "agents_heart_field": "begin_assignment.agent_instance_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/executor/backend_id",
+      "agents_heart_field": "begin_assignment.backend_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/executor/model_id",
+      "agents_heart_field": "begin_assignment.model_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/executor/slot_id",
+      "agents_heart_field": "begin_assignment.slot_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/task_ref/task_id",
+      "agents_heart_field": "begin_assignment.task_id",
+      "compatibility": "adapter_maps_opaque_task_id"
+    },
+    {
+      "dispatch_pointer": "/executor/session_id",
+      "agents_heart_field": "begin_assignment.session_id",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/executor/initiated_by",
+      "agents_heart_field": "begin_assignment.initiated_by",
+      "compatibility": "exact"
+    },
+    {
+      "dispatch_pointer": "/idempotency_key",
+      "agents_heart_field": "future_replay_gate",
+      "compatibility": "phase_3_extension_required"
+    }
+  ],
+  "generated_only_after_admission": [
+    "started_at",
+    "assignment_started",
+    "assignment_ended",
+    "ended_at",
+    "status",
+    "result",
+    "reason"
+  ],
+  "dispatch_envelope_fields": [
+    {
+      "dispatch_pointer": "/contract",
+      "authority": "dispatch-contract"
+    },
+    {
+      "dispatch_pointer": "/dispatch_id",
+      "authority": "trithon-projection"
+    },
+    {
+      "dispatch_pointer": "/task_ref/projection_id",
+      "authority": "trithon-projection"
+    },
+    {
+      "dispatch_pointer": "/task_ref/ticket_id",
+      "authority": "ticket-master-projection"
+    },
+    {
+      "dispatch_pointer": "/task_ref/ticket_revision",
+      "authority": "ticket-master-projection"
+    },
+    {
+      "dispatch_pointer": "/task_ref/receipt_to",
+      "authority": "ticket-master-projection"
+    },
+    {
+      "dispatch_pointer": "/delivery",
+      "authority": "trithon-publisher"
+    }
+  ]
+}

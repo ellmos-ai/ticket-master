@@ -1,0 +1,40 @@
+{
+  "contract": "ellmos.trithon.outcome-receipt.v1",
+  "receipt_id": "rcpt-00000000000000000000000000000001",
+  "dispatch_id": "dsp-00000000000000000000000000000001",
+  "assignment_id": "asgn-00000000000000000000000000000001",
+  "task_ref": {
+    "projection_id": "proj-00000000000000000000000000000001",
+    "task_id": "trithon-task:T-20990101-123456789:222222222222",
+    "ticket_id": "T-20990101-123456789",
+    "ticket_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "receipt_to": "T-20990101-123456789"
+  },
+  "outcome": {
+    "status": "completed",
+    "result_code": "task_done",
+    "reason_code": "none",
+    "proposed_ticket_status": "SOLVED"
+  },
+  "evidence": [
+    {
+      "kind": "test_report",
+      "ref": "urn:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+    },
+    {
+      "kind": "review",
+      "ref": "urn:sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    }
+  ],
+  "delivery": {
+    "event_id": "evt-00000000000000000000000000000004",
+    "publisher_id": "trithon@TEST-NODE",
+    "publisher_epoch": "epoch-test-0001",
+    "sequence": 30,
+    "attempt": 1,
+    "emitted_at": "2099-01-01T00:04:00Z"
+  },
+  "idempotency_key": "sha256:09762976548cd3ba3126406c27df75e0511fd847f5a48b66e8b0683925990919"
+}

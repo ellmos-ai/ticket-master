@@ -1,0 +1,257 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.ellmos.local/trithon/ellmos.trithon.outcome-receipt.v1.schema.json",
+  "title": "Trithon outcome receipt proposal v1",
+  "description": "An evidence-bearing outcome proposal. Only ticket-master may apply a lifecycle transition.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract",
+    "receipt_id",
+    "dispatch_id",
+    "assignment_id",
+    "task_ref",
+    "outcome",
+    "evidence",
+    "delivery",
+    "idempotency_key"
+  ],
+  "properties": {
+    "contract": {
+      "const": "ellmos.trithon.outcome-receipt.v1"
+    },
+    "receipt_id": {
+      "type": "string",
+      "pattern": "^rcpt-[a-f0-9]{32}$"
+    },
+    "dispatch_id": {
+      "type": "string",
+      "pattern": "^dsp-[a-f0-9]{32}$"
+    },
+    "assignment_id": {
+      "type": "string",
+      "pattern": "^asgn-[a-f0-9]{32}$"
+    },
+    "task_ref": {
+      "$ref": "#/$defs/task_ref"
+    },
+    "outcome": {
+      "$ref": "#/$defs/outcome"
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      },
+      "minItems": 1,
+      "maxItems": 16
+    },
+    "delivery": {
+      "$ref": "#/$defs/delivery"
+    },
+    "idempotency_key": {
+      "$ref": "#/$defs/sha256"
+    }
+  },
+  "$defs": {
+    "ticket_id": {
+      "type": "string",
+      "pattern": "^T-[0-9]{8}-[0-9]{9}(?:_[A-Za-z0-9][A-Za-z0-9_-]*)?$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^trithon-task:[A-Za-z0-9][A-Za-z0-9:._-]{8,191}$"
+    },
+    "projection_id": {
+      "type": "string",
+      "pattern": "^proj-[a-f0-9]{32}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "task_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "projection_id",
+        "task_id",
+        "ticket_id",
+        "ticket_revision",
+        "receipt_to"
+      ],
+      "properties": {
+        "projection_id": {
+          "$ref": "#/$defs/projection_id"
+        },
+        "task_id": {
+          "$ref": "#/$defs/task_id"
+        },
+        "ticket_id": {
+          "$ref": "#/$defs/ticket_id"
+        },
+        "ticket_revision": {
+          "$ref": "#/$defs/sha256"
+        },
+        "receipt_to": {
+          "$ref": "#/$defs/ticket_id"
+        }
+      }
+    },
+    "outcome": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/outcome_completed"
+        },
+        {
+          "$ref": "#/$defs/outcome_released"
+        },
+        {
+          "$ref": "#/$defs/outcome_interrupted"
+        },
+        {
+          "$ref": "#/$defs/outcome_executor_error"
+        },
+        {
+          "$ref": "#/$defs/outcome_budget_error"
+        },
+        {
+          "$ref": "#/$defs/outcome_lock_error"
+        },
+        {
+          "$ref": "#/$defs/outcome_completion_error"
+        }
+      ]
+    },
+    "outcome_completed": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "completed"},
+        "result_code": {"const": "task_done"},
+        "reason_code": {"const": "none"},
+        "proposed_ticket_status": {"const": "SOLVED"}
+      }
+    },
+    "outcome_released": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "released"},
+        "result_code": {"const": "not_finished"},
+        "reason_code": {"const": "none"},
+        "proposed_ticket_status": {"const": "ACTIONABLE"}
+      }
+    },
+    "outcome_interrupted": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "interrupted"},
+        "result_code": {"const": "keyboard_interrupt"},
+        "reason_code": {"const": "operator_interrupt"},
+        "proposed_ticket_status": {"const": "ACTIONABLE"}
+      }
+    },
+    "outcome_executor_error": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "error"},
+        "result_code": {"const": "runtime_error"},
+        "reason_code": {"const": "executor_error"},
+        "proposed_ticket_status": {"const": "WAITING"}
+      }
+    },
+    "outcome_budget_error": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "error"},
+        "result_code": {"const": "runtime_error"},
+        "reason_code": {"const": "budget_exhausted"},
+        "proposed_ticket_status": {"const": "WAITING"}
+      }
+    },
+    "outcome_lock_error": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "error"},
+        "result_code": {"const": "runtime_error"},
+        "reason_code": {"const": "local_lock_active"},
+        "proposed_ticket_status": {"const": "BLOCKED"}
+      }
+    },
+    "outcome_completion_error": {
+      "$ref": "#/$defs/outcome_shape",
+      "properties": {
+        "status": {"const": "error"},
+        "result_code": {"const": "completion_mark_failed"},
+        "reason_code": {"const": "completion_write_failed"},
+        "proposed_ticket_status": {"const": "BLOCKED"}
+      }
+    },
+    "outcome_shape": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "result_code", "reason_code", "proposed_ticket_status"],
+      "properties": {
+        "status": {"type": "string"},
+        "result_code": {"type": "string"},
+        "reason_code": {"type": "string"},
+        "proposed_ticket_status": {"type": "string"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "ref", "digest"],
+      "properties": {
+        "kind": {
+          "enum": ["test_report", "commit", "artifact", "review", "runtime_receipt"]
+        },
+        "ref": {
+          "type": "string",
+          "pattern": "^urn:[A-Za-z0-9][A-Za-z0-9:._-]{1,255}$"
+        },
+        "digest": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event_id",
+        "publisher_id",
+        "publisher_epoch",
+        "sequence",
+        "attempt",
+        "emitted_at"
+      ],
+      "properties": {
+        "event_id": {
+          "type": "string",
+          "pattern": "^evt-[a-f0-9]{32}$"
+        },
+        "publisher_id": {
+          "type": "string",
+          "pattern": "^trithon@[A-Za-z0-9][A-Za-z0-9_-]{0,63}$"
+        },
+        "publisher_epoch": {
+          "type": "string",
+          "pattern": "^epoch-[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "attempt": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "emitted_at": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    }
+  }
+}

@@ -472,6 +472,13 @@ Jedes Ziel besitzt genau eine `SYSTEM_LEDGER`-Zeile (`pending`, `claimed`, `done
 
 Verantwortungsgrenze: ticket-master besitzt diesen Kontrakt und seinen Lebenszyklus; Clutch verantwortet die Ausführungsauflösung; `.SYNC` transportiert Anfragen und Receipts; system-gap-master übernimmt die systemübergreifende Erkennung und den Abgleich. ticket-master liefert ausschließlich ein idempotentes `route_intent` mit Ticket-ID, fixiertem Ziel-Snapshot und Quittungsziel. Integrationen rufen `ticket_writer.create_routed_ticket(..., idempotency_key=...)` auf; Wiederholungen mit derselben normalisierten Anfrage liefern den bestehenden Kontrakt zurück.
 
+Die Phase-0-Verträge für eine abgeleitete Trithon-Taskprojektion, den
+agents-heart-Dispatch, den Outcome-Vorschlag und die kuratierte
+Muschelgrund-Projektion liegen unter `contracts/trithon/v1/`. Sie definieren
+noch keine Laufzeit. Feldabbildung, Autoritätsgrenzen, Datenschutz-Allowlist und
+Gefahrenmodell stehen in
+[`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
+
 
 ### Companion-Muster
 

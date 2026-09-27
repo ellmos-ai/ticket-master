@@ -1,0 +1,61 @@
+{
+  "contract": "ellmos.muschelgrund.fact-projection.v1",
+  "projection_id": "memproj-00000000000000000000000000000001",
+  "source": {
+    "outcome_receipt_id": "rcpt-00000000000000000000000000000001",
+    "ticket_master_acceptance_ref": "urn:ticket-master-acceptance:3b2769349f9134f5196725d3f24aef343df8bebd1723f027f04a063b037b5417",
+    "ticket_master_acceptance_digest": "sha256:3b2769349f9134f5196725d3f24aef343df8bebd1723f027f04a063b037b5417",
+    "projection_id": "proj-00000000000000000000000000000001",
+    "dispatch_id": "dsp-00000000000000000000000000000001",
+    "assignment_id": "asgn-00000000000000000000000000000001",
+    "ticket_id": "T-20990101-123456789",
+    "ticket_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "task_id": "trithon-task:T-20990101-123456789:222222222222",
+    "receipt_to": "T-20990101-123456789",
+    "outcome": "completed",
+    "accepted_ticket_status": "SOLVED",
+    "accepted_by": "ticket-master@TEST-NODE",
+    "accepted_at": "2099-01-01T00:07:00Z"
+  },
+  "entry": {
+    "kind": "lesson",
+    "subject": "Idempotente Vertragsprojektion",
+    "statement": "Der synthetische Vertragstest belegt die idempotente Abschlussprojektion.",
+    "language": "de",
+    "privacy_class": "internal",
+    "editorial_status": "accepted",
+    "redaction_status": "reviewed",
+    "content_digest": "sha256:930f6b90778504bb124d8c1c5bc5144b1354a0755c5dc9c1fac11405c16e2b9b"
+  },
+  "privacy_gate": {
+    "policy": "ellmos.privacy.allowlist.v1",
+    "scanner_id": "privacy-gate@TEST-NODE",
+    "scanner_revision": "v1",
+    "scanned_content_digest": "sha256:6474ad89ef3da0db22a84e1903a612922b49f4748b51a388c0addfa1e343ff2d",
+    "curation_receipt_ref": "urn:privacy-curation:6f384677c341e12739d0ea369464c4384237015144b63be73dda5d4099d6c17c",
+    "curation_receipt_digest": "sha256:6f384677c341e12739d0ea369464c4384237015144b63be73dda5d4099d6c17c",
+    "decision": "allow",
+    "findings_count": 0,
+    "checked_at": "2099-01-01T00:07:30Z"
+  },
+  "evidence_refs": [
+    "urn:sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "urn:sha256:4444444444444444444444444444444444444444444444444444444444444444"
+  ],
+  "data_classes": [
+    "curated_statement",
+    "opaque_ticket_reference",
+    "opaque_task_reference",
+    "opaque_evidence_reference",
+    "provenance_timestamp"
+  ],
+  "delivery": {
+    "event_id": "evt-00000000000000000000000000000008",
+    "publisher_id": "trithon@TEST-NODE",
+    "publisher_epoch": "epoch-test-0001",
+    "sequence": 41,
+    "attempt": 2,
+    "emitted_at": "2099-01-01T00:09:00Z"
+  },
+  "idempotency_key": "sha256:5f89b04ac983c861146b08e1f70b15ad61a19114ddf2d35c59dbf5ec49c84abe"
+}

@@ -475,6 +475,12 @@ Each target has exactly one `SYSTEM_LEDGER` row (`pending`, `claimed`, `done`, o
 
 Responsibility boundary: ticket-master owns this contract and its lifecycle; Clutch owns execution resolution; `.SYNC` transports requests and receipts; system-gap-master owns cross-system discovery/reconciliation. ticket-master provides only an idempotent `route_intent` containing the ticket ID, fixed target snapshot and receipt destination. It implements no inbox/outbox, drop-zone, offline queue, retry loop or transport delivery state. Integrations call `ticket_writer.create_routed_ticket(..., idempotency_key=...)`; retries with the same normalized request return the existing contract, while reuse of the key for different content fails closed.
 
+The Phase-0-only contracts for the derived Trithon task projection,
+agents-heart dispatch, outcome proposal and curated Muschelgrund projection are
+under `contracts/trithon/v1/`. They define no runtime. The field mapping,
+authority boundaries, privacy allowlist and threat model are documented in
+[`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
+
 
 ### Companion Pattern
 

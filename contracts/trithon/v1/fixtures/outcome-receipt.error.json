@@ -1,0 +1,35 @@
+{
+  "contract": "ellmos.trithon.outcome-receipt.v1",
+  "receipt_id": "rcpt-00000000000000000000000000000002",
+  "dispatch_id": "dsp-00000000000000000000000000000001",
+  "assignment_id": "asgn-00000000000000000000000000000001",
+  "task_ref": {
+    "projection_id": "proj-00000000000000000000000000000001",
+    "task_id": "trithon-task:T-20990101-123456789:222222222222",
+    "ticket_id": "T-20990101-123456789",
+    "ticket_revision": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "receipt_to": "T-20990101-123456789"
+  },
+  "outcome": {
+    "status": "error",
+    "result_code": "runtime_error",
+    "reason_code": "executor_error",
+    "proposed_ticket_status": "WAITING"
+  },
+  "evidence": [
+    {
+      "kind": "runtime_receipt",
+      "ref": "urn:sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+    }
+  ],
+  "delivery": {
+    "event_id": "evt-00000000000000000000000000000006",
+    "publisher_id": "trithon@TEST-NODE",
+    "publisher_epoch": "epoch-test-0001",
+    "sequence": 32,
+    "attempt": 1,
+    "emitted_at": "2099-01-01T00:06:00Z"
+  },
+  "idempotency_key": "sha256:a9e9199d46e4145e31a5564db7e10b64bc0453a51aeeaa093d4794b249497585"
+}
