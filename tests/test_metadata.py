@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 552
-LAST_CHECKED = "2026-09-26"
+EXPECTED_TEST_COUNT = 647
+LAST_CHECKED = "2026-09-28"
 
 
 def test_version_consistency():
