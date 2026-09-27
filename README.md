@@ -92,6 +92,7 @@ The system is designed with a strict local-first philosophy: all queues, tickets
 | **Deterministic Fallback Chains** | Configured multi-tier fallback chains ensure tasks never get lost if a preferred provider is unavailable, rate-limited, or offline. |
 | **Informal Intake & Formalization** | Automatically ingests raw text files dropped into `INBOX/`, formalizing them with byte-identical `ORIGINALTEXT` preservation and safe archiving. |
 | **Auditor Bridge & Sparmodus Gate** | Seamlessly interfaces with `ellmos-ai/system-auditor`, converting audit findings to draft tickets while respecting token-budget sparmodus states. |
+| **Trithon Shadow Projection (Phase 1)** | Builds a local, pointer-only SQLite projection with atomic rebuilds, idempotent imports, crash recovery, and a no-op mock executor; it never changes ticket files or starts a production runtime. |
 | **Zero External Runtime Dependencies** | Core functionality runs entirely on the pure Python standard library (`dependencies = []`), ensuring maximum portability and stability. |
 | **Unprivileged User Execution** | Runs entirely in user space (`RunAsInvoker`) without requiring root, administrative elevation, or UAC prompts. |
 
@@ -439,6 +440,39 @@ For external automations and scripts that need to create tickets programmaticall
 python lib/ticket_writer.py --title "Memory leak in parser" --body "Observed 200MB growth on large files." --project my-project --urgency sofort
 ```
 
+### Local Trithon shadow mode (Phase 1)
+
+`lib/trithon_shadow.py` provides a host-local, pointer-only projection for
+Trithon/Muschelgrund preparation. It consumes `ellmos.ticket.route-intent.v1`
+and the closed Phase-0 `ellmos.trithon.task-projection.v1` /
+`ellmos.trithon.outcome-receipt.v1` envelopes, storing only route metadata,
+checkpoints, task history, and transport receipts in an explicitly selected
+SQLite file. Ticket bodies, prompts, credentials, raw transcripts, local
+paths, and malformed contract fields are rejected before any write. Imports
+and full rebuilds are transactional and idempotent; delivery-only retries are
+recognized by their stable idempotency key. The mock executor records only a
+synthetic no-op event and performs no process, file, Ollama, or network
+operation. It never changes a ticket status.
+
+```bash
+python lib/trithon_shadow.py --db /absolute/path/trithon-shadow.sqlite3 \
+  --trusted-publisher ticket-master@LOCAL-HOST \
+  import --source /absolute/path/route-intent.json
+python lib/trithon_shadow.py --db /absolute/path/trithon-shadow.sqlite3 verify
+python lib/trithon_shadow.py --db /absolute/path/trithon-shadow.sqlite3 \
+  rebuild --source /absolute/path/route-intent.json
+python lib/trithon_shadow.py --db /absolute/path/trithon-shadow.sqlite3 \
+  reset-checkpoints
+```
+
+The Phase-1 boundary is deliberately local and synthetic: no BACH host
+service, Salt action, live database, productive model call, or transport
+delivery is implied by this projection.
+Contract envelopes are accepted only for explicitly configured publisher IDs;
+the reset clears source and delivery checkpoints but retains the derived
+projection and history. A changed stable projection still requires the
+explicit `rebuild` operation.
+
 ---
 
 <a id="sec-11"></a>
@@ -575,7 +609,7 @@ Four optional layers turn the plain ticket router into a personal-assistant tria
 ### Running the Test Suite & Smoke Checks
 
 ```bash
-# Run the complete test suite (502+ tests, 100% pass guarantee)
+# Run the complete test suite (529 tests, 100% pass guarantee)
 pytest
 
 # Run the lightweight smoke test
