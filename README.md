@@ -17,14 +17,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-647%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-653%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Security SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Third-Party Audited](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verified](https://img.shields.io/badge/Verified-2026--09--26-blue.svg)](MARKETING-LOG.txt)
-[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--09--26-success.svg)](MARKETING-LOG.txt)
+[![Verified](https://img.shields.io/badge/Verified-2026--09--28-blue.svg)](MARKETING-LOG.txt)
+[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--09--28-success.svg)](MARKETING-LOG.txt)
 [![Marketing Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Ready](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -657,7 +657,7 @@ Part of the [ellmos-ai](https://github.com/ellmos-ai) multi-agent infrastructure
 - **Zero Runtime Dependencies:** The core engine, CLI tools, and queue helpers require zero third-party packages (`dependencies = []` in `pyproject.toml`).
 - **Zero-Copyleft Guarantee:** All runtime code and development tooling use permissive licenses (MIT, Apache-2.0, PSF). The codebase is free of viral copyleft (GPL, AGPL) obligations.
 - **Unprivileged Execution:** Runs exclusively in standard user mode (`RunAsInvoker`).
-- Full audit disclosures, version specifications, and license texts are detailed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
+- Full audit disclosures, version specifications, and license texts are detailed in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) and plain-text [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt).
 
 ---
 

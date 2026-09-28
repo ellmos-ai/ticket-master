@@ -1,6 +1,35 @@
 # MARKETING-LOG.txt — ticket-master
 # Lokales Audit-, Discoverability- und Marketing-Logbuch
 
+## 2026-09-28 — Pfad A: Technische Hygiene, CI-Workflow-Härtung (auto-assign, label-sync), Level 1 SBOM (TXT) & Gitignore-Defense
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0 (strikte Versionsfreeze-Disziplin nach T-20260920-167562623)
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum 100% sauber, 0 aktive Locks (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (42h Ruhezeit; Pfad A zuletzt am 2026-08-21 vor 38 Tagen, Pfad B am 2026-09-26).
+- Testbasis: 552/552 Tests bestanden (13 Subtests, 100% grün via pytest).
+
+### 2. Technische Hygiene- & Härtungsmaßnahmen
+- **CI-Lifecycle-Workflows & Concurrency-Härtung**:
+  - `.github/workflows/auto-assign.yml`: PR Auto-Assign Workflow neu angelegt (`actions/github-script@v7`, `timeout-minutes: 5`, least-privilege `issues: write`, `pull-requests: write`, concurrency `group: ${{ github.workflow }}-${{ github.ref }}`).
+  - `.github/workflows/label-sync.yml`: Standard-Label Synchronisation neu angelegt (`EndBug/label-sync@v2`, `timeout-minutes: 5`, least-privilege `issues: write`, concurrency `group: ${{ github.workflow }}-${{ github.ref }}`).
+  - `.github/labels.yml`: Kanonische 11 Standard-Labels gemäß GOVERNANCE.md §4.2 bereitgestellt (bug, enhancement, good first issue, help wanted, documentation, duplicate, wontfix, priority: high, priority: low, needs-triage, stale).
+  - `.github/workflows/welcome.yml` & `stale.yml`: Concurrency-Gruppen auf `${{ github.workflow }}-${{ github.ref }}` mit `cancel-in-progress: true` gehärtet.
+- **Multi-Host Cloud-Sync-, Lock- und Cache-Gitignore-Defense**:
+  - `.gitignore`: Gehärtet gegen Cloud-Sync-Konflikt-Token (`*-IDEAPAD*`, `*-IDEAPAD.*`, `*_WORKSTATION*`, `*_WORKSTATION-LG*`, `*-WORKSTATION.*`), Desktop-Dateien (`Desktop.ini`, `desktop.ini`, `*.swp`, `*.swo`), Multi-Agent-Lock-Marker (`.automation-lock`) und Testläufer-Logs (`pytestdebug.log`).
+- **Level 1 SBOM Plain-Text Inventory & Canonical NOTICE Update**:
+  - `THIRD_PARTY_LICENSES.txt`: Kanonisches Nur-Text Level 1 SBOM Software-Inventar erstellt mit Zero-Runtime Dependency Bestätigung (`dependencies = []`), Standardbibliothek-Inventory, unprivilegierter `RunAsInvoker`-Ausführung, Zero-Copyleft-Garantie und Bestätigung aller zehn Governance- und Laufzeit-Invarianten `INV-LOCAL-01` bis `INV-SLA-10`.
+  - `THIRD_PARTY_LICENSES.md`: Re-auditiert auf Stand 2026-09-28.
+  - `NOTICE`: Querverweis um `THIRD_PARTY_LICENSES.txt` ergänzt.
+- **PEP 621 Standardisierung**:
+  - `pyproject.toml`: `Third-Party Licenses (Text)` in `[project.urls]` registriert; `license-files` um `THIRD_PARTY_LICENSES.txt` erweitert; `norecursedirs` in `[tool.pytest.ini_options]` um `.hypothesis` gehärtet; strikte Version-Freeze-Disziplin (`version = "1.12.0"`) gewahrt.
+- **RAG-Kontext & Status-Badges-Synchronisation**:
+  - `README.md` & `README_de.md`: Status-Badges synchronisiert (`Verified-2026--09--28`, `Last--Checked-2026--09--28`); Abschnitt 16 Drittanbieter-Lizenzen um Nur-Text-Inventar `THIRD_PARTY_LICENSES.txt` ergänzt.
+  - `llms.txt`: Stand auf 2026-09-28 aktualisiert mit Level 1 SBOM Text-Referenz und aktualisierter Test-Baseline.
+- **Automatisierte Vertragstests**:
+  - `tests/test_metadata.py`: Um 6 neue Contract-Tests für CI-Lifecycle-Workflows (auto-assign, label-sync, labels.yml), Level 1 SBOM Nur-Text-Inventar, erweiterte Gitignore-Guards, PEP 621 URLs/license-files und CHANGELOG/MARKETING-LOG Audit-Recency erweitert.
+
 ## 2026-09-26 — Pfad B: Discoverability, Visual Architecture, Canonical NOTICE & Metadata Saturation
 
 ### 1. Ausgangslage & Kriterien

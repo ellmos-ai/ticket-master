@@ -87,8 +87,11 @@ tickets/.ticket-master-queue
 * (kopie)*
 * (copy)*
 *-WORKSTATION*
+*-WORKSTATION.*
 *-WORKSTATION-LG*
 *-WORKSTATION-LG.*
+*_WORKSTATION*
+*_WORKSTATION-LG*
 *-ASUS*
 *-ASUS-GEI*
 *-ASUS-GEI.*
@@ -96,6 +99,8 @@ tickets/.ticket-master-queue
 *-LAPTOP.*
 *-Mac Studio*
 *-MacBook*
+*-IDEAPAD*
+*-IDEAPAD.*
 *.sync-conflict-*
 *.conflict
 *.orig
@@ -122,12 +127,16 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 desktop.ini
+*.swp
+*.swo
 
 # Multi-Agent Lock-System (lokal, nie committen)
 LOCK
 LOCK.*
 LOCK*.txt
+.automation-lock
 LOCK.permissions.json
 LOCK.user.*
 LOCK.until.*
@@ -139,6 +148,7 @@ uv.lock
 .pytest_cache/
 .pytest_temp/
 .pytest_tmp*/
+pytestdebug.log
 .coverage
 .coverage.*
 htmlcov/

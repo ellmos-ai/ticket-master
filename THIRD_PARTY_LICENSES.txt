@@ -1,0 +1,58 @@
+# Third-Party Licenses & Software Inventory
+
+Project: ticket-master (Cross-platform multi-provider LLM task router and AI coding agent triage console)
+Audited: 2026-09-28 against Level 1 SBOM and runtime invariants.
+License: MIT License (see LICENSE and NOTICE)
+Repository: https://github.com/ellmos-ai/ticket-master
+Umbrella Collective: open-bricks (https://github.com/open-bricks)
+
+## Project License
+
+ticket-master is licensed under the MIT License. See `LICENSE` and `NOTICE`.
+
+## Core Runtime
+
+The base package declares ZERO external runtime dependencies (`dependencies = []`).
+The entire runtime execution relies strictly on the official Python Standard Library.
+
+| Package / Module | Scope | Version Spec | License | Purpose |
+|---|---|---|---|---|
+| Python Standard Library | Runtime | >=3.10 | PSF-2.0 | Core runtime: argparse, dataclasses, datetime, hashlib, json, os, pathlib, re, shutil, subprocess, sys, typing, uuid |
+
+Zero third-party telemetry, analytics, cloud synchronization, or remote networking services are packaged or contacted.
+
+## Optional Runtime Dependencies
+
+| Package | Declared Use | Constraint | License | Source |
+|---|---|---|---|---|
+| clutch-router | Optional routing-v2 extra | >=0.5,<0.6 | MIT | https://github.com/ellmos-ai/clutch |
+
+## Direct Build and Development Dependencies
+
+The following tools are utilized exclusively for offline automated testing, code quality auditing, packaging, and linting:
+
+| Package | Declared Use | Constraint | License | Source |
+|---|---|---|---|---|
+| pytest | Development test runner | >=8.0 | MIT | https://pytest.org/ |
+| ruff | Development linter | >=0.6.0 | MIT / Apache-2.0 | https://github.com/astral-sh/ruff |
+| setuptools | Build backend | >=77.0.3 | MIT | https://github.com/pypa/setuptools |
+| build | PEP 517 build frontend | >=1.2.0 | MIT | https://github.com/pypa/build |
+
+## Zero-Copyleft Guarantee & Unprivileged Execution
+
+- Zero-Copyleft Guarantee: All runtime code and development dependencies are governed strictly by permissive, business-friendly open-source licenses (MIT, Apache-2.0, PSF-2.0). The codebase contains zero GPL, AGPL, or viral copyleft components.
+- Unprivileged User-Mode Operation (RunAsInvoker): All CLI commands, queue operations, informal intake formalization, and triage routines execute purely within unprivileged user space. No administrative rights, root elevation, sudo, or UAC prompts are ever required.
+
+## Governance & Runtime Invariants
+
+ticket-master strictly enforces ten foundational governance and runtime invariants:
+- INV-LOCAL-01: Zero-Egress / 100% Offline (all tickets, lifecycles, and logs remain strictly on local disk; zero cloud telemetry)
+- INV-WORKFLOW-02: Agent-Native Workflow (transparent prompt-driven Position 0 triage mode; zero opaque background daemons)
+- INV-ROUTING-03: 5-Dimension Routing (deterministic scoring: Clarity, Complexity, Creativity, Context, Criticality with fallback)
+- INV-CLAIM-04: Multi-System Claims (atomic filesystem renames .claim-<host>-<ts> without external databases or locks)
+- INV-COMPANION-05: Companion Pattern (domain-grouped tasks reuse companion sub-agents, amortizing orientation cost)
+- INV-INTAKE-06: Informal Intake (raw text notes in INBOX/ formalized with byte-identical ORIGINALTEXT preservation)
+- INV-AUDITOR-07: Auditor Bridge (seamless system-auditor bridge with fail-closed sparmodus token-budget gating)
+- INV-UNPRIV-08: Unprivileged Execution (standard user-mode execution RunAsInvoker; zero UAC or root privileges required)
+- INV-PORTABLE-09: Zero Dependencies (pure Python standard library dependencies = []; extras cleanly isolated)
+- INV-SLA-10: Transparent SLA (permissive MIT license, automated multi-OS CI matrix, and committed 48h security SLA)

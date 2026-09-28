@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 647
+EXPECTED_TEST_COUNT = 653
 LAST_CHECKED = "2026-09-28"
 
 
@@ -95,7 +95,7 @@ def test_pyproject_pep621_metadata():
 
     assert 'requires = ["setuptools>=77.0.3"]' in content
     assert 'license = "MIT"' in content
-    assert 'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md"]' in content
+    assert 'license-files = ["LICENSE", "NOTICE", "THIRD_PARTY_LICENSES.md", "THIRD_PARTY_LICENSES.txt"]' in content
     assert 'dependencies = []' in content
     assert "license = {" not in content
     assert '"License ::' not in content
@@ -469,3 +469,92 @@ def test_changelog_recent_pfad_b_entry():
     assert changelog_path.is_file()
     content = changelog_path.read_text(encoding="utf-8")
     assert "### Pfad B: Discoverability, Visual Architecture, Canonical NOTICE & 20/20 Metadata Saturation (2026-09-26)" in content
+
+
+def test_ci_lifecycle_auto_assign_and_label_sync():
+    """Verify auto-assign and label-sync workflows exist with least privilege and standard labels."""
+    assign_path = REPO_ROOT / ".github" / "workflows" / "auto-assign.yml"
+    assert assign_path.is_file(), "auto-assign.yml workflow missing"
+    assign_content = assign_path.read_text(encoding="utf-8")
+    assert "actions/github-script@v7" in assign_content
+    assert "timeout-minutes: 5" in assign_content
+    assert "cancel-in-progress: true" in assign_content
+    assert "issues: write" in assign_content
+    assert "pull-requests: write" in assign_content
+
+    label_sync_path = REPO_ROOT / ".github" / "workflows" / "label-sync.yml"
+    assert label_sync_path.is_file(), "label-sync.yml workflow missing"
+    sync_content = label_sync_path.read_text(encoding="utf-8")
+    assert "EndBug/label-sync@v2" in sync_content
+    assert "timeout-minutes: 5" in sync_content
+    assert "cancel-in-progress: true" in sync_content
+    assert "issues: write" in sync_content
+    assert "config-file: .github/labels.yml" in sync_content
+
+    labels_path = REPO_ROOT / ".github" / "labels.yml"
+    assert labels_path.is_file(), "labels.yml missing"
+    labels_content = labels_path.read_text(encoding="utf-8")
+    for expected_label in [
+        "bug", "enhancement", "good first issue", "help wanted", "documentation",
+        "duplicate", "wontfix", "priority: high", "priority: low", "needs-triage", "stale"
+    ]:
+        assert f"name: {expected_label}" in labels_content or f"name: '{expected_label}'" in labels_content
+
+
+def test_plain_text_level1_sbom_inventory():
+    """Verify THIRD_PARTY_LICENSES.txt exists, contains Level 1 SBOM, invariants, and NOTICE cross-references."""
+    txt_path = REPO_ROOT / "THIRD_PARTY_LICENSES.txt"
+    assert txt_path.is_file(), "THIRD_PARTY_LICENSES.txt missing"
+    content = txt_path.read_text(encoding="utf-8")
+    assert "Level 1 SBOM" in content
+    assert "Zero-Copyleft Guarantee" in content
+    assert "RunAsInvoker" in content
+    assert "INV-LOCAL-01" in content
+    assert "INV-SLA-10" in content
+
+    notice_path = REPO_ROOT / "NOTICE"
+    assert notice_path.is_file()
+    notice_content = notice_path.read_text(encoding="utf-8")
+    assert "THIRD_PARTY_LICENSES.txt" in notice_content
+
+
+def test_extended_gitignore_multi_host_and_lock_guards():
+    """Verify .gitignore includes IDEAPAD, WORKSTATION wildcards, Desktop.ini, swap files, and automation-lock."""
+    gitignore_path = REPO_ROOT / ".gitignore"
+    assert gitignore_path.is_file()
+    content = gitignore_path.read_text(encoding="utf-8")
+    for pattern in [
+        "*-IDEAPAD*",
+        "*_WORKSTATION*",
+        "Desktop.ini",
+        "*.swp",
+        "*.swo",
+        ".automation-lock",
+        "pytestdebug.log",
+    ]:
+        assert pattern in content, f"Pattern '{pattern}' missing in .gitignore"
+
+
+def test_pyproject_third_party_text_url_and_license_files():
+    """Verify pyproject.toml contains Third-Party Licenses (Text) URL, includes txt in license-files, and has .hypothesis."""
+    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"Third-Party Licenses (Text)"' in pyproject_text
+    assert '"THIRD_PARTY_LICENSES.txt"' in pyproject_text
+    assert '".hypothesis"' in pyproject_text
+
+
+def test_changelog_recent_pfad_a_hygiene_entry():
+    """Verify CHANGELOG.md contains the 2026-09-28 Pfad A technical hygiene entry."""
+    changelog_path = REPO_ROOT / "CHANGELOG.md"
+    assert changelog_path.is_file()
+    content = changelog_path.read_text(encoding="utf-8")
+    assert "### Pfad A: Technische Hygiene, CI-Workflow-Härtung (auto-assign, label-sync), Level 1 SBOM (TXT) & Gitignore-Defense (2026-09-28)" in content
+
+
+def test_marketing_log_recent_pfad_a_entry():
+    """Verify MARKETING-LOG.txt contains the 2026-09-28 Pfad A audit entry."""
+    mkt_path = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_path.is_file()
+    content = mkt_path.read_text(encoding="utf-8")
+    assert "## 2026-09-28 — Pfad A: Technische Hygiene" in content
+    assert "Level 1 SBOM (TXT)" in content

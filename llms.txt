@@ -19,7 +19,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-28: `647 passed` via
+- Local verification on 2026-09-28: `653 passed` plus 13 subtests via
   `python -m pytest -q` (100% green).
 - Canonical root attribution: [`NOTICE`](NOTICE) formalizes Lukas Geiger as author,
   `ellmos-ai` family, and `open-bricks` open-source umbrella.
@@ -70,7 +70,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 - `README.md`: user-facing overview, quickstart, starter matrix, routing explanation.
 - `README_de.md`: German documentation.
 - `MARKETING-LOG.txt`: local audit, discoverability, target personas, 10-dimension comparative matrix, and governance invariants.
-- `THIRD_PARTY_LICENSES.md`: third-party license inventory, zero-copyleft guarantee, and 10 governance invariants (PEP 639).
+- `THIRD_PARTY_LICENSES.md` / `THIRD_PARTY_LICENSES.txt`: third-party license inventory, Level 1 SBOM, zero-copyleft guarantee, and 10 governance invariants (PEP 639).
 - `SKILL.md`: Claude Code skill manifest — enters the triage-console workflow
   (reads the prompt, loads config, goes to Position 0).
 - `prompts_dir/TICKET-MASTER.en.md` / `prompts_dir/TICKET-MASTER.de.md`: the

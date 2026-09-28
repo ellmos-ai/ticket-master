@@ -18,14 +18,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-647%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-653%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Sicherheits-SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Drittanbieter auditiert](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verifiziert](https://img.shields.io/badge/Verified-2026--09--26-blue.svg)](MARKETING-LOG.txt)
-[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--09--26-success.svg)](MARKETING-LOG.txt)
+[![Verifiziert](https://img.shields.io/badge/Verified-2026--09--28-blue.svg)](MARKETING-LOG.txt)
+[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--09--28-success.svg)](MARKETING-LOG.txt)
 [![Marketing-Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Bereit](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -658,7 +658,7 @@ Bestandteil der [ellmos-ai](https://github.com/ellmos-ai) Multi-Agenten-Infrastr
 - **0 externe Laufzeitabhängigkeiten:** Der Kern benötigt keine Drittanbieter-Pakete (`dependencies = []` in `pyproject.toml`).
 - **Zero-Copyleft-Garantie:** Alle Laufzeit- und Entwicklungskomponenten unterliegen permissiven Lizenzen (MIT, Apache-2.0, PSF); frei von GPL/AGPL.
 - **Unprivilegierte Ausführung:** Läuft strikt im Benutzermodus (`RunAsInvoker`).
-- Detaillierte Software-Inventare und Lizenztexte sind in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) einsehbar.
+- Detaillierte Software-Inventare und Lizenztexte sind in [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) und im Nur-Text-Inventar [`THIRD_PARTY_LICENSES.txt`](THIRD_PARTY_LICENSES.txt) einsehbar.
 
 ---
 
