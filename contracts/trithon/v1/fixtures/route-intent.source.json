@@ -1,0 +1,13 @@
+{
+  "route_intent": "ellmos.ticket.route-intent.v1",
+  "ticket_id": "T-20990101-123456789",
+  "target_snapshot": {
+    "kind": "grouped",
+    "systems": ["NODE-A", "NODE-B"],
+    "at": "2099-01-01T00:00:00Z",
+    "source": "registry:synthetic-systems-v1",
+    "fingerprint": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "receipt_to": "T-20990101-123456789",
+  "idempotency_key": "sha256:f702c39a4e0701a8abb97210a91e2f99be4025632c182ce2647f0b257410cdc3"
+}

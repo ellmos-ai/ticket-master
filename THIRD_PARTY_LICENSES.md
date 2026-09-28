@@ -67,12 +67,14 @@ The following tools and libraries are utilized exclusively during development, l
 | [ruff](https://github.com/astral-sh/ruff) | `>=0.6` | MIT OR Apache-2.0 | `[dev]` | High-performance Python linter and code formatting validation |
 | [setuptools](https://github.com/pypa/setuptools) | `>=77.0` | MIT | `[build-system]` | Standard Python packaging and build backend |
 | [build](https://github.com/pypa/build) | `>=1.2` | MIT | `[dev]` | PEP 517 build frontend and package artifact verification |
+| [jsonschema](https://github.com/python-jsonschema/jsonschema) | `>=4.18,<5` | MIT | `[dev]` | Draft 2020-12 validation of the versioned Trithon and Muschelgrund contract fixtures |
+| [rfc3339-validator](https://github.com/naimetti/rfc3339-validator) | `>=0.1.4,<0.2` | MIT | `[dev]` | Enforces JSON Schema `date-time` checks in clean test environments |
 
 ---
 
 ## License Texts & Attribution
 
-### MIT License (`ticket-master`, `clutch-router`, `pytest`, `setuptools`, `build`, `ruff`)
+### MIT License (`ticket-master`, `clutch-router`, `pytest`, `setuptools`, `build`, `ruff`, `jsonschema`, `rfc3339-validator`)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal

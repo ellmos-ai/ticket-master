@@ -1,0 +1,11 @@
+{
+  "record_kind": "ellmos.privacy.curation-receipt.v1",
+  "entry_digest": "sha256:6474ad89ef3da0db22a84e1903a612922b49f4748b51a388c0addfa1e343ff2d",
+  "ticket_master_acceptance_digest": "sha256:3b2769349f9134f5196725d3f24aef343df8bebd1723f027f04a063b037b5417",
+  "policy": "ellmos.privacy.allowlist.v1",
+  "source_kind": "accepted_outcome_evidence",
+  "transformation": "curated_summary",
+  "decision": "allow",
+  "curator_id": "privacy-gate@TEST-NODE",
+  "checked_at": "2099-01-01T00:07:30Z"
+}

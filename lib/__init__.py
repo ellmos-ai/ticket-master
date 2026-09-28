@@ -31,6 +31,14 @@ from .unicorn_adapter import (
     web_preview,
     web_submit,
 )
+from .trithon_shadow import (
+    OUTCOME_RECEIPT_SCHEMA,
+    ROUTE_INTENT_SCHEMA,
+    TASK_PROJECTION_SCHEMA,
+    ShadowStore,
+    SourceDocument,
+    load_source,
+)
 
 __all__ = [
     "append_ticket_note",
@@ -54,4 +62,10 @@ __all__ = [
     "web_dispatch",
     "web_preview",
     "web_submit",
+    "ShadowStore",
+    "SourceDocument",
+    "load_source",
+    "OUTCOME_RECEIPT_SCHEMA",
+    "ROUTE_INTENT_SCHEMA",
+    "TASK_PROJECTION_SCHEMA",
 ]
