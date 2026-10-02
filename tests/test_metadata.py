@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 653
-LAST_CHECKED = "2026-09-28"
+EXPECTED_TEST_COUNT = 658
+LAST_CHECKED = "2026-10-02"
 
 
 def test_version_consistency():
@@ -558,3 +558,64 @@ def test_marketing_log_recent_pfad_a_entry():
     content = mkt_path.read_text(encoding="utf-8")
     assert "## 2026-09-28 — Pfad A: Technische Hygiene" in content
     assert "Level 1 SBOM (TXT)" in content
+
+
+def test_ascii_four_view_architectural_topology_parity():
+    """Verify README.md and README_de.md both define the 4-View ASCII Architectural Topology projection."""
+    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
+
+    en_views = [
+        "VIEW 1: CALLER RUNTIMES, CLI ENTRYPOINTS & INTAKE ADAPTERS",
+        "VIEW 2: TICKET-MASTER SOVEREIGN TRIAGE ENGINE & ROUTING ORCHESTRATOR",
+        "VIEW 3: RUNTIME PERSISTENCE, LIFECYCLE LEDGERS & AUDIT DIRECTORIES",
+        "VIEW 4: AIR-GAP DEFENSE PERIMETER, RUNASINVOKER & ZERO-EGRESS BOUNDARY",
+    ]
+    for view in en_views:
+        assert view in readme_en, f"English view '{view}' missing in README.md"
+
+    de_views = [
+        "SICHT 1: AUFRUFER-LAUFZEITEN, CLI-EINTRITTSPUNKTE & INTAKE-ADAPTER",
+        "SICHT 2: TICKET-MASTER SOUVERÄNE TRIAGE-ENGINE & ROUTING-ORCHESTRATOR",
+        "SICHT 3: LAUFZEIT-PERSISTENZ, LEBENSZYKLUS-LEDGER & AUDIT-VERZEICHNISSE",
+        "SICHT 4: AIR-GAP SICHERHEITSPERIMETER, RUNASINVOKER & ZERO-EGRESS GRENZE",
+    ]
+    for view in de_views:
+        assert view in readme_de, f"German view '{view}' missing in README_de.md"
+
+
+def test_level1_sbom_text_companion_and_pyproject_urls():
+    """Verify pyproject.toml defines Level 1 SBOM and Plain-Text License endpoints in project.urls."""
+    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert '"Level 1 SBOM"' in pyproject_text
+    assert '"Level 1 SBOM (Text)"' in pyproject_text
+    assert '"Plain-Text License"' in pyproject_text
+
+
+def test_third_party_licenses_audit_recency_2026_10_02():
+    """Verify THIRD_PARTY_LICENSES.md and THIRD_PARTY_LICENSES.txt both contain 2026-10-02 audit date and § 521 BGB disclaimer."""
+    tpl_md = (REPO_ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
+    tpl_txt = (REPO_ROOT / "THIRD_PARTY_LICENSES.txt").read_text(encoding="utf-8")
+
+    assert "2026-10-02" in tpl_md
+    assert "§ 521 BGB" in tpl_md
+    assert "2026-10-02" in tpl_txt
+    assert "§ 521 BGB" in tpl_txt
+
+
+def test_marketing_log_recent_pfad_b_2026_10_02_entry():
+    """Verify MARKETING-LOG.txt contains the 2026-10-02 Pfad B audit entry."""
+    mkt_path = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_path.is_file()
+    content = mkt_path.read_text(encoding="utf-8")
+    assert "## 2026-10-02 — Pfad B: Discoverability, Visual Architecture" in content
+    assert "ASCII Four-View Architectural Topology" in content
+    assert "Level 1 SBOM Re-Audit Stand 2026-10-02" in content
+
+
+def test_changelog_recent_pfad_b_2026_10_02_entry():
+    """Verify CHANGELOG.md contains the 2026-10-02 Pfad B entry under ## [Unreleased]."""
+    changelog_path = REPO_ROOT / "CHANGELOG.md"
+    assert changelog_path.is_file()
+    content = changelog_path.read_text(encoding="utf-8")
+    assert "### Pfad B: Discoverability, Visual Architecture, ASCII 4-View Topology & Level 1 SBOM Stand 2026-10-02 (2026-10-02)" in content

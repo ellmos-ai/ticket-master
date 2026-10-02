@@ -1,6 +1,34 @@
 # MARKETING-LOG.txt — ticket-master
 # Lokales Audit-, Discoverability- und Marketing-Logbuch
 
+## 2026-10-02 — Pfad B: Discoverability, Visual Architecture, ASCII 4-View Topology & Level 1 SBOM Re-Audit Stand 2026-10-02
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0 (strikte Versionsfreeze-Disziplin nach T-20260920-167562623)
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum 100% sauber, 0 aktive Locks (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (94h Ruhezeit; Pfad A zuletzt am 2026-09-28 vor 4 Tagen, Pfad B am 2026-09-26 vor 6 Tagen).
+- Testbasis: 653/653 Tests bestanden (13 Subtests, 100% grün via pytest vor Erweiterung).
+
+### 2. Discoverability-, Design- & Paritätsmaßnahmen
+- **Visual Architecture & ASCII Four-View Architectural Topology**:
+  - `README.md` und `README_de.md` in Section 06 um deterministische 4-Sichten-Projektion erweitert:
+    - [VIEW 1: CALLER RUNTIMES, CLI ENTRYPOINTS & INTAKE ADAPTERS]
+    - [VIEW 2: TICKET-MASTER SOVEREIGN TRIAGE ENGINE & ROUTING ORCHESTRATOR]
+    - [VIEW 3: RUNTIME PERSISTENCE, LIFECYCLE LEDGERS & AUDIT DIRECTORIES]
+    - [VIEW 4: AIR-GAP DEFENSE PERIMETER, RUNASINVOKER & ZERO-EGRESS BOUNDARY]
+    - (Deutsche Fassung [SICHT 1]..[SICHT 4]).
+- **18-Punkte Navigationsparität mit dualen HTML-Ankern**:
+  - Vollständige bilaterale Schnellnavigation in EN und DE mit reziproken dualen HTML-Ankern (`<a id="sec-01"></a>` bis `<a id="sec-18"></a>` sowie nummerierten Slugs `1-overview`..`18-license--maintainers`) verifiziert und beibehalten.
+- **Level 1 SBOM Text-Begleitdatei & Re-Audit Stand 2026-10-02**:
+  - `THIRD_PARTY_LICENSES.txt` und `THIRD_PARTY_LICENSES.md` auf Stand 2026-10-02 re-auditiert mit Bestätigung von 0 externen Runtime-Abhängigkeiten (`dependencies = []`), Standardbibliothek-Inventory, unprivilegierter `RunAsInvoker`-Ausführung, Zero-Copyleft-Garantie, gesetzlichem Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht), 48h Security Response SLA und allen zehn Governance-Invarianten `INV-LOCAL-01` bis `INV-SLA-10`.
+- **PEP 621 Standardisierung in `pyproject.toml`**:
+  - Endpunkte `Level 1 SBOM`, `Level 1 SBOM (Text)` und `Plain-Text License` in `[project.urls]` registriert; Version `1.12.0` strikt eingefroren.
+- **RAG-Kontext & Status-Badges-Synchronisation**:
+  - Shields.io Status-Badges synchronisiert (`Verified-2026--10--02`, `Last--Checked-2026--10--02`, `pytest-658 passed`); `llms.txt` auf Stand 2026-10-02 mit 658 Tests Baseline und Topologie-Notizen aktualisiert.
+- **Automatisierte Vertragstests**:
+  - Testsuite in `tests/test_metadata.py` um neue Contract-Tests für ASCII 4-View Topologie Parität EN/DE, PEP 621 Level 1 SBOM Endpunkte, Level 1 SBOM Recency Stand 2026-10-02 sowie CHANGELOG/MARKETING-LOG Einträge erweitert (Gesamtsuite: 658 Tests, 100% grün).
+
 ## 2026-09-28 — Pfad A: Technische Hygiene, CI-Workflow-Härtung (auto-assign, label-sync), Level 1 SBOM (TXT) & Gitignore-Defense
 
 ### 1. Ausgangslage & Kriterien

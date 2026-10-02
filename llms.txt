@@ -1,4 +1,4 @@
-## Last-checked: 2026-09-28
+## Last-checked: 2026-10-02
 
 # ticket-master
 
@@ -19,10 +19,14 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 
 - Status: `v1.12.0` (Git release line; no separate publication such as PyPI/npm is claimed)
 - Version: `1.12.0` (`VERSION` and `pyproject.toml`)
-- Local verification on 2026-09-28: `653 passed` plus 13 subtests via
+- Local verification on 2026-10-02: `658 passed` plus 13 subtests via
   `python -m pytest -q` (100% green).
 - Canonical root attribution: [`NOTICE`](NOTICE) formalizes Lukas Geiger as author,
   `ellmos-ai` family, and `open-bricks` open-source umbrella.
+- Visual Architecture: Section 06 features an ASCII Four-View Architectural Topology
+  projection (caller runtimes, triage core, persistence ledgers, zero-egress perimeter).
+- Level 1 SBOM text companion: `THIRD_PARTY_LICENSES.txt` (Stand 2026-10-02) confirming
+  zero runtime dependencies and invariants INV-LOCAL-01 through INV-SLA-10.
 - Statutory liability disclaimer: unpaid open-source donation under § 521 BGB
   (liability limited to intent and gross negligence).
 - Committed security response SLA: 48-hour initial response, 5 business days triage.

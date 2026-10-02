@@ -17,14 +17,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-653%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-658%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Security SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Third-Party Audited](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verified](https://img.shields.io/badge/Verified-2026--09--28-blue.svg)](MARKETING-LOG.txt)
-[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--09--28-success.svg)](MARKETING-LOG.txt)
+[![Verified](https://img.shields.io/badge/Verified-2026--10--02-blue.svg)](MARKETING-LOG.txt)
+[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--10--02-success.svg)](MARKETING-LOG.txt)
 [![Marketing Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Ready](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -212,6 +212,78 @@ graph TD
     GATE4 -->|Success| Solved[tickets/SOLVED/<br>Commit & Verify]
     GATE4 -->|Fail / Timeout| Fallback[Fallback Chain<br>Next Best Provider]
     Fallback --> GATE4
+```
+
+### ASCII Four-View Architectural Topology
+
+```text
+========================================================================================================================
+ VIEW 1: CALLER RUNTIMES, CLI ENTRYPOINTS & INTAKE ADAPTERS
+========================================================================================================================
+ [ Claude Code ]          [ Codex CLI ]             [ Gemini / agy ]          [ Informal Notes / Drop-ins ]
+   (CLI Session)            (CLI Session)             (CLI Session)              (tickets/INBOX/raw-note.txt)
+         │                        │                         │                                  │
+         ▼                        ▼                         ▼                                  ▼
+ [ Position 0 Console ]   [ Position 0 Console ]    [ Position 0 Console ]       [ ticket_writer.py --from-file ]
+         │                        │                         │                                  │
+         └────────────────────────┼─────────────────────────┴──────────────────────────────────┘
+                                  │
+                                  ▼
+   [ lib/unicorn_adapter.py (Web / Tray) ] ───► [ lib/boot_menu.py (--offer / Role Spawn) ]
+                                  │
+                                  ▼
+========================================================================================================================
+ VIEW 2: TICKET-MASTER SOVEREIGN TRIAGE ENGINE & ROUTING ORCHESTRATOR
+========================================================================================================================
+                                  │
+                  ┌───────────────┴───────────────┐
+                  ▼                               ▼
+       [ GATE 1: Formal Intake ]        [ GATE 2: Characterisation & Scoring ]
+       - Canonical Ticket ID Minting    - 5-Dimension Score Evaluator:
+         (T-YYYYMMDD-#########)           Score = (10 - Clarity) + Complexity +
+       - Byte-Preserving Originaltext             Creativity + Context + Criticality
+       - Project Target Resolution      - Provider Capability Tier Matching
+                  │                               │
+                  └───────────────┬───────────────┘
+                                  ▼
+       [ GATE 3 & 4: Dispatcher, Fallback Chain & Delegation ]
+       - Direct Sub-Agent Execution (Claude Code / Codex / agy)
+       - Sibling Bridge: lib/auditor_bridge.py ──► [ ellmos-ai/system-auditor ]
+       - Sparmodus / Token-Budget Gating (spar_gate: standard / spar / notaus)
+       - Optional Routing v2 Bridge ─────────────► [ ellmos-ai/clutch-router ]
+                                  │
+                                  ▼
+========================================================================================================================
+ VIEW 3: RUNTIME PERSISTENCE, LIFECYCLE LEDGERS & AUDIT DIRECTORIES
+========================================================================================================================
+   Local Filesystem Ticket Lifecycle Ledger (tickets/):
+   ┌───────────┐    ┌──────────────┐    ┌───────────┐    ┌───────────┐    ┌───────────┐
+   │  INBOX/   ├───►│ ACTIONABLE/  ├───►│  QUEUED/  ├───►│  SOLVED/  │    │  PARKED/  │
+   └───────────┘    └──────────────┘    └─────┬─────┘    └───────────┘    └───────────┘
+         │                                    │                                 ▲
+         ▼                                    ▼                                 │
+   ┌───────────┐                        ┌───────────┐                           │
+   │  BLOCKED/ │                        │  WAITING/ │                           │
+   └───────────┘                        └─────┬─────┘                           │
+                                              ▼                                 │
+                                        ┌───────────┐                           │
+                                        │   USER/   │───────────────────────────┘
+                                        └───────────┘ (Manual Handoff / Backlog)
+   Multi-Host Coordination:
+   - Atomic Filesystem Leases: *.claim-<host>-<ts> (Zero Central DB / Zero Lock Files)
+   - Trithon Shadow Ledger: lib/trithon_shadow.py ──► [ SQLite Pointer Projection ]
+   - Schemas & Contract Fixtures: contracts/trithon/v1/*.schema.json
+========================================================================================================================
+ VIEW 4: AIR-GAP DEFENSE PERIMETER, RUNASINVOKER & ZERO-EGRESS BOUNDARY
+========================================================================================================================
+   [ Defense Perimeter Guard ]
+   - 100% Offline Local-First Storage (Zero Network Egress / Zero Remote Telemetry)
+   - Unprivileged Execution (RunAsInvoker Mode: 0 UAC, 0 Root, Standard User Rights)
+   - Zero-Copyleft Isolation Guarantee (100% Permissive Open Source Stack: MIT, PSF-2.0)
+   - Zero Mandatory Dependencies (Python Standard Library Core Runtime: dependencies = [])
+   - Statutory Liability Disclaimer (§ 521 BGB Gefälligkeitsrecht)
+   - Committed 48-Hour Security Response SLA (security@ellmos.ai, security@open-bricks.org)
+========================================================================================================================
 ```
 
 ---

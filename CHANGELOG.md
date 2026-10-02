@@ -4,6 +4,15 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad B: Discoverability, Visual Architecture, ASCII 4-View Topology & Level 1 SBOM Stand 2026-10-02 (2026-10-02)
+
+- **Visual Architecture & ASCII Four-View Architectural Topology**: Enriched Section 06 in `README.md` and `README_de.md` with a comprehensive four-view ASCII topology projection covering [VIEW 1: CALLER RUNTIMES, CLI ENTRYPOINTS & INTAKE ADAPTERS], [VIEW 2: TICKET-MASTER SOVEREIGN TRIAGE ENGINE & ROUTING ORCHESTRATOR], [VIEW 3: RUNTIME PERSISTENCE, LIFECYCLE LEDGERS & AUDIT DIRECTORIES], and [VIEW 4: AIR-GAP DEFENSE PERIMETER, RUNASINVOKER & ZERO-EGRESS BOUNDARY] (German [SICHT 1]..[SICHT 4]).
+- **18-Punkte Navigationsparität mit reziproken dualen HTML-Ankern**: Preserved complete 18-point dual anchor navigation system (`sec-01`..`sec-18` and slug aliases `1-overview`..`18-license--maintainers`) across English and German documentation.
+- **Level 1 SBOM Text-Companion & Re-Audit Stand 2026-10-02**: Re-audited canonical plain-text companion `THIRD_PARTY_LICENSES.txt` and `THIRD_PARTY_LICENSES.md` to Stand 2026-10-02, verifying zero runtime dependencies (`dependencies = []`), standard library core, unprivileged `RunAsInvoker` mode, Zero-Copyleft isolation, statutory liability disclaimer (§ 521 BGB Gefälligkeitsrecht), 48h Security Response SLA, and all ten invariants `INV-LOCAL-01` through `INV-SLA-10`.
+- **PEP 621 Metadata Standardisierung**: Registered `Level 1 SBOM`, `Level 1 SBOM (Text)`, and `Plain-Text License` in `[project.urls]` in `pyproject.toml`; preserved strict version freeze discipline (`version = "1.12.0"`) per T-20260920-167562623.
+- **RAG-Kontext & Status-Badges-Synchronisation**: Synchronized Shields.io status badges (`Verified-2026--10--02`, `Last--Checked-2026--10--02`, `pytest-658 passed`) across `README.md` and `README_de.md`; updated `llms.txt` context index (Stand 2026-10-02) with 658 verified tests baseline and topology notes; documented full revision in `MARKETING-LOG.txt`.
+- **Vertragstest-Erweiterung**: Expanded automated contract test suite in `tests/test_metadata.py` with 5 new tests for ASCII 4-view topology parity EN/DE, PEP 621 Level 1 SBOM endpoints, Level 1 SBOM recency Stand 2026-10-02, and changelog/marketing audit recency.
+
 ### Pfad A: Technische Hygiene, CI-Workflow-Härtung (auto-assign, label-sync), Level 1 SBOM (TXT) & Gitignore-Defense (2026-09-28)
 
 - **CI-Lifecycle-Workflows & Concurrency-Härtung**: Deployed `.github/workflows/auto-assign.yml` (`actions/github-script@v7`, `timeout-minutes: 5`, least-privilege `issues: write`, `pull-requests: write`, concurrency `group: ${{ github.workflow }}-${{ github.ref }}`) and `.github/workflows/label-sync.yml` (`EndBug/label-sync@v2`, `timeout-minutes: 5`, least-privilege `issues: write`, concurrency `group: ${{ github.workflow }}-${{ github.ref }}`); added canonical `.github/labels.yml` with 11 standard triage labels from GOVERNANCE.md §4.2; hardened existing `.github/workflows/welcome.yml` and `stale.yml` concurrency groups to `${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.

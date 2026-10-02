@@ -1,7 +1,7 @@
 # Third-Party Licenses & Software Inventory
 
 Project: ticket-master (Cross-platform multi-provider LLM task router and AI coding agent triage console)
-Audited: 2026-09-28 against Level 1 SBOM and runtime invariants.
+Audited: 2026-10-02 against Level 1 SBOM and runtime invariants (Prior audits: 2026-09-28, 2026-09-26, 2026-09-18, 2026-09-16).
 License: MIT License (see LICENSE and NOTICE)
 Repository: https://github.com/ellmos-ai/ticket-master
 Umbrella Collective: open-bricks (https://github.com/open-bricks)
@@ -42,6 +42,8 @@ The following tools are utilized exclusively for offline automated testing, code
 
 - Zero-Copyleft Guarantee: All runtime code and development dependencies are governed strictly by permissive, business-friendly open-source licenses (MIT, Apache-2.0, PSF-2.0). The codebase contains zero GPL, AGPL, or viral copyleft components.
 - Unprivileged User-Mode Operation (RunAsInvoker): All CLI commands, queue operations, informal intake formalization, and triage routines execute purely within unprivileged user space. No administrative rights, root elevation, sudo, or UAC prompts are ever required.
+- Statutory Liability Disclaimer: Unpaid open-source provision under § 521 BGB Gefälligkeitsrecht with liability limited to intent and gross negligence.
+- Binding Security Response SLA: Committed 48-hour response for security disclosures via security@ellmos.ai and security@open-bricks.org.
 
 ## Governance & Runtime Invariants
 
