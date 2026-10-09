@@ -101,6 +101,7 @@ tickets/.ticket-master-queue
 *-MacBook*
 *-IDEAPAD*
 *-IDEAPAD.*
+*-IDEAPAD-GEI*
 *.sync-conflict-*
 *.conflict
 *.orig
@@ -127,8 +128,11 @@ node_modules/
 # OS
 .DS_Store
 Thumbs.db
+thumbs.db
 Desktop.ini
 desktop.ini
+ehthumbs.db
+ehthumbs_vista.db
 *.swp
 *.swo
 
@@ -141,6 +145,10 @@ LOCK.permissions.json
 LOCK.user.*
 LOCK.until.*
 LOCK.condition.*
+LOCK.dev.*
+LOCK.antigravity.*
+LOCK.bugsearch.*
+TASKPLAN_*.md
 uv.lock
 !package-lock.json
 

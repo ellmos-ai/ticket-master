@@ -33,3 +33,12 @@
 - name: stale
   color: 'ededed'
   description: 'No recent activity'
+- name: dependencies
+  color: '0366d6'
+  description: 'Dependency updates'
+- name: github-actions
+  color: '000000'
+  description: 'GitHub Actions automation and workflows'
+- name: python
+  color: '3572a5'
+  description: 'Python ecosystem packages'

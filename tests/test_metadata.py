@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 658
-LAST_CHECKED = "2026-10-02"
+EXPECTED_TEST_COUNT = 666
+LAST_CHECKED = "2026-10-09"
 
 
 def test_version_consistency():
@@ -619,3 +619,95 @@ def test_changelog_recent_pfad_b_2026_10_02_entry():
     assert changelog_path.is_file()
     content = changelog_path.read_text(encoding="utf-8")
     assert "### Pfad B: Discoverability, Visual Architecture, ASCII 4-View Topology & Level 1 SBOM Stand 2026-10-02 (2026-10-02)" in content
+
+
+def test_contributing_guidelines_bilingual():
+    """Verify CONTRIBUTING.md exists with English and German sections, invariants, and quality gates."""
+    contrib_path = REPO_ROOT / "CONTRIBUTING.md"
+    assert contrib_path.is_file(), "CONTRIBUTING.md missing"
+    content = contrib_path.read_text(encoding="utf-8")
+    assert "Contributing to ticket-master" in content
+    assert "English" in content
+    assert "Deutsch" in content
+    assert "Plan D" in content
+    assert "RunAsInvoker" in content
+    assert "INV-LOCAL-01" in content
+    assert "INV-SLA-10" in content
+    assert "T-20260920-167562623" in content
+    assert "pytest" in content
+    assert "ruff check" in content
+    assert "SECURITY.md" in content
+
+
+def test_pyproject_contributing_url_and_norecursedirs():
+    """Verify pyproject.toml defines Contributing URL and hardened norecursedirs."""
+    pyproject_text = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'Contributing = "https://github.com/ellmos-ai/ticket-master/blob/main/CONTRIBUTING.md"' in pyproject_text
+    assert '".turbo"' in pyproject_text
+    assert '".nyc_output"' in pyproject_text
+    assert '".tox"' in pyproject_text
+
+
+def test_dependabot_lifecycle_hardening():
+    """Verify .github/dependabot.yml exists and configures github-actions and pip ecosystems."""
+    dependabot_path = REPO_ROOT / ".github" / "dependabot.yml"
+    assert dependabot_path.is_file(), "dependabot.yml missing"
+    content = dependabot_path.read_text(encoding="utf-8")
+    assert 'package-ecosystem: "github-actions"' in content
+    assert 'package-ecosystem: "pip"' in content
+    assert 'interval: "weekly"' in content
+    assert 'timezone: "Europe/Berlin"' in content
+
+
+def test_labels_yml_includes_dependabot_labels():
+    """Verify .github/labels.yml contains labels for automated dependabot PR triage."""
+    labels_path = REPO_ROOT / ".github" / "labels.yml"
+    assert labels_path.is_file()
+    content = labels_path.read_text(encoding="utf-8")
+    for expected_label in ["dependencies", "github-actions", "python"]:
+        assert f"name: {expected_label}" in content or f"name: '{expected_label}'" in content
+
+
+def test_extended_lock_defense_in_gitignore():
+    """Verify .gitignore includes explicit IDEAPAD-GEI, ehthumbs, and specialized lock patterns."""
+    gitignore_path = REPO_ROOT / ".gitignore"
+    assert gitignore_path.is_file()
+    content = gitignore_path.read_text(encoding="utf-8")
+    for pattern in [
+        "*-IDEAPAD-GEI*",
+        "ehthumbs.db",
+        "TASKPLAN_*.md",
+        "LOCK.dev.*",
+        "LOCK.antigravity.*",
+        "LOCK.bugsearch.*",
+    ]:
+        assert pattern in content, f"Pattern '{pattern}' missing in .gitignore"
+
+
+def test_third_party_licenses_audit_recency_2026_10_09():
+    """Verify THIRD_PARTY_LICENSES.md and THIRD_PARTY_LICENSES.txt both contain 2026-10-09 audit date and § 521 BGB disclaimer."""
+    tpl_md = (REPO_ROOT / "THIRD_PARTY_LICENSES.md").read_text(encoding="utf-8")
+    tpl_txt = (REPO_ROOT / "THIRD_PARTY_LICENSES.txt").read_text(encoding="utf-8")
+
+    assert "2026-10-09" in tpl_md
+    assert "§ 521 BGB" in tpl_md
+    assert "2026-10-09" in tpl_txt
+    assert "§ 521 BGB" in tpl_txt
+    assert "jsonschema" in tpl_txt
+    assert "rfc3339-validator" in tpl_txt
+
+
+def test_changelog_recent_pfad_a_2026_10_09_entry():
+    """Verify CHANGELOG.md contains the 2026-10-09 Pfad A entry under ## [Unreleased]."""
+    changelog_path = REPO_ROOT / "CHANGELOG.md"
+    assert changelog_path.is_file()
+    content = changelog_path.read_text(encoding="utf-8")
+    assert "### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)" in content
+
+
+def test_marketing_log_recent_pfad_a_2026_10_09_entry():
+    """Verify MARKETING-LOG.txt contains the 2026-10-09 Pfad A audit entry."""
+    mkt_path = REPO_ROOT / "MARKETING-LOG.txt"
+    assert mkt_path.is_file()
+    content = mkt_path.read_text(encoding="utf-8")
+    assert "## 2026-10-09 — Pfad A: Technische Hygiene, Bilingual CONTRIBUTING" in content

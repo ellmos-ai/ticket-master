@@ -1,6 +1,31 @@
 # MARKETING-LOG.txt — ticket-master
 # Lokales Audit-, Discoverability- und Marketing-Logbuch
 
+## 2026-10-09 — Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI & Dependabot Guard, Level 1 SBOM Re-Audit & Multi-Host Lock Defense
+
+### 1. Ausgangslage & Kriterien
+- Repository: `ellmos-ai/ticket-master` (`C:\_Local_DEV\repos\ticket-master`)
+- Version: 1.12.0 (strikte Versionsfreeze-Disziplin nach T-20260920-167562623)
+- Kategorie: Cross-Platform Multi-Provider LLM Task Router & AI Coding Agent Triage Console
+- Status: Arbeitsbaum 100% sauber, 0 aktive Locks (`lock_status.py`: UNLOCKED), Cooldown >24h seit letztem Kontakt eingehalten (170.4h Ruhezeit; Pfad A zuletzt am 2026-09-28 vor 11 Tagen, Pfad B am 2026-10-02 vor 7 Tagen).
+- Testbasis: 658/658 Tests bestanden (13 Subtests, 100% grün via pytest vor Erweiterung).
+
+### 2. Technische Hygiene-, Governance- & Härtungsmaßnahmen
+- **Bilinguale CONTRIBUTING Guidelines (EN/DE)**:
+  - `CONTRIBUTING.md` neu angelegt mit vollständiger zweisprachiger Spezifikation: Plan D lokaler Entwicklungs-Workflow (`C:\_Local_DEV\repos\ticket-master`), Qualitäts-Tore (`pytest`, `ruff check`, `compileall`, `git diff --check`), unprivilegierter Benutzermodus (`RunAsInvoker`), alle zehn Governance-Invarianten `INV-LOCAL-01` bis `INV-SLA-10`, kanonische Lock-Disziplin, Versionsfreeze-Regel (`T-20260920-167562623`) und 48h Security Response SLA.
+- **Automatisierte Dependabot Lifecycle & Labels-Synchronisation**:
+  - `.github/dependabot.yml` neu bereitgestellt mit wöchentlichen Updates für `github-actions` und `pip` (Montags 06:00 Berlin Zeit, Open-PRs-Limit: 3); `.github/labels.yml` um Labels `dependencies`, `github-actions` und `python` erweitert.
+- **Multi-Host Cloud-Sync-, OS- und Lock-Defense in `.gitignore`**:
+  - `.gitignore` gehärtet gegen OS-Dateien (`thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db`), Multi-Host-Muster (`*-IDEAPAD-GEI*`), Agent-Taskpläne (`TASKPLAN_*.md`) und kanonische Multi-Agent-Sperren (`LOCK.dev.*`, `LOCK.antigravity.*`, `LOCK.bugsearch.*`).
+- **Level 1 SBOM Re-Audit Stand 2026-10-09**:
+  - `THIRD_PARTY_LICENSES.md` und `THIRD_PARTY_LICENSES.txt` auf Stand 2026-10-09 re-auditiert mit Bestätigung von 0 externen Runtime-Abhängigkeiten (`dependencies = []`), Standardbibliothek-Inventory, unprivilegierter `RunAsInvoker`-Ausführung, Zero-Copyleft-Garantie, gesetzlichem Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht), 48h Security Response SLA, allen zehn Invarianten `INV-LOCAL-01` bis `INV-SLA-10` und Einbindung von `jsonschema` sowie `rfc3339-validator` in die Entwicklungstabelle von `THIRD_PARTY_LICENSES.txt`.
+- **PEP 621 Standardisierung in `pyproject.toml`**:
+  - `Contributing`-URL in `[project.urls]` registriert; pytest `norecursedirs` um `.turbo`, `.nyc_output`, `.tox` gehärtet; strikte Version-Freeze-Disziplin (`version = "1.12.0"`) gewahrt.
+- **RAG-Kontext & Status-Badges-Synchronisation**:
+  - Shields.io Status-Badges in `README.md` und `README_de.md` auf Stand 2026-10-09 synchronisiert (`Verified-2026--10--09`, `Last--Checked-2026--10--09`); `llms.txt` auf Stand 2026-10-09 mit `CONTRIBUTING.md`-Verweis aktualisiert.
+- **Automatisierte Vertragstests**:
+  - `tests/test_metadata.py` um 8 neue Contract-Tests für bilinguale CONTRIBUTING Guidelines, pyproject Contributing URL, Dependabot Lifecycle, Label Parität, erweiterte .gitignore Lock-Guards, Level 1 SBOM Recency Stand 2026-10-09 und CHANGELOG/MARKETING-LOG Recency erweitert.
+
 ## 2026-10-02 — Pfad B: Discoverability, Visual Architecture, ASCII 4-View Topology & Level 1 SBOM Re-Audit Stand 2026-10-02
 
 ### 1. Ausgangslage & Kriterien

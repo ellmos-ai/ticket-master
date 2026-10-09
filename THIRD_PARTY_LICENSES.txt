@@ -1,7 +1,7 @@
 # Third-Party Licenses & Software Inventory
 
 Project: ticket-master (Cross-platform multi-provider LLM task router and AI coding agent triage console)
-Audited: 2026-10-02 against Level 1 SBOM and runtime invariants (Prior audits: 2026-09-28, 2026-09-26, 2026-09-18, 2026-09-16).
+Audited: 2026-10-09 against Level 1 SBOM and runtime invariants (Prior audits: 2026-10-02, 2026-09-28, 2026-09-26, 2026-09-18, 2026-09-16).
 License: MIT License (see LICENSE and NOTICE)
 Repository: https://github.com/ellmos-ai/ticket-master
 Umbrella Collective: open-bricks (https://github.com/open-bricks)
@@ -37,6 +37,8 @@ The following tools are utilized exclusively for offline automated testing, code
 | ruff | Development linter | >=0.6.0 | MIT / Apache-2.0 | https://github.com/astral-sh/ruff |
 | setuptools | Build backend | >=77.0.3 | MIT | https://github.com/pypa/setuptools |
 | build | PEP 517 build frontend | >=1.2.0 | MIT | https://github.com/pypa/build |
+| jsonschema | Draft 2020-12 contract fixture validation | >=4.18,<5 | MIT | https://github.com/python-jsonschema/jsonschema |
+| rfc3339-validator | RFC 3339 date-time format validator | >=0.1.4,<0.2 | MIT | https://github.com/naimetti/rfc3339-validator |
 
 ## Zero-Copyleft Guarantee & Unprivileged Execution
 
