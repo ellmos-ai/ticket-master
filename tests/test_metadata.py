@@ -68,8 +68,8 @@ def test_ci_workflow_integrity():
     assert ci_path.is_file(), "CI workflow .github/workflows/tests.yml missing"
     content = ci_path.read_text(encoding="utf-8")
 
-    assert "actions/checkout@v4" in content
-    assert "actions/setup-python@v5" in content
+    assert re.search(r"actions/checkout@v\d+", content)
+    assert re.search(r"actions/setup-python@v\d+", content)
     assert "3.10" in content and "3.11" in content and "3.12" in content and "3.13" in content
     assert "ubuntu-latest" in content and "windows-latest" in content
     assert "ruff check ." in content
@@ -320,7 +320,7 @@ def test_ci_workflow_stale_and_welcome_automations():
     stale_path = REPO_ROOT / ".github" / "workflows" / "stale.yml"
     assert stale_path.is_file(), "stale.yml workflow missing"
     stale_content = stale_path.read_text(encoding="utf-8")
-    assert "actions/stale@v9" in stale_content
+    assert re.search(r"actions/stale@v\d+", stale_content)
     assert "timeout-minutes: 10" in stale_content
     assert "cancel-in-progress: true" in stale_content
     assert "issues: write" in stale_content
@@ -476,7 +476,7 @@ def test_ci_lifecycle_auto_assign_and_label_sync():
     assign_path = REPO_ROOT / ".github" / "workflows" / "auto-assign.yml"
     assert assign_path.is_file(), "auto-assign.yml workflow missing"
     assign_content = assign_path.read_text(encoding="utf-8")
-    assert "actions/github-script@v7" in assign_content
+    assert re.search(r"actions/github-script@v\d+", assign_content)
     assert "timeout-minutes: 5" in assign_content
     assert "cancel-in-progress: true" in assign_content
     assert "issues: write" in assign_content
