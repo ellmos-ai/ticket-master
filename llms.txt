@@ -99,6 +99,7 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
 - [COMA](https://github.com/ellmos-ai/coma): Optional build-time generator for
   provider-neutral role starters; not a runtime dependency. Command:
   `python -m coma starters generate --manifest ellmos-module.v2.json --output-dir .`.
+- [agent-ops-stack](https://github.com/ellmos-ai/agent-ops-stack): Fetches this repository from its manifest and reports the declared `ticket-routing` role; follow this project's instructions for setup.
 - `bin/ticket_master.py`: shared prompt resolver plus auditable `--list` and
   exclusive unclaimed-`INBOX` `--intake` CLI modes; `QUEUED` begins only after
   an actual provider/agent handover.
