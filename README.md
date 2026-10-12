@@ -705,7 +705,8 @@ Part of the [ellmos-ai](https://github.com/ellmos-ai) multi-agent infrastructure
 | Tool | Organization | Description |
 |------|--------------|-------------|
 | [clutch](https://github.com/ellmos-ai/clutch) | ellmos-ai | Adaptive multi-model LLM router & agent execution gear |
-| [coma](https://github.com/ellmos-ai/coma) | ellmos-ai | Single-binary multi-agent orchestrator & execution coordinator |
+| [coma](https://github.com/ellmos-ai/coma) | ellmos-ai | Local agent job files and process startup/status |
+| [agent-ops-stack](https://github.com/ellmos-ai/agent-ops-stack) | ellmos-ai | Fetches this repository from its manifest and reports the declared `ticket-routing` role; follow this project's instructions for setup. |
 | [swarm-ai](https://github.com/ellmos-ai/swarm-ai) | ellmos-ai | Swarm intelligence and autonomous agent consensus engine |
 | [system-explorer](https://github.com/ellmos-ai/system-explorer) | ellmos-ai | Local system discovery and hardware resource monitor |
 | [policy-registry](https://github.com/ellmos-ai/policy-registry) | ellmos-ai | Unified agent permission and policy management engine |
