@@ -86,6 +86,10 @@ norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".hypothesis", ".turbo
 include = ["lib*"]
 
 [tool.setuptools.data-files]
+"share/ticket-master" = ["ellmos-module.v2.json"]
+"share/ticket-master/prompts" = ["prompts/TICKET-MASTER.de.md", "prompts/TICKET-MASTER.en.md"]
+"share/ticket-master/starters/windows" = ["starters/windows/*.bat"]
+"share/ticket-master/starters/posix" = ["starters/posix/*.sh"]
 "share/ticket-master/contracts/trithon/v1" = [
     "contracts/trithon/v1/*.json",
 ]

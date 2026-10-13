@@ -764,3 +764,9 @@ This project is an unpaid open-source donation. Liability is limited to intent a
 MIT License — Copyright (c) 2026 Lukas Geiger. See [LICENSE](LICENSE) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 Author & Maintainer: Lukas Geiger ([github.com/lukisch](https://github.com/lukisch)). For development setup, coding standards, and contribution guidelines, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## TICKET-MASTER agent starter
+
+`TICKET-MASTER.bat` starts the triage role through TASKPLAN. Windows/POSIX starter files and the German/English TICKET-MASTER prompts ship in wheels and source archives. A wheel installs them below the active Python environment's `share/ticket-master/` directory. The existing ticket CLI remains available; on macOS/Linux use `bash starters/posix/ticket-master.sh`.
+
+Install the current source with `python -m pip install .` and TASKPLAN with launcher support. `TM_LANG=de|en` selects the prompt. Provider, model, work directory and trusted automation come from explicit user configuration. The starter never changes permissions or chooses a personal account. It requests boot steps (a) through (d) and POSITION 0, then waits for the user's ticket. Preview by setting `TASKPLAN_STARTER_DRY_RUN=1` and passing `--provider codex --model configured-model --effort high --no-probe`.
