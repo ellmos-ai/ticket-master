@@ -767,3 +767,9 @@ This project is an unpaid open-source donation. Liability is limited to intent a
 MIT-Lizenz — Copyright (c) 2026 Lukas Geiger. Siehe [LICENSE](LICENSE) und [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
 
 Autor & Maintainer: Lukas Geiger ([github.com/lukisch](https://github.com/lukisch)). Entwicklungs-Setup, Coding-Standards und Beitragsrichtlinien siehe [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## TICKET-MASTER-Agentenstarter
+
+`TICKET-MASTER.bat` startet die Triage-Rolle über TASKPLAN. Windows- und POSIX-Starter sowie die deutschen und englischen TICKET-MASTER-Prompts werden in Wheel und Quellarchiv mitgeliefert. Ein Wheel installiert sie unter `share/ticket-master/` in der aktiven Python-Umgebung. Die bisherige Ticket-CLI bleibt verfügbar. Auf macOS/Linux `bash starters/posix/ticket-master.sh` verwenden.
+
+Aktuellen Quellstand mit `python -m pip install .` und TASKPLAN mit Launcher-Unterstützung installieren. `TM_LANG=de|en` wählt die Sprache. Anbieter, Modell, Arbeitsverzeichnis und erweiterte Berechtigungen kommen aus ausdrücklicher Nutzerkonfiguration. Der Starter verändert keine Berechtigungen und wählt kein persönliches Konto. Er fordert die Boot-Schritte (a) bis (d) und POSITION 0 an; danach wartet die Rolle auf das Ticket des Nutzers. Für eine Vorschau `TASKPLAN_STARTER_DRY_RUN=1` setzen und `--provider codex --model konfiguriertes-modell --effort high --no-probe` übergeben.

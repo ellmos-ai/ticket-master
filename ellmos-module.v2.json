@@ -54,7 +54,7 @@
         "agy",
         "kimi"
       ],
-      "starter": "bin/ticket-master.sh"
+      "starter": "starters/posix/ticket-master.sh"
     }
   ]
 }
