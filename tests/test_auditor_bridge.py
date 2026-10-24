@@ -411,6 +411,97 @@ def test_linked_ticket_status_note_is_not_a_readback(tmp_path):
     assert results[0]["existing_ticket_paths"] == [str(existing)]
 
 
+def test_negative_or_unconfirmed_receipt_text_is_not_current(tmp_path):
+    cases = [
+        ("no readback receipt; status note only", "unread", "unverified"),
+        ("receipt not provided; status note only", "lib/auditor_bridge.py", "unknown"),
+        ("readback is unavailable; no measurement was taken", "lib/auditor_bridge.py", "unknown"),
+        ("without a verified receipt; pending", "lib/auditor_bridge.py", "locked"),
+        ("kein Beleg vorhanden; Messung fehlt", "lib/auditor_bridge.py", "unknown"),
+        ("receipt unconfirmed; SHA256 deadbeef", "lib/auditor_bridge.py", "locked"),
+    ]
+    for index, (evidence, location, value) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        findings_dir = case_root / "findings"
+        tickets_dir = case_root / "tickets"
+        finding_id = current_finding_id(f"negative-receipt-{index}")
+        make_finding(findings_dir, finding_id, "Unconfirmed receipt")
+        existing = link_ticket(
+            tickets_dir, f"T-20261025-{index + 1:09d}.txt",
+            f"Finding: {finding_id}\n"
+            f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+            f"Finding {finding_id} status=open location={location} value={value} "
+            f"— {evidence}\n",
+        )
+
+        results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+        assert results[0]["status"] == "needs_readback"
+        assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_unverified_value_overrides_a_hash_marker(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("unverified-value")
+    make_finding(findings_dir, finding_id, "Explicitly unverified value")
+    existing = link_ticket(
+        tickets_dir, "T-20261025-101010101.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"Finding {finding_id} location=lib/auditor_bridge.py value=unverified "
+        "— SHA256 deadbeef\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_bare_receipt_word_is_not_concrete_evidence(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("bare-receipt")
+    make_finding(findings_dir, finding_id, "Receipt label only")
+    existing = link_ticket(
+        tickets_dir, "T-20261025-111111112.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"Finding {finding_id} location=lib/auditor_bridge.py value=unknown "
+        "— receipt; status note only\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_unknown_and_locked_values_accept_concrete_measurements(tmp_path):
+    cases = [
+        ("unknown", "API readback returned status=unknown; SHA256 deadbeef"),
+        ("locked", r"lock_scan --check-dir C:\repo exit_code=1 status=locked"),
+    ]
+    for index, (value, evidence) in enumerate(cases):
+        case_root = tmp_path / str(index)
+        findings_dir = case_root / "findings"
+        tickets_dir = case_root / "tickets"
+        finding_id = current_finding_id(f"measured-{value}-{index}")
+        make_finding(findings_dir, finding_id, f"Measured value {value}")
+        link_ticket(
+            tickets_dir, f"T-20261025-{index + 11:09d}.txt",
+            f"Finding: {finding_id}\n"
+            f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+            f"Finding {finding_id} location=lib/auditor_bridge.py value={value} "
+            f"— {evidence}\n",
+        )
+
+        results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+        assert results[0]["status"] == "skipped_existing"
+
+
 def test_readback_for_another_finding_does_not_validate_link(tmp_path):
     findings_dir = tmp_path / "findings"
     tickets_dir = tmp_path / "tickets"

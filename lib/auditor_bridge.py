@@ -414,10 +414,38 @@ _READBACK_VALUE_RE = re.compile(
     r"kein|keine|keinen|nicht|aktiv|inaktiv|\S+)",
     re.IGNORECASE,
 )
-_READBACK_RECEIPT_RE = re.compile(
-    r"\b(?:sha-?256|hash|measurement|measured|messung|receipt|beleg|"
-    r"pytest|tests?|command|query|commit|git|log|report|screenshot)\b|"
-    r"https?://|\x60[^\x60]+\x60|(?:[A-Za-z]:\\|/)[^\s,;]+",
+_READBACK_NEGATIVE_RE = re.compile(
+    r"\b(?:no|not|without|missing|absent|unverified|unconfirmed|"
+    r"unmeasured|unread|unavailable|pending|kein(?:e|en)?|ohne|fehlend|"
+    r"unverifiziert|unbestätigt|nicht)\b\s+(?:[\w-]+\s+){0,5}"
+    r"\b(?:readback|receipt|evidence|proof|measurement|result|beleg|nachweis|messung)\b|"
+    r"\b(?:readback|receipt|evidence|proof|measurement|result|beleg|nachweis|messung)\b"
+    r"\s+(?:[\w-]+\s+){0,5}\b(?:missing|absent|unverified|unconfirmed|"
+    r"unmeasured|unavailable|pending|not\s+(?:provided|present|attached|available|"
+    r"verified|confirmed|measured|observed|recorded|read)|fehlt|fehlend|"
+    r"unbestätigt|unverifiziert|nicht\s+(?:vorhanden|bestätigt|verifiziert|"
+    r"gemessen|belegt))\b|"
+    r"\b(?:location|ort|path|pfad)\s*[:=]\s*"
+    r"(?:unread|unknown|missing|none|n/?a|unavailable|not[- ](?:read|found|provided|available)|"
+    r"unbekannt|ungelesen|fehlt|nicht[- ](?:gelesen|gefunden|vorhanden))\b|"
+    r"\b(?:value|wert|status|state)\s*[:=]\s*"
+    r"(?:unverified|unconfirmed|not[- ](?:verified|confirmed|measured|read)|"
+    r"unverifiziert|unbestätigt|nicht[- ](?:verifiziert|bestätigt|gemessen))\b",
+    re.IGNORECASE,
+)
+_READBACK_CONCRETE_EVIDENCE_RE = re.compile(
+    r"\b(?:sha-?256|hash)\s*[:=]?\s*[0-9a-f]{8,64}\b|"
+    r"\b(?:pytest|tests?)\b.{0,120}\b\d+\s+(?:passed|pass|failed|fails?|skipped|errors?)\b|"
+    r"\b\d+\s+(?:passed|pass|failed|fails?|skipped|errors?)\b.{0,120}\b(?:pytest|tests?)\b|"
+    r"\bcommit\s+(?:[0-9a-f]{7,40})\b|"
+    r"https?://[^\s,;]+|"
+    r"(?:[A-Za-z]:\\|\\\\|/)[^\s,;]+|"
+    r"\b[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)\b|"
+    r"\b(?:command|query|measurement|measured|messung|gemessen|readback|api|cli|lock_scan)\b"
+    r".{0,120}\b(?:exit(?:[_ -]?code)?|http|status|value|result|output|returned|reports?|"
+    r"shows?|showed|liefert|meldet|ergibt|zeigt)\b\s*[:=]?\s*"
+    r"(?:\d{1,4}|true|false|none|unknown|locked|open|closed|present|missing|available|"
+    r"unavailable|frei|gesperrt|offen|geschlossen|vorhanden|fehlt|[A-Za-z0-9_.-]+)",
     re.IGNORECASE,
 )
 
@@ -446,10 +474,12 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
     """Recognize explicit dated receipts; this is not a semantic review.
 
     The conservative check requires the dated actor@host/evidence envelope,
-    a matching finding ID, visible location and observed-value text, and a
-    concrete measurement/receipt marker. A receipt dated before the finding
-    is stale; future-dated lines are not current. No extra age limit or full
-    semantic verification is claimed.
+    a matching finding ID, visible location and observed-value text, and
+    concrete evidence such as a hash, test result, artifact path, URL, or
+    command/query result. A bare "receipt" label is not evidence, and explicit
+    missing/unverified wording overrides otherwise matching markers. A receipt
+    dated before the finding is stale; future-dated lines are not current. No
+    extra age limit or full semantic verification is claimed.
     """
     observation_date = _finding_observation_date(finding_id)
     if observation_date is None:
@@ -474,7 +504,10 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
             continue
         if _READBACK_VALUE_RE.search(observation) is None:
             continue
-        if _READBACK_RECEIPT_RE.search(match.group("evidence")) is None:
+        evidence = match.group("evidence")
+        if _READBACK_NEGATIVE_RE.search(observation) is not None:
+            continue
+        if _READBACK_CONCRETE_EVIDENCE_RE.search(evidence) is None:
             continue
         return True
     return False
