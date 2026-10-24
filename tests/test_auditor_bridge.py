@@ -7,6 +7,7 @@ dry-run dedup. system-auditor itself is never invoked here.
 """
 import json
 import sys
+from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -299,6 +300,32 @@ def make_finding(findings_dir: Path, finding_id: str, title: str, body: str = "b
     return path
 
 
+def link_ticket(tickets_dir: Path, ticket_name: str, body: str) -> Path:
+    path = tickets_dir / "BLOCKED" / ticket_name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def readback_line(
+    finding_id: str,
+    *,
+    measured_date: str | None = None,
+    referenced_id: str | None = None,
+) -> str:
+    referenced_id = referenced_id or finding_id
+    return (
+        f"{measured_date or date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"Readback {referenced_id} "
+        "location=lib/auditor_bridge.py value=dedup-aware lock=clear "
+        "— SHA256 deadbeef"
+    )
+
+
+def current_finding_id(suffix: str) -> str:
+    return f"M-{date.today():%Y%m%d}-{suffix}"
+
+
 def test_findings_to_tickets_dry_run_plans_without_writing(tmp_path):
     findings_dir = tmp_path / "findings"
     tickets_dir = tmp_path / "tickets"
@@ -312,20 +339,160 @@ def test_findings_to_tickets_dry_run_plans_without_writing(tmp_path):
     assert not tickets_dir.exists()  # dry run touches nothing
 
 
-def test_findings_to_tickets_skips_already_ticketed_finding(tmp_path):
+def test_id_link_without_readback_reports_needs_readback_and_suppresses_duplicate(tmp_path):
     findings_dir = tmp_path / "findings"
     tickets_dir = tmp_path / "tickets"
-    make_finding(findings_dir, "M-20260830-already-done", "Already handled")
-    solved = tickets_dir / "SOLVED"
-    solved.mkdir(parents=True)
-    (solved / "T-20260829-111111111.txt").write_text(
-        "PROBLEMBESCHREIBUNG\nFinding: M-20260830-already-done\n", encoding="utf-8",
+    finding_id = current_finding_id("linked")
+    make_finding(findings_dir, finding_id, "Linked without proof")
+    existing = link_ticket(
+        tickets_dir, "T-20261020-111111111.txt",
+        f"Finding: {finding_id}\n2026-10-25 | reviewer@ASUS-GEI | "
+        "Status: linked — ticket path T-20261020-111111111.txt\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=False)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["ticket_path"] is None
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+    assert "duplicate creation suppressed" in results[0]["reason"]
+    assert auditor_bridge._finding_already_ticketed(finding_id, tickets_dir)
+    assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 1
+
+
+def test_link_with_current_readback_is_skipped_without_creating_duplicate(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("current")
+    make_finding(findings_dir, finding_id, "Measured already")
+    link_ticket(
+        tickets_dir, "T-20261025-111111111.txt",
+        f"Finding: {finding_id}\nVERLAUF / LOG\n{readback_line(finding_id)}\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=False)
+
+    assert results[0]["status"] == "skipped_existing"
+    assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 1
+
+
+def test_link_with_stale_readback_requires_a_new_readback(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("stale")
+    make_finding(findings_dir, finding_id, "Old measurement")
+    existing = link_ticket(
+        tickets_dir, "T-20261024-111111111.txt",
+        f"Finding: {finding_id}\n"
+        f"{readback_line(finding_id, measured_date=(date.today() - timedelta(days=1)).isoformat())}\n",
     )
 
     results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
 
-    assert len(results) == 1
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_linked_ticket_status_note_is_not_a_readback(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("status-only")
+    make_finding(findings_dir, finding_id, "Status note only")
+    existing = link_ticket(
+        tickets_dir, "T-20261024-222222222.txt",
+        f"Finding: {finding_id}\n"
+        f"2026-10-25 | reviewer@ASUS-GEI | {finding_id} status=verified — "
+        "ticket status is open\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_readback_for_another_finding_does_not_validate_link(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("target")
+    make_finding(findings_dir, finding_id, "Different readback ID")
+    existing = link_ticket(
+        tickets_dir, "T-20261024-333333333.txt",
+        f"Finding: {finding_id}\n"
+        f"{readback_line(finding_id, referenced_id='M-20261025-other')}\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
+
+
+def test_documented_free_text_readback_without_field_names_is_accepted(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("free-text")
+    make_finding(findings_dir, finding_id, "Documented prose receipt")
+    link_ticket(
+        tickets_dir, "T-20261024-555555555.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today().isoformat()} | reviewer@ASUS-GEI | Finding {finding_id} "
+        "at lib/auditor_bridge.py currently reports 0 linked tickets — "
+        "pytest tests/test_auditor_bridge.py -q: 35 passed; SHA256 deadbeef\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
     assert results[0]["status"] == "skipped_existing"
+
+
+def test_unrelated_finding_id_is_not_suppressed_by_other_ticket(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("new")
+    make_finding(findings_dir, finding_id, "Not linked")
+    link_ticket(
+        tickets_dir, "T-20261024-444444444.txt",
+        f"Finding: {current_finding_id('other')}\n"
+        f"{readback_line(current_finding_id('other'))}\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "planned"
+
+
+def test_longer_finding_id_does_not_validate_a_shorter_link(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("target")
+    longer_id = finding_id + "-extra"
+    make_finding(findings_dir, finding_id, "Exact ID only")
+    link_ticket(
+        tickets_dir, "T-20261024-666666666.txt",
+        f"Finding: {longer_id}\n{readback_line(longer_id)}\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "planned"
+
+
+def test_future_dated_readback_is_not_current(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("future")
+    make_finding(findings_dir, finding_id, "Future receipt")
+    existing = link_ticket(
+        tickets_dir, "T-20261024-777777777.txt",
+        f"Finding: {finding_id}\n"
+        f"{readback_line(finding_id, measured_date=(date.today() + timedelta(days=1)).isoformat())}\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["existing_ticket_paths"] == [str(existing)]
 
 
 def test_findings_to_tickets_ignores_non_finding_files(tmp_path):
@@ -363,6 +530,9 @@ def test_findings_to_tickets_apply_creates_ticket_then_dedups_on_rerun(tmp_path)
     assert "Apply me title" in text
 
     # A second run must not create a duplicate ticket for the same finding.
-    second = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
-    assert second[0]["status"] == "skipped_existing"
+    # This source finding contains no receipt, so the link stays visible as
+    # needs_readback instead of being promoted to a current duplicate.
+    second = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=False)
+    assert second[0]["status"] == "needs_readback"
+    assert second[0]["existing_ticket_paths"] == [str(ticket_path)]
     assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 1

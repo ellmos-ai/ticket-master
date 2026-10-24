@@ -16,8 +16,8 @@ Four pure-ish functions plus a CLI:
   multi-agent run, and a silent read failure looks exactly like a quiet normal
   state (the same failure mode this ticket's night was named after).
 * decide(config)        -- combines the above into one spawn/skip verdict.
-* findings_to_tickets() -- turns system-auditor findings/*.md into draft
-  ticket-master INBOX tickets, deduplicated by the finding's own ID.
+* findings_to_tickets() -- keeps finding-ID duplicate protection while
+  exposing linked tickets that lack a current readback as needs_readback.
 
 CLI:
     python lib/auditor_bridge.py --check [--manual] [--config <ticket-master.config.json>]
@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -382,16 +384,120 @@ def decide(config: dict[str, Any], *, manual: bool = False) -> dict[str, Any]:
 # findings_to_tickets
 # --------------------------------------------------------------------------
 
-def _finding_already_ticketed(finding_id: str, tickets_dir: Path) -> bool:
-    """Grep every lifecycle ticket file for the finding ID (dedup key)."""
+_FINDING_OBSERVATION_DATE_RE = re.compile(r"^M-(\d{8})-")
+_READBACK_LOG_LINE_RE = re.compile(
+    r"^\s*(?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*"
+    r"(?P<actor>[^|\s@]+@[^|\s@]+)\s*\|\s*"
+    r"(?P<statement>.+?)\s+—\s+(?P<evidence>\S.*)\s*$",
+    re.IGNORECASE,
+)
+_READBACK_LOCATION_RE = re.compile(
+    r"\b(?:location|ort|path|pfad)\s*[:=]\s*\S+|"
+    r"(?:[A-Za-z]:\\|\\\\|/)[^\s,;]+|"
+    r"\b[\w.-]+[/\\][\w./\\-]+|"
+    r"\b[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt)\b",
+    re.IGNORECASE,
+)
+_READBACK_VALUE_RE = re.compile(
+    r"\b(?:value|wert|observed|beobachtet|state|status)\s*"
+    r"(?::|=|\b(?:is|was|ist|sind)\b|\s)\s*\S+|"
+    r"\b(?!path\b|pfad\b|location\b|ort\b|lock\b|ownership\b|owner\b|"
+    r"claim\b|finding(?:_id)?\b|ticket(?:_id)?\b|sha-?256\b|hash\b)"
+    r"[A-Za-z_][\w.-]*\s*=\s*\S+|"
+    r"(?:[A-Za-z]:\\|/)[^\s,;]+\s+"
+    r"\b(?:is|was|ist|sind|currently|derzeit|bleibt|steht|shows?|showed|"
+    r"reports?|reported|returns?|returned|contains?|contained|lists?|listed|"
+    r"zeigt|zeigte|meldet|meldete|liefert|lieferte|enthaelt|enthält|"
+    r"ergibt|ergab|beträgt|betraegt)\b\s+"
+    r"(?:\d+|true|false|none|no|not|clear|locked|open|closed|present|missing|"
+    r"available|unavailable|frei|gesperrt|offen|geschlossen|vorhanden|fehlt|"
+    r"kein|keine|keinen|nicht|aktiv|inaktiv|\S+)",
+    re.IGNORECASE,
+)
+_READBACK_RECEIPT_RE = re.compile(
+    r"\b(?:sha-?256|hash|measurement|measured|messung|receipt|beleg|"
+    r"pytest|tests?|command|query|commit|git|log|report|screenshot)\b|"
+    r"https?://|\x60[^\x60]+\x60|(?:[A-Za-z]:\\|/)[^\s,;]+",
+    re.IGNORECASE,
+)
+
+
+def _finding_observation_date(finding_id: str) -> date | None:
+    """Date encoded by system-auditor's M-YYYYMMDD finding ID, if valid."""
+    match = _FINDING_OBSERVATION_DATE_RE.match(finding_id)
+    if match is None:
+        return None
+    value = match.group(1)
+    try:
+        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+    except ValueError:
+        return None
+
+
+def _contains_finding_id(text: str, finding_id: str) -> bool:
+    """Match a full ID token so a longer, different finding cannot validate it."""
+    return re.search(
+        rf"(?<![A-Za-z0-9_-]){re.escape(finding_id)}(?![A-Za-z0-9_-])",
+        text,
+    ) is not None
+
+
+def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
+    """Recognize explicit dated receipts; this is not a semantic review.
+
+    The conservative check requires the dated actor@host/evidence envelope,
+    a matching finding ID, visible location and observed-value text, and a
+    concrete measurement/receipt marker. A receipt dated before the finding
+    is stale; future-dated lines are not current. No extra age limit or full
+    semantic verification is claimed.
+    """
+    observation_date = _finding_observation_date(finding_id)
+    if observation_date is None:
+        return False
+
+    for line in ticket_text.splitlines():
+        match = _READBACK_LOG_LINE_RE.match(line)
+        if match is None:
+            continue
+        try:
+            readback_date = date.fromisoformat(match.group("date"))
+        except ValueError:
+            continue
+        if readback_date < observation_date or readback_date > date.today():
+            continue
+
+        statement = match.group("statement")
+        observation = f"{statement} — {match.group('evidence')}"
+        if not _contains_finding_id(observation, finding_id):
+            continue
+        if _READBACK_LOCATION_RE.search(observation) is None:
+            continue
+        if _READBACK_VALUE_RE.search(observation) is None:
+            continue
+        if _READBACK_RECEIPT_RE.search(match.group("evidence")) is None:
+            continue
+        return True
+    return False
+
+
+def _finding_ticket_links(
+    finding_id: str, tickets_dir: Path,
+) -> list[tuple[Path, str]]:
+    """Return tickets that link the ID; a link alone is not a current readback."""
+    links: list[tuple[Path, str]] = []
     for entry, _date, _number, _suffix in ticket_writer.iter_lifecycle_files(tickets_dir):
         try:
             text = entry.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if finding_id in text:
-            return True
-    return False
+        if _contains_finding_id(text, finding_id):
+            links.append((entry, text))
+    return links
+
+
+def _finding_already_ticketed(finding_id: str, tickets_dir: Path) -> bool:
+    """Whether any ticket links the ID; callers must still assess its readback."""
+    return bool(_finding_ticket_links(finding_id, tickets_dir))
 
 
 def _finding_to_ticket_text(path: Path, finding_id: str) -> tuple[str, str]:
@@ -430,11 +536,27 @@ def findings_to_tickets(
 
     for path in sorted(findings_dir.glob("M-*.md")):
         finding_id = path.stem
-        if _finding_already_ticketed(finding_id, tickets_dir):
-            results.append({
-                "finding_id": finding_id, "finding_path": str(path),
-                "status": "skipped_existing", "ticket_path": None,
-            })
+        links = _finding_ticket_links(finding_id, tickets_dir)
+        if links:
+            current_links = [
+                entry for entry, ticket_text in links
+                if _has_current_readback(finding_id, ticket_text)
+            ]
+            if current_links:
+                results.append({
+                    "finding_id": finding_id, "finding_path": str(path),
+                    "status": "skipped_existing", "ticket_path": None,
+                })
+            else:
+                results.append({
+                    "finding_id": finding_id, "finding_path": str(path),
+                    "status": "needs_readback", "ticket_path": None,
+                    "existing_ticket_paths": [str(entry) for entry, _ in links],
+                    "reason": (
+                        "finding ID is linked, but no current dated location/value "
+                        "readback receipt was recognized; duplicate creation suppressed"
+                    ),
+                })
             continue
 
         title, body = _finding_to_ticket_text(path, finding_id)
