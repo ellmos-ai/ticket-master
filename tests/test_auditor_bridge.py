@@ -419,6 +419,14 @@ def test_negative_or_unconfirmed_receipt_text_is_not_current(tmp_path):
         ("without a verified receipt; pending", "lib/auditor_bridge.py", "locked"),
         ("kein Beleg vorhanden; Messung fehlt", "lib/auditor_bridge.py", "unknown"),
         ("receipt unconfirmed; SHA256 deadbeef", "lib/auditor_bridge.py", "locked"),
+        ("not measured; lock_scan status=locked exit_code=1", "lib/auditor_bridge.py", "locked"),
+        ("nicht gemessen; lock_scan status=locked exit_code=1", "lib/auditor_bridge.py", "locked"),
+        ("no measurements collected; SHA256 deadbeef", "lib/auditor_bridge.py", "locked"),
+        ("without a current measurement; report.md", "lib/auditor_bridge.py", "unknown"),
+        ("measurement not recorded; SHA256 deadbeef", "lib/auditor_bridge.py", "unknown"),
+        ("Messung noch ausstehend; report.md", "lib/auditor_bridge.py", "unknown"),
+        ("no verification performed; SHA256 deadbeef", "lib/auditor_bridge.py", "unknown"),
+        ("unconfirmed result; report.md", "lib/auditor_bridge.py", "locked"),
     ]
     for index, (evidence, location, value) in enumerate(cases):
         case_root = tmp_path / str(index)
@@ -482,6 +490,7 @@ def test_unknown_and_locked_values_accept_concrete_measurements(tmp_path):
     cases = [
         ("unknown", "API readback returned status=unknown; SHA256 deadbeef"),
         ("locked", r"lock_scan --check-dir C:\repo exit_code=1 status=locked"),
+        ("clear", r"lock_scan --check-dir C:\repo exit_code=0 status=clear; no lock found"),
     ]
     for index, (value, evidence) in enumerate(cases):
         case_root = tmp_path / str(index)

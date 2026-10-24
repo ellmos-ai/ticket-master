@@ -414,17 +414,27 @@ _READBACK_VALUE_RE = re.compile(
     r"kein|keine|keinen|nicht|aktiv|inaktiv|\S+)",
     re.IGNORECASE,
 )
+_READBACK_CLAIM_WORD = (
+    r"(?:readbacks?|receipts?|evidence|proofs?|results?|"
+    r"measur(?:e|es|ed|ing|ement(?:s)?)|observ(?:e|ed|ation(?:s)?)|"
+    r"verif(?:y|ied|ication)|confirm(?:ed|ation)|"
+    r"beleg(?:e|en)?|nachweis(?:e|en)?|mess(?:ung(?:en)?|en)|gemessen|"
+    r"beobacht(?:et|ung(?:en)?)|bestätig(?:t|ung)|verifizier(?:t|ung))"
+)
 _READBACK_NEGATIVE_RE = re.compile(
-    r"\b(?:no|not|without|missing|absent|unverified|unconfirmed|"
-    r"unmeasured|unread|unavailable|pending|kein(?:e|en)?|ohne|fehlend|"
-    r"unverifiziert|unbestätigt|nicht)\b\s+(?:[\w-]+\s+){0,5}"
-    r"\b(?:readback|receipt|evidence|proof|measurement|result|beleg|nachweis|messung)\b|"
-    r"\b(?:readback|receipt|evidence|proof|measurement|result|beleg|nachweis|messung)\b"
-    r"\s+(?:[\w-]+\s+){0,5}\b(?:missing|absent|unverified|unconfirmed|"
-    r"unmeasured|unavailable|pending|not\s+(?:provided|present|attached|available|"
-    r"verified|confirmed|measured|observed|recorded|read)|fehlt|fehlend|"
-    r"unbestätigt|unverifiziert|nicht\s+(?:vorhanden|bestätigt|verifiziert|"
-    r"gemessen|belegt))\b|"
+    # The whole dated line is one claim: a negative measurement assertion
+    # invalidates later hashes, paths and command-looking fragments on it.
+    rf"\b(?:no|not|without|never|missing|absent|unverified|unconfirmed|"
+    rf"unmeasured|unread|unavailable|pending|kein(?:e|en|em|er|es)?|"
+    rf"ohne|fehlend|unverifiziert|unbestätigt|ungemessen|ausstehend|nicht)\b"
+    rf"(?:\s+[\w-]+){{0,4}}\s+\b{_READBACK_CLAIM_WORD}\b|"
+    rf"\b{_READBACK_CLAIM_WORD}\b(?:\s+[\w-]+){{0,4}}\s+"
+    rf"\b(?:missing|absent|unverified|unconfirmed|unmeasured|unavailable|"
+    rf"pending|fehlt|fehlend|ausstehend|unbestätigt|unverifiziert|"
+    rf"not\s+(?:provided|present|attached|available|verified|confirmed|"
+    rf"measured|observed|recorded|read|collected|performed|taken)|"
+    rf"nicht\s+(?:vorhanden|bestätigt|verifiziert|gemessen|belegt|"
+    rf"erfasst|durchgeführt))\b|"
     r"\b(?:location|ort|path|pfad)\s*[:=]\s*"
     r"(?:unread|unknown|missing|none|n/?a|unavailable|not[- ](?:read|found|provided|available)|"
     r"unbekannt|ungelesen|fehlt|nicht[- ](?:gelesen|gefunden|vorhanden))\b|"
