@@ -1,5 +1,15 @@
 # TODO — ticket-master
 
+## Ticketinventur — offene unabhängige Abnahme (26.10.2026)
+
+- [ ] **T-20261025-252629410: fünf Reviewbefunde beheben und erneut unabhängig
+      abnehmen.** Kandidat `d00aec786a46f4c89a708b8cf5dbbbce7148500e` bleibt
+      `CHANGES_REQUIRED`; kein Installations- oder Integrations-GO.
+      Konkrete Korrekturen und erforderliche Nachweise:
+      [Review-Restplan](docs/TICKET-INVENTORY-REVIEW-REMEDIATION.de.md).
+      Die eigentliche Inventur und die nachgelagerte Task-Leasing-Umstellung
+      bleiben getrennte Lieferumfänge.
+
 ## Host-Provenienz 2026-08-27
 
 - [x] **Claims gegen Live-System und Self-Slot fail-closed absichern
