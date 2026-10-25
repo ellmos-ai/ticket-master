@@ -434,12 +434,12 @@ _READBACK_COMMAND_RE = re.compile(
     rf"command\s*[:=]\s*[\w./\\-]+)"
     rf"(?:\s+(?:--[\w-]+|(?:{_READBACK_PATH})))*\s+"
     rf"(?P<outputs>(?:(?:exit(?:[_ -]?code)?|http|status|value|result|output)"
-    rf"\s*[:=]\s*{_READBACK_SCALAR}\s*)+)",
+    rf"\s*[:=]\s*{_READBACK_SCALAR}(?=\s|$)\s*)+)",
     re.IGNORECASE,
 )
 _READBACK_OUTPUT_RE = re.compile(
     rf"(?P<key>exit(?:[_ -]?code)?|http|status|value|result|output)\s*[:=]\s*"
-    rf"(?P<value>{_READBACK_SCALAR})", re.IGNORECASE,
+    rf"(?P<value>{_READBACK_SCALAR})(?=\s|$)", re.IGNORECASE,
 )
 
 
@@ -495,7 +495,12 @@ def _readback_evidence(value: str, evidence: str) -> bool:
         command = _READBACK_COMMAND_RE.fullmatch(clause)
         if command:
             outputs = list(_READBACK_OUTPUT_RE.finditer(command.group("outputs")))
-            keys = [item.group("key").lower() for item in outputs]
+            # Every spelling names the same exit-code measurement.
+            keys = [
+                "exit" if item.group("key").lower().startswith("exit")
+                else item.group("key").lower()
+                for item in outputs
+            ]
             if len(keys) != len(set(keys)):
                 return False
             states = [item.group("value").lower() for item in outputs

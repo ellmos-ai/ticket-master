@@ -787,3 +787,48 @@ def test_real_cli_apply_preserves_links_and_distinguishes_measurement(tmp_path):
         assert results[measured]["status"] == "skipped_existing"
         assert results[fresh]["status"] == expected
         assert len(list(ticket_writer.iter_lifecycle_files(tickets))) == 4
+
+
+@pytest.mark.parametrize("key", ["status", "value", "result", "output"])
+def test_command_output_scalar_is_not_truncated_to_a_prefix(key):
+    finding_id = current_finding_id("whole-output")
+    line = (f"{date.today()} | reviewer@host | Finding {finding_id} "
+            f"location=lib/probe.py value=passed — command=probe exit_code=0 {key}=passed")
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize("codes", [
+    "exit=0 exit_code=1",
+    "exit_code=0 exit-code=1",
+    "exitcode=0 exit code=1",
+    "exit-code=0 exit=1",
+    "exitcode=0 exit_code=0",
+])
+def test_exitcode_aliases_cannot_duplicate_a_measurement(codes):
+    finding_id = current_finding_id("duplicate-exit")
+    line = (f"{date.today()} | reviewer@host | Finding {finding_id} "
+            f"location=lib/probe.py value=clear — command=probe {codes} result=clear")
+    assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize("evidence", [
+    "command=probe exit_code=0 http=200 status=clear",
+    "command=probe exit_code=0 status=clear value=clear",
+])
+def test_command_output_retains_distinct_measurement_fields(evidence):
+    finding_id = current_finding_id("distinct-output")
+    line = (f"{date.today()} | reviewer@host | Finding {finding_id} "
+            f"location=lib/probe.py value=clear — {evidence}")
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize("evidence", [
+    "command=probe exit_code=0 status=failedstatus=clear",
+    "command=probe exitcode=0exit_code=1 result=clear",
+    "command=probe exit_code=0 status=clearvalue=failed",
+])
+def test_command_output_requires_complete_scalar_tokens(evidence):
+    finding_id = current_finding_id("abutted-output")
+    line = (f"{date.today()} | reviewer@host | Finding {finding_id} "
+            f"location=lib/probe.py value=clear — {evidence}")
+    assert not auditor_bridge._has_current_readback(finding_id, line)
