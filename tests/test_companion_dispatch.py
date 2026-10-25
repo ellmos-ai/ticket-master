@@ -309,7 +309,7 @@ def test_configured_sdk_ack_without_pinned_attempt_is_not_accepted(tmp_path, mon
     work_dir = tmp_path / f"agent_{claim['dispatch_name']}"
     registry.records[claim["dispatch_name"]] = {
         "name": claim["dispatch_name"], "launch_state": "active", "pid": 4242,
-        "process_create_time": datetime.now(timezone.utc).timestamp(),
+        "process_create_time": datetime.fromisoformat(claim["created_at"]).timestamp() + 1,
         "work_dir": str(work_dir), "cwd": str(work_dir),
         "ticket_master_session_id": claim["session_id"],
         "ticket_master_claim_id": claim["claim_id"],
