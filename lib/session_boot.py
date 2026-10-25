@@ -190,8 +190,10 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
     for path in directory.glob("*.json"):
         try:
             item = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
+        except (OSError, ValueError) as exc:
+            raise ValueError(f"companion ledger unreadable: {path}: {exc}") from exc
+        if not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v1":
+            raise ValueError(f"companion ledger invalid: {path}")
         if item.get("status") == "accepted" and item.get("role") in ROLES:
             accepted.append((item.get("created_at", ""), item["role"]))
     previous = max(accepted, default=("", ROLES[-1]))[1]

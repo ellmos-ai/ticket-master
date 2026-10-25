@@ -98,6 +98,17 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
         session_boot.companion_ack("session-two", "")
 
 
+def test_companion_rotation_refuses_corrupt_ledger(tmp_path, monkeypatch):
+    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
+    directory = tmp_path / "session-claims"
+    directory.mkdir()
+    (directory / "prior.json").write_text("not JSON", encoding="utf-8")
+    with pytest.raises(ValueError, match="ledger unreadable"):
+        session_boot.companion_claim("session-next")
+    assert not (directory / "session-next.json").exists()
+
+
 def test_report_reuses_auditor_verdict_only_when_personally_enabled(tmp_path, monkeypatch):
     profile = _profile(tmp_path / "profile.json", {"audit": {"enabled": True}})
     monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
