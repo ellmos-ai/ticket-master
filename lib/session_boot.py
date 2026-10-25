@@ -336,17 +336,9 @@ def _capacity_root() -> Path:
     return root
 
 
-def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -> Path:
-    """Keep SDK claims and attempts in one per-user capacity domain.
-
-    A claim may still be prepared without an SDK workroot. Such a local claim
-    cannot be dispatched after switching to a configured workroot. Likewise,
-    prior workroot-local claims require reconciliation before joining the
-    shared ledger; neither may silently disappear from capacity accounting.
-    """
+def _sdk_work_root(config: dict[str, Any] | None) -> Path:
+    """Resolve the configured SDK workspace independently of the OS ledger."""
     raw = (config or {}).get("agent_launcher_work_root")
-    if raw is None:
-        return Path(profile["source"]).parent / "session-claims"
     if not isinstance(raw, str) or not raw.strip():
         raise ValueError("agent-launcher work root is not configured")
     path = config_paths.resolve_config_path(raw)
@@ -358,6 +350,20 @@ def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -
         raise ValueError("agent-launcher work root is not resolvable") from exc
     if root is None or not root.is_dir():
         raise ValueError("agent-launcher work root is not a directory")
+    return root
+
+
+def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -> Path:
+    """Keep SDK claims and attempts in one per-user capacity domain.
+
+    A claim may still be prepared without an SDK workroot. Such a local claim
+    cannot be dispatched after switching to a configured workroot. Likewise,
+    prior workroot-local claims require reconciliation before joining the
+    shared ledger; neither may silently disappear from capacity accounting.
+    """
+    if (config or {}).get("agent_launcher_work_root") is None:
+        return Path(profile["source"]).parent / "session-claims"
+    root = _sdk_work_root(config)
     directory = _capacity_root() / ".ticket-master-companion"
     legacy = Path(profile["source"]).parent / "session-claims"
     prior_workroot = root / ".ticket-master-companion"
@@ -419,6 +425,9 @@ def _verified_launcher_dispatch(item: dict[str, Any], receipt: str,
             or metadata.get("ticket_master_claim_id") != item["claim_id"]
             or metadata.get("ticket_master_role") != item["role"]):
         raise ValueError("agent-launcher receipt is not bound to this claim")
+    if ((config or {}).get("agent_launcher_work_root") is not None
+            and metadata.get("ticket_master_work_root") != str(_sdk_work_root(config))):
+        raise ValueError("agent-launcher receipt is not bound to the SDK work root")
     try:
         observed = registry.probe_running(name)
     except (AttributeError, OSError, ValueError) as exc:

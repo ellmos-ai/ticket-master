@@ -141,11 +141,63 @@ def test_bound_dispatch_uses_taskplan_role_prompt_config_and_existing_ack(tmp_pa
     assert kwargs["extra_metadata"] == {
         "ticket_master_session_id": "test-session",
         "ticket_master_claim_id": claim["claim_id"],
-        "ticket_master_role": "taskwriter"}
+        "ticket_master_role": "taskwriter",
+        "ticket_master_work_root": str(tmp_path)}
     # The once-only attempt record blocks even a delayed or concurrent retry.
     assert dispatch.dispatch_companion("test-session", _file(tmp_path, _admission(claim)),
                                        config=config)["status"] == "pending-reconcile"
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("mutate_config,wrong_registry_root", [
+    (False, False), (True, False), (False, True),
+])
+def test_sdk_workroot_is_distinct_from_account_ledger_and_bound_in_ack(
+        tmp_path, monkeypatch, mutate_config, wrong_registry_root):
+    claim, _, config = _fixture(tmp_path, monkeypatch)
+    sdk_root = tmp_path / "sdk-work"
+    sdk_root.mkdir()
+    other_root = tmp_path / "other-sdk-work"
+    other_root.mkdir()
+    config["agent_launcher_work_root"] = str(sdk_root) + "/."
+    registry = dispatch._runtime()[3].AgentProcessRegistry
+    observed = []
+
+    class Launcher:
+        def __init__(self, registry_dir, work_root):
+            assert registry_dir == tmp_path / "registry"
+            observed.append((registry_dir, work_root))
+
+        def start(self, name, **kwargs):
+            metadata = {"name": name, "launch_state": "active", "pid": 4242,
+                        "process_create_time": datetime.now(timezone.utc).timestamp(),
+                        **kwargs["extra_metadata"]}
+            if wrong_registry_root:
+                metadata["ticket_master_work_root"] = str(other_root)
+            registry.records[name] = metadata
+            if mutate_config:
+                config["agent_launcher_work_root"] = str(other_root)
+            return SimpleNamespace(ok=True, name=name, already_running=False)
+
+    runtime = dispatch._runtime()
+    sdk = SimpleNamespace(AgentLauncher=Launcher, AgentProcessRegistry=registry)
+    monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3], sdk, runtime[4]))
+    monkeypatch.setitem(sys.modules, "agent_launcher", sdk)
+    result = dispatch.dispatch_companion("test-session", _file(tmp_path, _admission(claim)),
+                                         config=config)
+    assert observed == [(tmp_path / "registry", sdk_root.resolve())]
+    assert observed[0][1] != tmp_path  # OS capacity root is never the SDK cwd root.
+    assert (tmp_path / ".ticket-master-companion" / "test-session.dispatch-attempt").is_file()
+    if wrong_registry_root:
+        assert result["status"] == "pending-reconcile"
+        assert session_boot.companion_claim("test-session", config={**config,
+            "agent_launcher_work_root": str(sdk_root)})["status"] == "pending"
+    else:
+        assert result["status"] == "accepted"
+        assert registry.records[claim["dispatch_name"]]["ticket_master_work_root"] == str(sdk_root)
+        # A caller mutation after SDK start cannot redirect the ACK or SDK cwd.
+        assert session_boot.companion_claim("test-session", config={**config,
+            "agent_launcher_work_root": str(sdk_root)})["status"] == "accepted"
 
 
 @pytest.mark.parametrize("mutation", [

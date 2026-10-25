@@ -317,13 +317,14 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
     pending claim before a new session can be considered.
     """
     now = now or datetime.now(timezone.utc)
-    profile = session_profile.effective_settings(config)
+    # Freeze the caller's root and registry choices before any SDK callback
+    # can mutate its configuration. The OS-wide ledger remains separate.
+    dispatch_config = dict(config or {})
+    profile = session_profile.effective_settings(dispatch_config)
     if not profile["settings"]["companion"]["enabled"]:
         return {"status": "disabled"}
-    work_root = (config or {}).get("agent_launcher_work_root")
-    if not isinstance(work_root, str) or not work_root.strip():
-        raise ValueError("agent-launcher work root is not configured")
-    directory = session_boot._ledger_dir(profile, config)
+    work_root = session_boot._sdk_work_root(dispatch_config)
+    directory = session_boot._ledger_dir(profile, dispatch_config)
     claim = _claim(session_id, directory)
     if claim["status"] == "accepted":
         return {"status": "accepted", "claim_id": claim["claim_id"]}
@@ -356,7 +357,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
     if not prompt.is_file() or not prompt.read_text(encoding="utf-8").strip():
         raise ValueError("canonical TASKPLAN role prompt unavailable")
     _validate_admission(admission, claim, profile, provider, model, now)
-    registry_dir = (config or {}).get("agent_launcher_registry_dir")
+    registry_dir = dispatch_config.get("agent_launcher_registry_dir")
     if registry_dir is None:
         registry_dir = Path.home() / ".agent-launcher" / "registry"
     elif not isinstance(registry_dir, str) or not registry_dir:
@@ -414,7 +415,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         with attempt.open("x", encoding="utf-8") as handle:
             json.dump(record, handle, ensure_ascii=False)
             handle.write("\n")
-        launcher = launcher_module.AgentLauncher(Path(registry_dir), directory.parent)
+        launcher = launcher_module.AgentLauncher(Path(registry_dir), work_root)
         try:
             result = launcher.start(
                 claim["dispatch_name"], provider=provider, model=model,
@@ -428,7 +429,8 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
                 permission_mode="restricted", headless=True,
                 extra_metadata={"ticket_master_session_id": session_id,
                                 "ticket_master_claim_id": claim["claim_id"],
-                                "ticket_master_role": claim["role"]},
+                                "ticket_master_role": claim["role"],
+                                "ticket_master_work_root": str(work_root)},
             )
         except Exception as exc:
             return {"status": "pending-reconcile", "reason": f"launcher raised {type(exc).__name__}"}
@@ -439,9 +441,9 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         # This is the existing native registry/PID/birth verifier, not a new
         # acceptance rule or an acceptance based on StartResult alone.
         try:
-            ack_config = {**(config or {}), "agent_launcher_work_root": str(directory.parent)}
             accepted = session_boot.companion_ack(
-                session_id, f"agent-launcher:{claim['dispatch_name']}", config=ack_config)
+                session_id, f"agent-launcher:{claim['dispatch_name']}",
+                config=dispatch_config)
         except (ValueError, OSError) as exc:
             return {"status": "pending-reconcile", "reason": f"native ACK unavailable: {exc}"}
         return {"status": "accepted", "claim_id": claim["claim_id"],

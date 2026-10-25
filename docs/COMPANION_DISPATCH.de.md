@@ -74,7 +74,7 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
 6. `python -X utf8 lib/session_boot.py --dispatch-companion <SESSION_ID>
    --admission-file <PRIVATE_JSON>` führt nach erneuter Prüfung genau einen
    SDK-Startversuch aus. Vor dem Aufruf wird ein exklusiver Attempt-Beleg
-   im gemeinsamen Workroot-Ledger angelegt; dessen Dateilock serialisiert
+   im gemeinsamen OS-Nutzer-Ledger angelegt; dessen Dateilock serialisiert
    auch Starts aus unterschiedlichen Sitzungsprofilordnern. Unter demselben
    Lock werden vorhandene Claims und Attempts mit der AgentLauncher-Registry
    abgeglichen.
@@ -83,9 +83,15 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
    Slot entstehen. Die tatsächlichen Management- und Quotenmesszeiten müssen
    nach früheren Startversuchen liegen; ein neues `issued_at` verjüngt keine
    alte Messung. Der SDK-Name ist ausschließlich
-   der Claim-`dispatch_name`; die drei `ticket_master_*`-Metadaten werden
-   unverändert übergeben. Erst `StartResult.ok` plus der **bestehende**
-   `companion_ack`-Registryprüfer ergibt `accepted`.
+   der Claim-`dispatch_name`. Der SDK erhält den zuvor kanonisch aufgelösten
+   `agent_launcher_work_root` als seinen Arbeitsort, niemals den OS-Ledgerort.
+   Neben Session, Claim und Rolle wird dieser Arbeitsort als
+   `ticket_master_work_root` in der nativen Registry-Metadatenbindung geprüft.
+   SDK-Aufruf und ACK verwenden denselben vor dem Start festgehaltenen
+   Konfigurationsstand; eine nachträgliche Änderung des vom Aufrufer
+   übergebenen Dictionaries verschiebt weder Arbeitsort noch ACK. Erst
+   `StartResult.ok` plus der **bestehende** `companion_ack`-Registryprüfer
+   ergibt `accepted`.
 
 `pending-reconcile` bedeutet: Ein Start könnte stattgefunden haben. Den
 eigenen Attempt, Claim und AgentLauncher-Registry-/Prozessbeleg prüfen; **kein
@@ -94,7 +100,7 @@ Löschen. Bei eindeutig fehlgeschlagenem Vorstart kann die zuständige
 Steuerung einen neuen, dokumentierten Wiederanlauf planen; die Software
 entfernt einen unklaren Attempt nicht automatisch. Ein späterer Admission-
 Beleg muss nach dem vorherigen Startversuch neu gemessen werden. Die
-AgentLauncher-Registry wird separat im selben Reservationsbereich gelesen,
+AgentLauncher-Registry wird unter der gemeinsamen Reservation separat gelesen,
 weil native Chat-Verwaltung SDK-Prozesse nicht zuverlässig enthält. Nur ein
 identitätsgebunden laufender Child wird gezählt; eine nachweislich beendete
 PID/Geburtszeitbindung gibt den Platz frei. Unklare Prozesszustände bleiben
