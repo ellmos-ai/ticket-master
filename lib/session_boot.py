@@ -310,8 +310,38 @@ def report(config: dict[str, Any] | None = None) -> dict[str, Any]:
                         "rule": "Concrete version-linked user approval may replace model reviews; publication requires explicit publication-linked approval."}}
 
 
-def _ledger_dir(profile: dict[str, Any]) -> Path:
-    return Path(profile["source"]).parent / "session-claims"
+def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -> Path:
+    """Keep SDK claims and attempts under one canonical workroot across profiles.
+
+    A claim may still be prepared without an SDK workroot. Such a local claim
+    cannot be dispatched after switching to a configured workroot; it must be
+    reconciled rather than silently treated as a claim in the shared ledger.
+    """
+    raw = (config or {}).get("agent_launcher_work_root")
+    if raw is None:
+        return Path(profile["source"]).parent / "session-claims"
+    if not isinstance(raw, str) or not raw.strip():
+        raise ValueError("agent-launcher work root is not configured")
+    path = config_paths.resolve_config_path(raw)
+    if path is None or not path.is_absolute():
+        raise ValueError("agent-launcher work root must be absolute")
+    try:
+        root = path.resolve(strict=True) if path else None
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("agent-launcher work root is not resolvable") from exc
+    if root is None or not root.is_dir():
+        raise ValueError("agent-launcher work root is not a directory")
+    directory = root / ".ticket-master-companion"
+    legacy = Path(profile["source"]).parent / "session-claims"
+    try:
+        if legacy != directory and legacy.exists() and any(legacy.iterdir()):
+            raise ValueError("legacy companion ledger requires reconciliation")
+        directory.mkdir(mode=0o700, exist_ok=True)
+        if not directory.is_dir() or directory.resolve(strict=True) != directory:
+            raise ValueError("companion coordination directory is redirected")
+    except (OSError, RuntimeError) as exc:
+        raise ValueError("companion coordination directory is unavailable") from exc
+    return directory
 
 
 def _dispatch_name(session_id: str, claim_id: str) -> str:
@@ -375,7 +405,7 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
     profile = session_profile.effective_settings(config)
     if not profile["settings"]["companion"]["enabled"]:
         return {"status": "disabled"}
-    directory = _ledger_dir(profile)
+    directory = _ledger_dir(profile, config)
     directory.mkdir(parents=True, exist_ok=True)
     own = directory / f"{session_id}.json"
     accepted = []
@@ -409,7 +439,7 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
 def companion_ack(session_id: str, receipt: str, *, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if not SESSION_ID.fullmatch(session_id) or not receipt.strip():
         raise ValueError("session ID and real dispatch receipt required")
-    own = _ledger_dir(session_profile.effective_settings(config)) / f"{session_id}.json"
+    own = _ledger_dir(session_profile.effective_settings(config), config) / f"{session_id}.json"
     item = json.loads(own.read_text(encoding="utf-8"))
     if (not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2"
             or item.get("session_id") != session_id):

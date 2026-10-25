@@ -11,6 +11,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from filelock import FileLock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import companion_dispatch as dispatch  # noqa: E402
@@ -24,7 +25,10 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
                                    "settings": {"companion": {"enabled": True, "max_luna": 1}}}),
                        encoding="utf-8")
     monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
-    claim = session_boot.companion_claim("test-session") if compatibility == "active" else None
+    config = {"session_profile_path": str(profile),
+              "agent_launcher_registry_dir": str(tmp_path / "registry"),
+              "agent_launcher_work_root": str(tmp_path)}
+    claim = session_boot.companion_claim("test-session", config=config) if compatibility == "active" else None
     prompt = tmp_path / "TASKWRITER.txt"
     prompt.write_text("Authorized TASKPLAN role\n", encoding="utf-8")
     (tmp_path / "registry").mkdir()
@@ -78,8 +82,7 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
         SimpleNamespace(get_workflow_prompt_path=lambda role: prompt),
         SimpleNamespace(AgentLauncher=FakeLauncher, AgentProcessRegistry=FakeRegistry),
         SimpleNamespace(FileLock=FakeLock)))
-    return claim, calls, {"agent_launcher_registry_dir": str(tmp_path / "registry"),
-                          "agent_launcher_work_root": str(tmp_path)}
+    return claim, calls, config
 
 
 def _admission(claim, *, now=None):
@@ -199,7 +202,7 @@ def test_admission_errors_never_reach_sdk(tmp_path, monkeypatch, mutation):
     with pytest.raises(ValueError):
         dispatch.dispatch_companion("test-session", _file(tmp_path, admission), config=config)
     assert calls == []
-    assert not list((tmp_path / "session-claims").glob("*.dispatch-attempt"))
+    assert not list((tmp_path / ".ticket-master-companion").glob("*.dispatch-attempt"))
 
 
 def test_failed_or_ambiguous_start_keeps_pending_without_retry(tmp_path, monkeypatch):
@@ -218,7 +221,7 @@ def test_failed_or_ambiguous_start_keeps_pending_without_retry(tmp_path, monkeyp
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert len(calls) == 1
-    assert session_boot.companion_claim("test-session")["status"] == "pending"
+    assert session_boot.companion_claim("test-session", config=config)["status"] == "pending"
 
 
 def test_disabled_profile_never_loads_runtime_or_admission(tmp_path, monkeypatch):
@@ -238,7 +241,7 @@ def test_failed_native_ack_stays_pending_and_cannot_double_start(tmp_path, monke
 
 def test_second_session_requires_new_management_readback_after_attempt(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     seen = datetime.now(timezone.utc)
     monkeypatch.setattr(session_boot, "companion_ack",
                         lambda *args, **kwargs: {"acceptance_evidence": {"pid": 123}})
@@ -251,7 +254,7 @@ def test_second_session_requires_new_management_readback_after_attempt(tmp_path,
 
 
 def _prior_attempt(tmp_path, claim, *, created):
-    path = tmp_path / "session-claims" / f"{claim['session_id']}.dispatch-attempt"
+    path = tmp_path / ".ticket-master-companion" / f"{claim['session_id']}.dispatch-attempt"
     path.write_text(json.dumps({"schema": dispatch.ATTEMPT_SCHEMA,
                                 "session_id": claim["session_id"],
                                 "claim_id": claim["claim_id"],
@@ -262,7 +265,7 @@ def _prior_attempt(tmp_path, claim, *, created):
 
 def test_fresh_native_snapshot_still_counts_live_sdk_child(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
     registry = dispatch._runtime()[3].AgentProcessRegistry
     registry.records[first["dispatch_name"]] = {
@@ -282,14 +285,14 @@ def test_fresh_native_snapshot_still_counts_live_sdk_child(tmp_path, monkeypatch
 def test_real_claim_ack_then_fresh_native_snapshot_still_blocks_second_sdk_child(
         tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     monkeypatch.setitem(sys.modules, "agent_launcher", dispatch._runtime()[3])
     assert dispatch.dispatch_companion(first["session_id"],
                                        _file(tmp_path, _admission(first)),
                                        config=config)["status"] == "accepted"
-    assert session_boot.companion_claim(first["session_id"])["status"] == "accepted"
+    assert session_boot.companion_claim(first["session_id"], config=config)["status"] == "accepted"
     # Isolate R1 from R2 even on Windows clocks with coarse timestamp ticks.
-    prior = tmp_path / "session-claims" / f"{first['session_id']}.dispatch-attempt"
+    prior = tmp_path / ".ticket-master-companion" / f"{first['session_id']}.dispatch-attempt"
     record = json.loads(prior.read_text(encoding="utf-8"))
     record["created_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
     prior.write_text(json.dumps(record), encoding="utf-8")
@@ -301,7 +304,7 @@ def test_real_claim_ack_then_fresh_native_snapshot_still_blocks_second_sdk_child
 
 def test_proven_ended_sdk_child_frees_slot_after_new_measurement(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
     registry = dispatch._runtime()[3].AgentProcessRegistry
     registry.records[first["dispatch_name"]] = {
@@ -347,7 +350,7 @@ def test_pid_birth_probe_frees_only_proven_termination(monkeypatch):
 
 def test_unknown_prior_attempt_cannot_prove_sdk_slot_free(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
     with pytest.raises(ValueError, match="cannot be reconciled"):
         dispatch.dispatch_companion(second["session_id"],
@@ -357,7 +360,7 @@ def test_unknown_prior_attempt_cannot_prove_sdk_slot_free(tmp_path, monkeypatch)
 
 def test_reissued_wrapper_cannot_refresh_prestart_measurement(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     measured = datetime.now(timezone.utc) - timedelta(seconds=30)
     _prior_attempt(tmp_path, first, created=measured + timedelta(seconds=10))
     admission = _admission(second, now=measured)
@@ -371,7 +374,7 @@ def test_reissued_wrapper_cannot_refresh_prestart_measurement(tmp_path, monkeypa
 
 def test_new_management_with_old_quota_measurement_cannot_follow_attempt(tmp_path, monkeypatch):
     first, calls, config = _fixture(tmp_path, monkeypatch)
-    second = session_boot.companion_claim("next-session")
+    second = session_boot.companion_claim("next-session", config=config)
     old = datetime.now(timezone.utc) - timedelta(seconds=30)
     _prior_attempt(tmp_path, first, created=old + timedelta(seconds=10))
     admission = _admission(second)
@@ -458,7 +461,7 @@ def test_uncertain_sdk_exception_is_not_retried(tmp_path, monkeypatch):
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert len(calls) == 1
-    assert session_boot.companion_claim("test-session")["status"] == "pending"
+    assert session_boot.companion_claim("test-session", config=config)["status"] == "pending"
 
 
 def test_parallel_same_claim_cannot_double_start(tmp_path, monkeypatch):
@@ -471,7 +474,7 @@ def test_parallel_same_claim_cannot_double_start(tmp_path, monkeypatch):
         def start(self, name, **kwargs):
             result = super().start(name, **kwargs)
             entered.set()
-            assert release.wait(5)
+            assert release.wait(15)
             return result
 
     monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3],
@@ -488,3 +491,103 @@ def test_parallel_same_claim_cannot_double_start(tmp_path, monkeypatch):
         release.set()
         assert first.result(timeout=5)["status"] == "accepted"
     assert len(calls) == 1
+
+
+def _other_profile(tmp_path, config):
+    second_profile = tmp_path / "other" / "profile.json"
+    second_profile.parent.mkdir()
+    second_profile.write_bytes(Path(config["session_profile_path"]).read_bytes())
+    # The lexical alias must still select the same canonical SDK workroot.
+    return {**config, "session_profile_path": str(second_profile),
+            "agent_launcher_work_root": str(tmp_path) + "/."}
+
+
+def test_cross_profile_parallel_claims_share_real_file_reservation(tmp_path, monkeypatch):
+    first, calls, config_a = _fixture(tmp_path, monkeypatch)
+    monkeypatch.delenv("TM_SESSION_PROFILE")
+    config_b = _other_profile(tmp_path, config_a)
+    second = session_boot.companion_claim("other-session", config=config_b)
+    assert session_boot._ledger_dir(session_boot.session_profile.effective_settings(config_a), config_a) == (
+        session_boot._ledger_dir(session_boot.session_profile.effective_settings(config_b), config_b))
+    runtime = dispatch._runtime()
+    entered, release = threading.Event(), threading.Event()
+
+    class SlowLauncher(runtime[3].AgentLauncher):
+        def start(self, name, **kwargs):
+            entered.set()  # Before the SDK publishes its registry record.
+            assert release.wait(15)
+            return super().start(name, **kwargs)
+
+    sdk = SimpleNamespace(AgentLauncher=SlowLauncher,
+                          AgentProcessRegistry=runtime[3].AgentProcessRegistry)
+    monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3], sdk,
+                        SimpleNamespace(FileLock=FileLock)))
+    monkeypatch.setitem(sys.modules, "agent_launcher", sdk)
+    first_admission = tmp_path / "first.admission.json"
+    second_admission = tmp_path / "second.admission.json"
+    first_admission.write_text(json.dumps(_admission(first)), encoding="utf-8")
+    second_admission.write_text(json.dumps(_admission(second)), encoding="utf-8")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first_run = pool.submit(dispatch.dispatch_companion, first["session_id"],
+                                first_admission, config=config_a)
+        assert entered.wait(15), "valid first dispatch never reached SDK"
+        with pytest.raises(ValueError, match="reservation unavailable"):
+            dispatch.dispatch_companion(second["session_id"], second_admission,
+                                        config=config_b)
+        assert calls == []  # The second claim did not enter the SDK.
+        release.set()
+        assert first_run.result(timeout=20)["status"] == "accepted"
+    assert len(calls) == 1
+    assert session_boot.companion_claim(first["session_id"], config=config_b)["status"] == "accepted"
+    prior = tmp_path / ".ticket-master-companion" / f"{first['session_id']}.dispatch-attempt"
+    record = json.loads(prior.read_text(encoding="utf-8"))
+    record["created_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    prior.write_text(json.dumps(record), encoding="utf-8")
+    second_admission.write_text(json.dumps(_admission(second)), encoding="utf-8")
+    with pytest.raises(ValueError, match="no attested companion slot"):
+        dispatch.dispatch_companion(second["session_id"], second_admission,
+                                    config=config_b)
+    assert len(calls) == 1
+
+
+def test_cross_profile_uncertain_attempt_remains_visible(tmp_path, monkeypatch):
+    first, calls, config_a = _fixture(tmp_path, monkeypatch)
+    monkeypatch.delenv("TM_SESSION_PROFILE")
+    config_b = _other_profile(tmp_path, config_a)
+    second = session_boot.companion_claim("other-session", config=config_b)
+    runtime = dispatch._runtime()
+
+    class UncertainLauncher(runtime[3].AgentLauncher):
+        def start(self, name, **kwargs):
+            calls.append((name, kwargs))
+            raise RuntimeError("unknown before registry publication")
+
+    sdk = SimpleNamespace(AgentLauncher=UncertainLauncher,
+                          AgentProcessRegistry=runtime[3].AgentProcessRegistry)
+    monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3], sdk,
+                        SimpleNamespace(FileLock=FileLock)))
+    first_file = tmp_path / "first.admission.json"
+    second_file = tmp_path / "second.admission.json"
+    first_file.write_text(json.dumps(_admission(first)), encoding="utf-8")
+    assert dispatch.dispatch_companion(first["session_id"], first_file,
+                                       config=config_a)["status"] == "pending-reconcile"
+    assert len(calls) == 1
+    prior = tmp_path / ".ticket-master-companion" / f"{first['session_id']}.dispatch-attempt"
+    record = json.loads(prior.read_text(encoding="utf-8"))
+    record["created_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    prior.write_text(json.dumps(record), encoding="utf-8")
+    second_file.write_text(json.dumps(_admission(second)), encoding="utf-8")
+    with pytest.raises(ValueError, match="cannot be reconciled"):
+        dispatch.dispatch_companion(second["session_id"], second_file,
+                                    config=config_b)
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("root", ["relative-work-root", "missing-work-root"])
+def test_unresolved_sdk_workroot_never_creates_a_separate_claim_ledger(
+        tmp_path, monkeypatch, root):
+    _, calls, config = _fixture(tmp_path, monkeypatch)
+    config["agent_launcher_work_root"] = root if root.startswith("relative") else str(tmp_path / root)
+    with pytest.raises(ValueError, match="work root"):
+        session_boot.companion_claim("other-session", config=config)
+    assert calls == []

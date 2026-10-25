@@ -150,10 +150,10 @@ def _validate_admission(admission: Any, claim: dict[str, Any], profile: dict[str
         raise ValueError("task/lock/scope gate is not attested")
 
 
-def _claim(session_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+def _claim(session_id: str, directory: Path) -> dict[str, Any]:
     if not session_boot.SESSION_ID.fullmatch(session_id):
         raise ValueError("invalid session ID")
-    path = session_boot._ledger_dir(profile) / f"{session_id}.json"
+    path = directory / f"{session_id}.json"
     item = json.loads(path.read_text(encoding="utf-8"))
     if (not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2"
             or item.get("session_id") != session_id or item.get("role") not in session_boot.ROLES
@@ -320,7 +320,11 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
     profile = session_profile.effective_settings(config)
     if not profile["settings"]["companion"]["enabled"]:
         return {"status": "disabled"}
-    claim = _claim(session_id, profile)
+    work_root = (config or {}).get("agent_launcher_work_root")
+    if not isinstance(work_root, str) or not work_root.strip():
+        raise ValueError("agent-launcher work root is not configured")
+    directory = session_boot._ledger_dir(profile, config)
+    claim = _claim(session_id, directory)
     if claim["status"] == "accepted":
         return {"status": "accepted", "claim_id": claim["claim_id"]}
     if claim["status"] != "pending":
@@ -357,11 +361,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         registry_dir = Path.home() / ".agent-launcher" / "registry"
     elif not isinstance(registry_dir, str) or not registry_dir:
         raise ValueError("invalid agent-launcher registry directory")
-    work_root = (config or {}).get("agent_launcher_work_root")
-    if not isinstance(work_root, str) or not work_root or not Path(work_root).is_dir():
-        raise ValueError("agent-launcher work root is not configured")
-    directory = session_boot._ledger_dir(profile)
-    # companion_claim() reads every *.json in this directory as a claim.
+    # companion_claim() reads every *.json in this shared directory as a claim.
     attempt = directory / f"{session_id}.dispatch-attempt"
     global_lock = filelock_module.FileLock(str(directory / ".companion-dispatch.lock"))
     try:
@@ -369,7 +369,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
     except Exception as exc:
         raise ValueError("companion dispatch reservation unavailable") from exc
     try:
-        claim = _claim(session_id, profile)
+        claim = _claim(session_id, directory)
         if claim["status"] != "pending" or attempt.exists():
             return {"status": "pending-reconcile", "claim_id": claim["claim_id"]}
         # The measurement, not a newly issued wrapper, must follow every
@@ -414,7 +414,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         with attempt.open("x", encoding="utf-8") as handle:
             json.dump(record, handle, ensure_ascii=False)
             handle.write("\n")
-        launcher = launcher_module.AgentLauncher(Path(registry_dir), Path(work_root))
+        launcher = launcher_module.AgentLauncher(Path(registry_dir), directory.parent)
         try:
             result = launcher.start(
                 claim["dispatch_name"], provider=provider, model=model,
@@ -439,8 +439,9 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         # This is the existing native registry/PID/birth verifier, not a new
         # acceptance rule or an acceptance based on StartResult alone.
         try:
+            ack_config = {**(config or {}), "agent_launcher_work_root": str(directory.parent)}
             accepted = session_boot.companion_ack(
-                session_id, f"agent-launcher:{claim['dispatch_name']}", config=config)
+                session_id, f"agent-launcher:{claim['dispatch_name']}", config=ack_config)
         except (ValueError, OSError) as exc:
             return {"status": "pending-reconcile", "reason": f"native ACK unavailable: {exc}"}
         return {"status": "accepted", "claim_id": claim["claim_id"],

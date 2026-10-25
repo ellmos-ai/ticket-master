@@ -20,7 +20,8 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
   installierten Paket.
 - AgentLauncher samt seinen Pflichtabhängigkeiten ist in **demselben**
   Interpreter installiert. In `ticket-master.config.json` zeigt
-  `agent_launcher_work_root` auf ein vorhandenes privates Arbeitsverzeichnis;
+  `agent_launcher_work_root` vor dem Claim auf ein vorhandenes privates,
+  absolut adressiertes Arbeitsverzeichnis;
   `agent_launcher_registry_dir` ist optional (sonst Nutzerstandard). Die
   Paketinstallation und Profilaktivierung erfolgen getrennt nach Review.
 - Der Steueragent hat einen konkreten TASKPLAN-Auftrag mit gültigen Task-,
@@ -33,6 +34,12 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
 1. `python -X utf8 lib/session_boot.py --claim-companion <SESSION_ID>` liefert
    `claim_id`, `role` und `dispatch_name`. Ein bereits offener Claim wird
    wiedergegeben. Vor einem weiteren Versuch ist dessen Zustand zu klären.
+   Bei konfiguriertem SDK-Workroot liegen Claim und Attempt gemeinsam unter
+   dessen kanonisch aufgelöstem `.ticket-master-companion/`: verschiedene
+   Profilordner und zulässige Pfad-Aliasse desselben Workroots teilen damit
+   Rotation, persistente Sicht und Reservation. Ein vor der Konfiguration
+   angelegtes profilgebundenes Ledger muss zuerst geklärt werden; es wird
+   nicht still in den gemeinsamen Bereich übernommen.
 2. Der Steueragent schreibt einen **privaten** Admission-Beleg. Schema:
    `ticket-master.companion-admission.v1`; Felder `session_id`, `claim_id`,
    `role`, `provider`, `model`, `model_class: low-medium`, `issued_at`,
@@ -63,9 +70,10 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
 6. `python -X utf8 lib/session_boot.py --dispatch-companion <SESSION_ID>
    --admission-file <PRIVATE_JSON>` führt nach erneuter Prüfung genau einen
    SDK-Startversuch aus. Vor dem Aufruf wird ein exklusiver Attempt-Beleg
-   unter dem privaten `session-claims`-Verzeichnis angelegt; ein kurzer
-   gemeinsamer Dateilock serialisiert Starts. Unter demselben Lock werden
-   vorhandene Claims und Attempts mit der AgentLauncher-Registry abgeglichen.
+   im gemeinsamen Workroot-Ledger angelegt; dessen Dateilock serialisiert
+   auch Starts aus unterschiedlichen Sitzungsprofilordnern. Unter demselben
+   Lock werden vorhandene Claims und Attempts mit der AgentLauncher-Registry
+   abgeglichen.
    Ein laufender eigener SDK-Child zählt zusätzlich zur nativen Chat-Belegung;
    ein unlesbarer Registryeintrag oder ungewisser Start lässt keinen freien
    Slot entstehen. Die tatsächlichen Management- und Quotenmesszeiten müssen
@@ -92,8 +100,11 @@ als Annahme verbucht.
 ## Späterer isolierter Runtime-Kandidat
 
 Nach unabhängigem Source-GO kann ein ausdrücklich beaufsichtigter Test ein
-separates privates Profil mit `runtime_compatibility: active` und eigenem
-Claimledger nutzen. `TM_SESSION_PROFILE` hat Vorrang vor
+separates privates Profil mit `runtime_compatibility: active` nutzen. Bei
+demselben kanonischen SDK-Workroot teilt es das Claim-/Attemptledger mit dem
+persönlichen Profil; ein anderer Workroot belegt keinen gemeinsamen
+Reservationsbereich und darf nicht als isolierender Freislot missverstanden
+werden. `TM_SESSION_PROFILE` hat Vorrang vor
 `session_profile_path` in der Konfiguration; der steuernde Agent muss diesen
 Wert für den konkreten Prozess nachweisen. `TASKPLAN_CONFIG` wählt eine
 isolierte TASKPLAN-Konfiguration mit explizitem Rollenmodell. Das persönliche
