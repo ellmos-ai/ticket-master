@@ -38,7 +38,7 @@ def load_profile(config: dict[str, Any] | None = None) -> dict[str, Any]:
     compatibility = data.get("runtime_compatibility", "pending")
     if compatibility not in {"pending", "active"}:
         raise ValueError(f"invalid runtime_compatibility: {path}")
-    allowed = {"decision_draw", "attention", "audit", "companion", "umbruch"}
+    allowed = {"approval_routing", "decision_draw", "attention", "audit", "companion", "umbruch"}
     settings = data.get("settings")
     if not isinstance(settings, dict) or set(settings) - allowed:
         raise ValueError(f"invalid session profile settings: {path}")
@@ -46,6 +46,20 @@ def load_profile(config: dict[str, Any] | None = None) -> dict[str, Any]:
         value = settings.get(key, {})
         if not isinstance(value, dict) or not isinstance(value.get("enabled", False), bool):
             raise ValueError(f"invalid {key} settings: {path}")
+    routing = settings.get("approval_routing", {})
+    if not isinstance(routing.get("all_user_approvals_as_tickets", False), bool):
+        raise ValueError("approval_routing.all_user_approvals_as_tickets must be boolean")
+    for key in ("decision_root", "decision_index_module"):
+        if key in routing and not isinstance(routing[key], str):
+            raise ValueError(f"approval_routing.{key} must be a path string")
+    approval_sources = routing.get("approval_sources", [])
+    if not isinstance(approval_sources, list) or any(
+        not isinstance(row, dict) or not isinstance(row.get("name"), str)
+        or not isinstance(row.get("path"), str)
+        or row.get("connector") not in {"canonical_index", "manual"}
+        for row in approval_sources
+    ):
+        raise ValueError("approval_routing.approval_sources must name paths and connectors")
     attention = settings.get("attention", {})
     decisions = settings.get("decision_draw", {})
     decision_paths = decisions.get("sources", [])
@@ -70,6 +84,7 @@ def load_profile(config: dict[str, Any] | None = None) -> dict[str, Any]:
 def effective_settings(config: dict[str, Any] | None = None) -> dict[str, Any]:
     loaded = load_profile(config)
     values = {
+        "approval_routing": {"enabled": False, "all_user_approvals_as_tickets": False},
         "decision_draw": {"enabled": False},
         "attention": {"enabled": False, "lookback_hours": 24, "filters": ["error", "blocked", "decision", "deadline"], "sources": []},
         "audit": {"enabled": False},

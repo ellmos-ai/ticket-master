@@ -576,9 +576,37 @@ profile, keep the historical boot behavior. Report invalid profiles and
 unreadable sources; never imply complete coverage. Keep personal data and
 decision IDs out of public defaults.
 
+When `approval_routing.enabled`, check the **live** canonical DecisionIndex
+and its active contract first. Its entries are candidates, not new approval
+requirements. For each approval question from an attached source, and for any
+existing `USER` ticket, check the current project rule and standing authority,
+prior direct user decisions, profile/memory and, only for an authorized
+purpose, `decision-avatar`. Avatar confidence predicts preference; it never
+grants execution authority. Record `checked_hit`, `checked_nohit`, `unknown`
+or `not_applicable` and the source/readback for each check. Expired, revoked,
+conflicting or out-of-scope evidence grants nothing. `USER` status alone is
+not proof. Investigate unknown sources before escalating. The read-only
+`python -X utf8 lib/session_boot.py --route-evidence <private-JSON>` can
+classify a documented case without changing the queue.
+
+Perform or route work already covered by current authority with its source;
+send technical blockers to workers. Only a concrete user choice that remains
+after those checks enters the canonical ticket tree. Search lifecycle tickets
+for its D-ID or action+version+recipient; reuse an existing ticket, otherwise
+use `python -X utf8 lib/session_boot.py --plan-approval-ticket <private-JSON>
+--tickets-dir <canonical-queue>` to check canonical lifecycle
+files. Reconcile `duplicate-conflict` first. Put its D-ID/`APPROVAL-REF` marker
+into the ticket body, create with `ticket_writer.py`, and follow normal
+triage/claim routing. Do
+not create a parallel approval register. This applies to outreach, Zenodo and
+UMBRUCH alike; category names do not make approval mandatory. Zenodo follow-on
+articles are often covered by current project rules. Disclose missing producer
+connectors in the source report and inspect their project sources manually;
+do not claim complete automated ingestion.
+
 For `decision_draw.enabled`, verify candidates against the current chat,
-project registers, decided archive and ticket status. Present only genuinely
-open decisions and approvals, including outreach, Zenodo and UMBRUCH, as one
+project registers, decided archive, authority and ticket status. Present only
+remaining genuinely open decisions and approvals as one
 recommended coherent picture under `decision-draw`. Bind it to IDs, versions
 and recipients, link details and alternatives, and request explicit total
 acceptance. Transfer partial corrections only via `decision-briefing` phase 4.

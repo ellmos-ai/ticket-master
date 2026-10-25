@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,13 +62,155 @@ def test_attention_utc_window_dedup_and_missing_coverage(tmp_path):
     assert "line timestamps" in result["time_basis"]
 
 
-def test_decision_candidates_do_not_claim_acceptance(tmp_path):
-    source = tmp_path / "to-decide.txt"
-    source.write_text("## D-20261025-001 OFFEN\nGETROFFEN D-20261024-002\n", encoding="utf-8")
-    result = session_boot.decision_sources({"enabled": True, "sources": [str(source)]})
-    assert result["status"] == "candidates-only"
-    assert len(result["sources"][0]["candidates"]) == 2
-    assert "Check current chat" in result["caveat"]
+def test_decision_candidates_use_live_canonical_parser(tmp_path):
+    module = tmp_path / "decisions_index.py"
+    module.write_text(
+        "def build_index(root):\n"
+        "    return {'schema':'decisions.index/1', 'active_contract':{'valid':True},\n"
+        "      'entries':[{'domain':'active','decision_ready':True,'id':'D-20261025-001',\n"
+        "      'title':'Open','source_file':'TO-DECIDE-USER.txt','source_line':3},\n"
+        "      {'domain':'done','decision_ready':False,'id':'D-20261024-002'}]}\n",
+        encoding="utf-8",
+    )
+    result = session_boot.decision_sources({"enabled": True},
+        {"decision_index_module": str(module), "decision_root": str(tmp_path)})
+    assert result["status"] == "canonical-current-candidates"
+    assert [item["id"] for item in result["candidates"]] == ["D-20261025-001"]
+    assert "project authority" in result["caveat"]
+
+
+def test_invalid_active_decision_contract_never_yields_user_draw(tmp_path):
+    module = tmp_path / "broken_index.py"
+    module.write_text("def build_index(root):\n"
+        "    return {'schema':'decisions.index/1','active_contract':{'valid':False,'errors':['collision']},'entries':[]}\n",
+        encoding="utf-8")
+    result = session_boot.decision_sources({"enabled": True},
+        {"decision_index_module": str(module), "decision_root": str(tmp_path)})
+    assert result["status"] == "invalid-active-contract"
+    assert result["candidates"] == []
+
+
+def _approval_case(*, required=True):
+    checks = {key: {"status": "checked_nohit", "source": f"readback:{key}"}
+              for key in ("decision_index", "standing_authority", "profile_memory", "project_policy")}
+    checks["project_policy"] = {"status": "checked_hit", "source": "current project policy"}
+    return {"ticket_status": "USER", "subject": "Zenodo follow-on", "checks": checks,
+            "decision_requirement": {"status": "required" if required else "not_required",
+                                     "primary_source": "current project policy", "readback": "current"},
+            "authorities": []}
+
+
+def test_route_user_status_and_zenodo_keyword_do_not_create_approval_requirement():
+    result = session_boot.route_approval_case(_approval_case(required=False))
+    assert result["route"] == "authorized_work"
+    assert result["authority"]["kind"] == "project_rule"
+
+
+def test_route_current_scope_bound_grant_allows_work():
+    case = _approval_case()
+    case["checks"]["standing_authority"]["status"] = "checked_hit"
+    case["authorities"] = [{"kind": "standing_authority", "primary_source": "policy#12",
+                            "readback": "current", "scope_match": True, "valid": True,
+                            "revoked": False, "conflict": False}]
+    assert session_boot.route_approval_case(case)["route"] == "authorized_work"
+
+
+def test_route_technical_blocker_to_worker_before_user_draw():
+    case = _approval_case()
+    case["technical_blocker"] = True
+    assert session_boot.route_approval_case(case)["route"] == "worker"
+
+
+@pytest.mark.parametrize("change", [
+    {"valid": False}, {"revoked": True}, {"conflict": True}, {"scope_match": False},
+    {"readback": "stale"},
+])
+def test_invalid_authority_never_becomes_grant(change):
+    case = _approval_case()
+    case["checks"]["standing_authority"]["status"] = "checked_hit"
+    grant = {"kind": "standing_authority", "primary_source": "policy#old",
+             "readback": "current", "scope_match": True, "valid": True,
+             "revoked": False, "conflict": False}
+    grant.update(change)
+    case["authorities"] = [grant]
+    result = session_boot.route_approval_case(case)
+    assert result["route"] == "user_ticket"
+    assert result["ticket_required"] is True
+
+
+def test_avatar_high_is_prediction_not_authority():
+    case = _approval_case()
+    case["avatar"] = {"confidence": "high", "prediction": "yes"}
+    assert session_boot.route_approval_case(case)["route"] == "user_ticket"
+
+
+def test_unknown_or_unattributed_readback_cannot_grant_or_escalate():
+    case = _approval_case()
+    case["checks"]["decision_index"] = {"status": "unknown"}
+    assert session_boot.route_approval_case(case)["route"] == "investigate"
+    case = _approval_case()
+    case["checks"]["decision_index"].pop("source")
+    assert session_boot.route_approval_case(case)["route"] == "investigate"
+    case = _approval_case()
+    case["decision_requirement"]["readback"] = "stale"
+    assert session_boot.route_approval_case(case)["route"] == "investigate"
+    case = _approval_case(required=False)
+    case["checks"]["project_policy"]["source"] = "different policy"
+    assert session_boot.route_approval_case(case)["route"] == "investigate"
+
+
+def test_approval_source_coverage_distinguishes_manual_from_attached(tmp_path):
+    existing = tmp_path / "project"
+    existing.mkdir()
+    rows = session_boot.approval_source_coverage({"enabled": True, "approval_sources": [
+        {"name": "central", "path": str(existing), "connector": "canonical_index"},
+        {"name": "outreach", "path": str(existing), "connector": "manual"},
+        {"name": "zenodo", "path": str(tmp_path / "missing"), "connector": "manual"},
+    ]})
+    assert [row["status"] for row in rows] == [
+        "canonical-index-attached", "manual-check-required; no producer connector", "missing"]
+
+
+def test_approval_ticket_plan_reuses_canonical_lifecycle_ticket(tmp_path):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    inbox = tmp_path / "INBOX"
+    inbox.mkdir()
+    case = _approval_case()
+    case["approval_identity"] = {"decision_id": "D-20261025-001"}
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "create-with-ticket-writer"
+    ticket = inbox / "T-20261025-123456789.txt"
+    ticket.write_text("ID: T-20261025-123456789\nD-20261025-001\n", encoding="utf-8")
+    result = session_boot.approval_ticket_plan(case, tmp_path)
+    assert result["status"] == "reuse"
+    assert result["ticket"] == str(ticket)
+    case["decision_requirement"]["status"] = "not_required"
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "not-user-approval"
+
+
+def test_approval_ticket_plan_requires_concrete_action_identity(tmp_path):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    case = _approval_case()
+    case["approval_identity"] = {"action": "publish", "version": "v2"}
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "identity-missing"
+    case["approval_identity"]["recipient"] = "journal"
+    result = session_boot.approval_ticket_plan(case, tmp_path)
+    assert result["status"] == "create-with-ticket-writer"
+    assert result["marker"] == "APPROVAL-REF: publish | v2 | journal"
+
+
+def test_approval_ticket_cli_is_read_only(tmp_path):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    case = _approval_case()
+    case["approval_identity"] = {"decision_id": "D-20261025-001"}
+    evidence = tmp_path / "evidence.json"
+    evidence.write_text(json.dumps(case), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, "-X", "utf8", str(Path(session_boot.__file__)),
+         "--plan-approval-ticket", str(evidence), "--tickets-dir", str(tmp_path)],
+        capture_output=True, text=True, check=True,
+    )
+    assert json.loads(result.stdout)["status"] == "create-with-ticket-writer"
+    assert not (tmp_path / "INBOX").exists()
 
 
 def test_attention_extracts_bounded_evidence_from_long_canonical_log_line(tmp_path):

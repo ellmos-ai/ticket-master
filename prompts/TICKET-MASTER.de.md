@@ -593,9 +593,41 @@ der konfigurierten Quellen. Ohne Profil gilt das bisherige Bootverhalten.
 Fehler und unlesbare Quellen sichtbar nennen; keine Vollabdeckung behaupten.
 Persönliche Daten und Entscheidungs-IDs gehören nicht in Publicdefaults.
 
+Bei `approval_routing.enabled` zuerst den **aktuellen** kanonischen
+DecisionIndex aus dem Bericht und seinen Aktivvertrag prüfen. Seine Einträge
+sind Kandidaten, keine neuen Freigabepflichten. Für jede aus einer
+angeschlossenen Quelle auftauchende Genehmigungsfrage und jedes vorhandene
+`USER`-Ticket vor der Nutzereskalation konkrete Projektregel und Standing
+Authority, frühere direkte Nutzerentscheidungen, Profil/Memory und, nur bei
+zulässigem Zweck, `decision-avatar` prüfen. Avatar-Konfidenz ist eine
+Vorhersage, niemals Ausführungsautorität. Status je Quelle als `checked_hit`,
+`checked_nohit`, `unknown` oder `not_applicable` samt Pfad/Readback festhalten.
+Ungültige, widerrufene, abgelaufene, widersprüchliche oder fremde Geltungs-
+bereiche erteilen keine Autorität. Der reine `USER`-Status ist kein Beleg.
+Bei unklaren Quellen erst weiter untersuchen, keine Frage künstlich vorlegen.
+`python -X utf8 lib/session_boot.py --route-evidence <private-JSON>` kann
+diesen belegten Routingfall ohne Queue-Änderung klassifizieren.
+
+Gültig gedeckte Arbeit mit Quellenbeleg selbst lösen oder an einen passenden
+Worker routen; technische Blockaden an Worker statt User. Nur wenn nach der
+Prüfung eine **konkrete** Nutzerwahl nötig bleibt, im kanonischen Ticketbaum
+nach D-ID bzw. Aktion+Version+Adressat suchen und vorhandenes Ticket nutzen.
+`python -X utf8 lib/session_boot.py --plan-approval-ticket <private-JSON>
+--tickets-dir <kanonische-Queue>` kann die Lifecycle-Dateien
+lesend gegen diese Identität prüfen; bei `duplicate-conflict` zuerst klären.
+Fehlt es, den ausgegebenen D-ID-/`APPROVAL-REF`-Marker in den Tickettext
+übernehmen, über `ticket_writer.py` ein Ticket anlegen und nach normaler
+Triage/Claim-Reihenfolge routen. Kein zweites Approval-Register anlegen.
+Alle echten Nutzerfreigaben laufen so als Ticket, auch Outreach, Zenodo und
+UMBRUCH; die Kategorie allein erzwingt keine Freigabe. Insbesondere Zenodo-
+Folgeartikel sind nach aktueller Projektregel oft schon gedeckt. Fehlende
+Producer-Connectoren im Quellenbericht als Abdeckungslücke nennen und
+betroffene Projektquellen gezielt manuell prüfen; keinen vollständigen
+automatischen Eingang behaupten.
+
 Bei `decision_draw.enabled` Kandidaten gegen aktuellen Chat, Projektregister,
-Entscheidungsarchiv und Ticketstand prüfen. Nur tatsächlich offene Entscheidungen
-und Genehmigungen (auch Outreach, Zenodo, UMBRUCH) mit IDs, Versionen und
+Entscheidungsarchiv, Autorität und Ticketstand prüfen. Nur nach obigem Gate
+verbleibende offene Entscheidungen und Genehmigungen mit IDs, Versionen und
 Adressaten nach `decision-draw` als empfohlenes Gesamtbild vorlegen; Details
 und Alternativen verlinken und ausdrückliche Gesamtabnahme erbitten.
 Teilkorrekturen nur für eindeutig betroffene Posten über `decision-briefing`
