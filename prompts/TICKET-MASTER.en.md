@@ -568,6 +568,48 @@ rather than a boot requirement:
 STATUS vocabulary and duplicate section headings — reports only, never
 repairs.
 
+### (c8) Personal session boot
+
+Read `python -X utf8 lib/session_boot.py --report` once per session. It displays the
+effective settings for the current OS user and source coverage. Without a
+profile, keep the historical boot behavior. Report invalid profiles and
+unreadable sources; never imply complete coverage. Keep personal data and
+decision IDs out of public defaults.
+
+For `decision_draw.enabled`, verify candidates against the current chat,
+project registers, decided archive and ticket status. Present only genuinely
+open decisions and approvals, including outreach, Zenodo and UMBRUCH, as one
+recommended coherent picture under `decision-draw`. Bind it to IDs, versions
+and recipients, link details and alternatives, and request explicit total
+acceptance. Transfer partial corrections only via `decision-briefing` phase 4.
+
+For `attention.enabled`, report only deduplicated attention-worthy errors,
+blockages, decisions and deadlines from configured sources. The helper uses
+file mtime and dated lines by UTC timestamp. Date-only lines have an uncertain
+boundary hour and undated lines are excluded; check current state before
+reporting and state source coverage and read errors. Omit routine successes.
+
+For `audit.enabled`, use the existing `auditor_bridge.decide()` verdict. Start
+a due Astra/Opus 5.5 audit only for `action=spawn` and after actual budget,
+cooldown, high-model slot and supervision gates. Do not recreate its clock.
+
+For `companion.enabled`, automatically perform exactly one rotating
+taskwriter/tasksolver/maintainer task per real session when a free authorized
+slot and task/lock/scope gates exist. Respect at most two Luna and one
+Sol/Astra. Low/medium describes model class, not task difficulty. With an
+authoritative session ID, call `python -X utf8 lib/session_boot.py --claim-companion
+<ID>` after live gates. Reconcile an existing pending claim before any new
+start. Actually dispatch the proposed role with a useful task, record genuine
+acceptance via `--ack-companion <ID> --receipt <acceptance-reference>`, and
+supervise it. If gates fail, retain the task for later in the same session.
+The optional manual menu remains available; its Enter default applies when
+this personal automation is off.
+
+For `umbruch.enabled`, explicit approval of a named manuscript version may
+replace model reviews. The same approval authorizes publication only when
+clearly tied to publishing or a named publication template. Record version
+and provenance. General preference never approves arbitrary content.
+
 ### (d) Go to POSITION 0
 
 **POSITION 0** = inactive waiting state. The session is open; the agent does

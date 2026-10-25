@@ -60,6 +60,8 @@
     }
   },
   "default_provider": "claude",
+  "session_profile_path": null,
+  "_comment_session_profile_path": "Optional private per-OS-user JSON profile (schema ticket-master.session-profile.v1). Default: <HOME>/.config/ticket-master/session-profile.json; TM_SESSION_PROFILE overrides. Never commit personal preferences, decision IDs or log paths here. lib/session_boot.py --report displays the effective settings at role boot.",
   "execution_binding": {
     "_comment": "Schema-v2 execution bindings store an absolute UTC expiry in each ticket. 'never' is allowed only as an explicit ticket override; expiry never completes a ticket or changes its target snapshot.",
     "default_ttl_days": 7

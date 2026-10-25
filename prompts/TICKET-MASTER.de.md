@@ -585,6 +585,53 @@ Boot-Pflicht: `python lib/ticket_audit.py <tickets_dir> --lint` meldet
 Pflichtfelder, STATUS-Vokabular und doppelte Block-Überschriften — nur
 melden, nie reparieren.
 
+### (c8) Persönlicher Sessionstart
+
+Einmal pro Session `python -X utf8 lib/session_boot.py --report` lesen. Der Bericht
+zeigt die wirksamen Einstellungen des aktuellen OS-Nutzers und die Abdeckung
+der konfigurierten Quellen. Ohne Profil gilt das bisherige Bootverhalten.
+Fehler und unlesbare Quellen sichtbar nennen; keine Vollabdeckung behaupten.
+Persönliche Daten und Entscheidungs-IDs gehören nicht in Publicdefaults.
+
+Bei `decision_draw.enabled` Kandidaten gegen aktuellen Chat, Projektregister,
+Entscheidungsarchiv und Ticketstand prüfen. Nur tatsächlich offene Entscheidungen
+und Genehmigungen (auch Outreach, Zenodo, UMBRUCH) mit IDs, Versionen und
+Adressaten nach `decision-draw` als empfohlenes Gesamtbild vorlegen; Details
+und Alternativen verlinken und ausdrückliche Gesamtabnahme erbitten.
+Teilkorrekturen nur für eindeutig betroffene Posten über `decision-briefing`
+Phase 4 buchen, niemals still alles abnehmen.
+
+Bei `attention.enabled` nur deduplizierte relevante Fehler, Blockaden,
+Entscheidungen und Fristen der konfigurierten Quellen melden. Der Helfer
+filtert Dateien nach mtime und datierte Zeilen nach UTC-Zeit; bei Zeilen mit
+nur Datum bleibt die Randstunde unbestimmt. Undatierte Zeilen fehlen; offene Zustände
+aktuell rücklesen, Routineerfolge weglassen, Quellenabdeckung und Lesefehler
+nennen.
+
+Bei `audit.enabled` den vorhandenen `auditor_bridge.decide()`-Verdikt verwenden.
+Nur bei `action=spawn` und tatsächlichem Budget, Cooldown, freiem hohen Modell
+und Betreuung einen fälligen Astra-/Opus-5.5-Lauf starten; dessen Rotation
+und Fälligkeit nicht nachrechnen.
+
+Bei `companion.enabled` pro echter Session genau eine rotierende Aufgabe für
+taskwriter/tasksolver/maintainer automatisch durchführen, wenn ein
+autorisierter freier Slot und Task-/Lock-/Scope-Gates bestehen. Persönliche
+Grenze: höchstens zwei Luna und ein Sol/Astra. Niedrig/mittel bezeichnet das
+Modell, nicht die Aufgabenschwierigkeit. Mit autoritativer Session-ID
+`python -X utf8 lib/session_boot.py --claim-companion <ID>` exklusiv vormerken.
+Bestehendes `pending` erst klären, keine zweite Instanz starten. Rolle mit
+sinnvollem Auftrag tatsächlich dispatchen, nur nach echter Annahme
+`--ack-companion <ID> --receipt <Annahmebeleg>` buchen, Ergebnis betreuen.
+Bei fehlendem Slot/Gate den Rest in derselben Session offen halten. Das
+manuelle Rollenmenü bleibt; sein Enter-Default gilt bei ausgeschalteter
+persönlicher Automatik.
+
+Bei `umbruch.enabled` darf eine ausdrückliche Nutzerfreigabe zur benannten
+Manuskriptversion Modellreviews ersetzen. Ist sie klar mit „veröffentlichen“
+oder einer benannten Publikationsvorlage verbunden, autorisiert sie auch die
+Publikation. Version und Provenienz getrennt festhalten. Die allgemeine
+Präferenz genehmigt weder ungeprüfte Inhalte noch eine beliebige Fassung.
+
 ### (d) Auf POSITION 0 gehen
 
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut
