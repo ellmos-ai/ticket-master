@@ -214,6 +214,36 @@ def test_approval_ticket_plan_rejects_decision_prefix_collision(tmp_path):
     assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "reuse"
 
 
+@pytest.mark.parametrize("near_miss", ["D-20261025-0012", "D-20261025-001ä",
+                                           "D-20261025-001_", "D-20261025-001A",
+                                           "äD-20261025-001"])
+def test_approval_ticket_plan_requires_unicode_token_boundary(tmp_path, near_miss):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    inbox = tmp_path / "INBOX"
+    inbox.mkdir()
+    case = _approval_case()
+    case["approval_identity"] = {"decision_id": "D-20261025-001"}
+    ticket = inbox / "T-20261025-123456789.txt"
+    ticket.write_text(f"ID: T-20261025-123456789\n{near_miss}\n", encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "create-with-ticket-writer"
+    ticket.write_text(f"{near_miss}\n(D-20261025-001)\n", encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "reuse"
+    second = inbox / "T-20261025-987654321.txt"
+    second.write_text("D-20261025-001\n", encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "duplicate-conflict"
+
+
+def test_approval_ticket_plan_reuses_exact_longer_decision_id(tmp_path):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    inbox = tmp_path / "INBOX"
+    inbox.mkdir()
+    case = _approval_case()
+    case["approval_identity"] = {"decision_id": "D-20261025-0012"}
+    ticket = inbox / "T-20261025-123456789.txt"
+    ticket.write_text("Decision: (D-20261025-0012)\n", encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "reuse"
+
+
 def test_approval_ticket_plan_requires_concrete_action_identity(tmp_path):
     (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
     case = _approval_case()
@@ -295,6 +325,7 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("mutation", ["missing-sdk", "missing-api", "pending", "old-process",
+                                     "same-time",
                                      "wrong-session", "wrong-claim", "wrong-role",
                                      "dead-process", "unreadable-probe", "changed-record"])
 def test_companion_ack_requires_bound_native_readback(tmp_path, monkeypatch, mutation):
@@ -312,6 +343,8 @@ def test_companion_ack_requires_bound_native_readback(tmp_path, monkeypatch, mut
         metadata["launch_state"] = "pending"
     elif mutation == "old-process":
         metadata["process_create_time"] = birth - 10
+    elif mutation == "same-time":
+        metadata["process_create_time"] = datetime.fromisoformat(claim["created_at"]).timestamp()
     elif mutation == "wrong-session":
         metadata["ticket_master_session_id"] = "another-session"
     elif mutation == "wrong-claim":

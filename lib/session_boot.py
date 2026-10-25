@@ -268,7 +268,7 @@ def approval_ticket_plan(case: dict[str, Any], tickets_dir: str | Path) -> dict[
             if marker.startswith("D-"):
                 # A prefix such as D-...-001 must not reuse D-...-0012.
                 found = marker in re.findall(
-                    r"(?<![A-Za-z0-9_-])D-\d{8}-\d{3,}(?![A-Za-z0-9_-])", content
+                    r"(?<![\w-])D-\d{8}-\d{3,}(?![\w-])", content
                 )
             else:
                 found = marker in (line.strip() for line in content.splitlines())
@@ -350,7 +350,7 @@ def _verified_launcher_dispatch(item: dict[str, Any], receipt: str,
             or not isinstance(birth, (int, float)) or isinstance(birth, bool)
             or not math.isfinite(birth) or birth <= 0
             or created.tzinfo is None
-            or birth < created.timestamp()
+            or birth <= created.timestamp()
             or metadata.get("name") != name
             or metadata.get("ticket_master_session_id") != item["session_id"]
             or metadata.get("ticket_master_claim_id") != item["claim_id"]
