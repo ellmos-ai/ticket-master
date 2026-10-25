@@ -353,6 +353,22 @@ def _sdk_work_root(config: dict[str, Any] | None) -> Path:
     return root
 
 
+def _sdk_start_paths(work_root: Path, name: str, launcher: Any) -> tuple[Path, Path]:
+    """Pin the native SDK's child work directory and default launch CWD."""
+    try:
+        work_dir = launcher.work_dir_for(name)
+        if (not isinstance(work_dir, Path)
+                or work_dir != work_root / f"agent_{name}"
+                or (work_dir.exists() and not work_dir.is_dir())):
+            raise ValueError("agent-launcher child work directory differs")
+        cwd = work_dir.resolve()
+    except (AttributeError, OSError, RuntimeError) as exc:
+        raise ValueError("agent-launcher child work directory is unavailable") from exc
+    if not cwd.is_relative_to(work_root):
+        raise ValueError("agent-launcher child work directory escapes SDK root")
+    return work_dir, cwd
+
+
 def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -> Path:
     """Keep SDK claims and attempts in one per-user capacity domain.
 
@@ -425,9 +441,35 @@ def _verified_launcher_dispatch(item: dict[str, Any], receipt: str,
             or metadata.get("ticket_master_claim_id") != item["claim_id"]
             or metadata.get("ticket_master_role") != item["role"]):
         raise ValueError("agent-launcher receipt is not bound to this claim")
-    if ((config or {}).get("agent_launcher_work_root") is not None
-            and metadata.get("ticket_master_work_root") != str(_sdk_work_root(config))):
-        raise ValueError("agent-launcher receipt is not bound to the SDK work root")
+    if (config or {}).get("agent_launcher_work_root") is not None:
+        work_root = _sdk_work_root(config)
+        attempt_path = (_ledger_dir(session_profile.effective_settings(config), config)
+                        / f"{item['session_id']}.dispatch-attempt")
+        try:
+            attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("agent-launcher start intent is unavailable") from exc
+        work_dir = work_root / f"agent_{name}"
+        if (not isinstance(attempt, dict)
+                or attempt.get("schema") != "ticket-master.companion-dispatch-attempt.v1"
+                or attempt.get("session_id") != item["session_id"]
+                or attempt.get("claim_id") != claim_id
+                or attempt.get("dispatch_name") != name
+                or attempt.get("sdk_work_root") != str(work_root)
+                or attempt.get("expected_work_dir") != str(work_dir)
+                or not isinstance(attempt.get("expected_cwd"), str)
+                or metadata.get("ticket_master_work_root") != str(work_root)
+                or metadata.get("work_dir") != attempt["expected_work_dir"]
+                or metadata.get("cwd") != attempt["expected_cwd"]):
+            raise ValueError("agent-launcher receipt is not bound to SDK start intent")
+        try:
+            current_cwd = work_dir.resolve()
+            intended_cwd = Path(attempt["expected_cwd"])
+        except (OSError, RuntimeError) as exc:
+            raise ValueError("agent-launcher child work directory is unreadable") from exc
+        if (not intended_cwd.is_absolute() or not intended_cwd.is_relative_to(work_root)
+                or current_cwd != intended_cwd):
+            raise ValueError("agent-launcher child work directory changed or escaped")
     try:
         observed = registry.probe_running(name)
     except (AttributeError, OSError, ValueError) as exc:

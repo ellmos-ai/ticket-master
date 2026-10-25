@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -52,13 +54,19 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
     class FakeLauncher:
         def __init__(self, registry_dir, work_root):
             assert registry_dir == tmp_path / "registry"
-            assert work_root == tmp_path
+            assert work_root == Path(config["agent_launcher_work_root"]).resolve()
+            self.work_root = work_root
+
+        def work_dir_for(self, name):
+            return self.work_root / f"agent_{name}"
 
         def start(self, name, **kwargs):
             calls.append((name, kwargs))
+            work_dir = self.work_dir_for(name)
             FakeRegistry.records[name] = {
                 "name": name, "launch_state": "active", "pid": 4242 + len(calls),
                 "process_create_time": datetime.now(timezone.utc).timestamp(),
+                "work_dir": str(work_dir), "cwd": str(work_dir.resolve()),
                 **kwargs["extra_metadata"],
             }
             return SimpleNamespace(ok=True, name=name, already_running=False)
@@ -167,10 +175,16 @@ def test_sdk_workroot_is_distinct_from_account_ledger_and_bound_in_ack(
         def __init__(self, registry_dir, work_root):
             assert registry_dir == tmp_path / "registry"
             observed.append((registry_dir, work_root))
+            self.work_root = work_root
+
+        def work_dir_for(self, name):
+            return self.work_root / f"agent_{name}"
 
         def start(self, name, **kwargs):
+            work_dir = self.work_dir_for(name)
             metadata = {"name": name, "launch_state": "active", "pid": 4242,
                         "process_create_time": datetime.now(timezone.utc).timestamp(),
+                "work_dir": str(work_dir), "cwd": str(work_dir.resolve()),
                         **kwargs["extra_metadata"]}
             if wrong_registry_root:
                 metadata["ticket_master_work_root"] = str(other_root)
@@ -198,6 +212,116 @@ def test_sdk_workroot_is_distinct_from_account_ledger_and_bound_in_ack(
         # A caller mutation after SDK start cannot redirect the ACK or SDK cwd.
         assert session_boot.companion_claim("test-session", config={**config,
             "agent_launcher_work_root": str(sdk_root)})["status"] == "accepted"
+
+
+@pytest.mark.parametrize("mutation", ["none", "work-dir", "cwd", "missing-work-dir",
+                                     "missing-cwd", "changed-after-start"])
+def test_native_sdk_paths_are_bound_to_prestart_intent(tmp_path, monkeypatch, mutation):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    sdk_root = tmp_path / "sdk"
+    sdk_root.mkdir()
+    config["agent_launcher_work_root"] = str(sdk_root)
+    other = tmp_path / "other"
+    other.mkdir()
+    runtime = dispatch._runtime()
+    registry = runtime[3].AgentProcessRegistry
+
+    class NativeLauncher(runtime[3].AgentLauncher):
+        def start(self, name, **kwargs):
+            result = super().start(name, **kwargs)
+            row = registry.records[name]
+            if mutation == "work-dir":
+                row["work_dir"] = str(other / f"agent_{name}")
+            elif mutation == "cwd":
+                row["cwd"] = str(other)
+            elif mutation == "missing-work-dir":
+                del row["work_dir"]
+            elif mutation == "missing-cwd":
+                del row["cwd"]
+            elif mutation == "changed-after-start":
+                config["agent_launcher_work_root"] = str(other)
+            return result
+
+    sdk = SimpleNamespace(AgentLauncher=NativeLauncher, AgentProcessRegistry=registry)
+    monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3], sdk, runtime[4]))
+    monkeypatch.setitem(sys.modules, "agent_launcher", sdk)
+    result = dispatch.dispatch_companion(claim["session_id"],
+                                         _file(tmp_path, _admission(claim)), config=config)
+    assert len(calls) == 1
+    assert calls[0][0] == claim["dispatch_name"]
+    attempt = json.loads((tmp_path / ".ticket-master-companion"
+                          / f"{claim['session_id']}.dispatch-attempt").read_text(encoding="utf-8"))
+    assert attempt["sdk_work_root"] == str(sdk_root)
+    assert attempt["expected_work_dir"] == str(sdk_root / f"agent_{claim['dispatch_name']}")
+    assert attempt["expected_cwd"] == attempt["expected_work_dir"]
+    if mutation in ("none", "changed-after-start"):
+        assert result["status"] == "accepted"
+    else:
+        assert result["status"] == "pending-reconcile"
+        assert session_boot.companion_claim(claim["session_id"], config={
+            **config, "agent_launcher_work_root": str(sdk_root)})["status"] == "pending"
+
+
+def test_child_junction_escape_is_rejected_before_sdk_start(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    sdk_root, outside = tmp_path / "sdk", tmp_path / "outside"
+    sdk_root.mkdir()
+    outside.mkdir()
+    config["agent_launcher_work_root"] = str(sdk_root)
+    child = sdk_root / f"agent_{claim['dispatch_name']}"
+    if sys.platform == "win32":
+        command = ("New-Item -ItemType Junction -Path '" + str(child)
+                   + "' -Target '" + str(outside) + "' | Out-Null")
+        subprocess.run(["powershell", "-NoProfile", "-Command",
+                        command],
+                       check=True, capture_output=True)
+    else:
+        child.symlink_to(outside, target_is_directory=True)
+    try:
+        with pytest.raises(ValueError, match="escapes SDK root"):
+            dispatch.dispatch_companion(claim["session_id"],
+                                        _file(tmp_path, _admission(claim)), config=config)
+        assert calls == []
+        assert not (tmp_path / ".ticket-master-companion"
+                    / f"{claim['session_id']}.dispatch-attempt").exists()
+    finally:
+        if sys.platform == "win32":
+            os.rmdir(child)
+        else:
+            child.unlink()
+
+
+def test_missing_sdk_root_blocks_dispatch_without_blocking_report(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    config.pop("agent_launcher_work_root")
+    with pytest.raises(ValueError, match="work root is not configured"):
+        dispatch.dispatch_companion(claim["session_id"],
+                                    _file(tmp_path, _admission(claim)), config=config)
+    assert calls == []
+    assert not (tmp_path / ".ticket-master-companion"
+                / f"{claim['session_id']}.dispatch-attempt").exists()
+    assert session_boot.report(config)["companion"]["enabled"] is True
+
+
+def test_configured_sdk_ack_without_pinned_attempt_is_not_accepted(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    registry = dispatch._runtime()[3].AgentProcessRegistry
+    work_dir = tmp_path / f"agent_{claim['dispatch_name']}"
+    registry.records[claim["dispatch_name"]] = {
+        "name": claim["dispatch_name"], "launch_state": "active", "pid": 4242,
+        "process_create_time": datetime.now(timezone.utc).timestamp(),
+        "work_dir": str(work_dir), "cwd": str(work_dir),
+        "ticket_master_session_id": claim["session_id"],
+        "ticket_master_claim_id": claim["claim_id"],
+        "ticket_master_role": claim["role"],
+        "ticket_master_work_root": str(tmp_path),
+    }
+    monkeypatch.setitem(sys.modules, "agent_launcher", dispatch._runtime()[3])
+    with pytest.raises(ValueError, match="start intent is unavailable"):
+        session_boot.companion_ack(claim["session_id"],
+                                   f"agent-launcher:{claim['dispatch_name']}", config=config)
+    assert session_boot.companion_claim(claim["session_id"], config=config)["status"] == "pending"
+    assert calls == []
 
 
 @pytest.mark.parametrize("mutation", [

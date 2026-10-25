@@ -408,14 +408,18 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
                                     prior_attempts)
         _validate_admission(admission, claim, profile, provider, model,
                             datetime.now(timezone.utc), sdk_active=sdk_active)
+        launcher = launcher_module.AgentLauncher(Path(registry_dir), work_root)
+        work_dir, launch_cwd = session_boot._sdk_start_paths(
+            work_root, claim["dispatch_name"], launcher)
         record = {"schema": ATTEMPT_SCHEMA, "session_id": session_id,
                   "claim_id": claim["claim_id"], "dispatch_name": claim["dispatch_name"],
                   "admission_sha256": _digest(admission),
+                  "sdk_work_root": str(work_root),
+                  "expected_work_dir": str(work_dir), "expected_cwd": str(launch_cwd),
                   "created_at": datetime.now(timezone.utc).isoformat(), "status": "invoked-unknown"}
         with attempt.open("x", encoding="utf-8") as handle:
             json.dump(record, handle, ensure_ascii=False)
             handle.write("\n")
-        launcher = launcher_module.AgentLauncher(Path(registry_dir), work_root)
         try:
             result = launcher.start(
                 claim["dispatch_name"], provider=provider, model=model,

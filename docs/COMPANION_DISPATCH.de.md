@@ -85,8 +85,16 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
    alte Messung. Der SDK-Name ist ausschließlich
    der Claim-`dispatch_name`. Der SDK erhält den zuvor kanonisch aufgelösten
    `agent_launcher_work_root` als seinen Arbeitsort, niemals den OS-Ledgerort.
-   Neben Session, Claim und Rolle wird dieser Arbeitsort als
-   `ticket_master_work_root` in der nativen Registry-Metadatenbindung geprüft.
+   Vor `AgentLauncher.start()` werden sein nativer Child-Arbeitsordner
+   `work_dir_for(dispatch_name)` und dessen aufgelöster Default-CWD geprüft:
+   ein bereits vorhandener Junction-/Symlink-Ausbruch aus dem SDK-Root sperrt
+   den Start. Beide Pfade werden im vorhandenen Attempt-Beleg gepinnt. Ein
+   ACK verlangt vollständige, übereinstimmende native Registryfelder
+   `work_dir` und `cwd` sowie den weiterhin passenden Pfadreadback;
+   das zusätzliche `ticket_master_work_root` allein genügt nie. Fehlende
+   oder widersprüchliche Felder halten den Claim offen. Die Prüfung ist
+   keine allgemeine Garantie gegen Pfadänderungen zwischen Dateisystem-
+   Readback und SDK-Start.
    SDK-Aufruf und ACK verwenden denselben vor dem Start festgehaltenen
    Konfigurationsstand; eine nachträgliche Änderung des vom Aufrufer
    übergebenen Dictionaries verschiebt weder Arbeitsort noch ACK. Erst
