@@ -327,6 +327,7 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
     directory = session_boot._ledger_dir(profile, dispatch_config)
     claim = _claim(session_id, directory)
     if claim["status"] == "accepted":
+        session_boot._validated_recorded_acceptance(claim, directory)
         return {"status": "accepted", "claim_id": claim["claim_id"]}
     if claim["status"] != "pending":
         raise ValueError("companion claim is not pending")

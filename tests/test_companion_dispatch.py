@@ -212,6 +212,30 @@ def test_sdk_workroot_is_distinct_from_account_ledger_and_bound_in_ack(
         # A caller mutation after SDK start cannot redirect the ACK or SDK cwd.
         assert session_boot.companion_claim("test-session", config={**config,
             "agent_launcher_work_root": str(sdk_root)})["status"] == "accepted"
+        assert dispatch.dispatch_companion("test-session", tmp_path / "unused-admission.json",
+                                           config={**config,
+                                                   "agent_launcher_work_root": str(sdk_root)})[
+                                                       "status"] == "accepted"
+
+
+def test_dispatch_does_not_restate_unverified_recorded_acceptance(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    own = tmp_path / ".ticket-master-companion" / "test-session.json"
+    claim.update(status="accepted",
+                 acceptance=f"agent-launcher:{claim['dispatch_name']}",
+                 acceptance_evidence={"provider": "agent-launcher",
+                                      "name": claim["dispatch_name"],
+                                      "claim_id": claim["claim_id"], "pid": 4242,
+                                      "process_create_time": (
+                                          datetime.fromisoformat(claim["created_at"]).timestamp() + 1)},
+                 accepted_at=datetime.now(timezone.utc).isoformat())
+    own.write_text(json.dumps(claim), encoding="utf-8")
+    before = own.read_bytes()
+    with pytest.raises(ValueError, match="reconciliation"):
+        dispatch.dispatch_companion("test-session", tmp_path / "unused-admission.json",
+                                    config=config)
+    assert own.read_bytes() == before
+    assert calls == []
 
 
 @pytest.mark.parametrize("mutation", ["none", "work-dir", "cwd", "missing-work-dir",

@@ -338,6 +338,11 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
     accepted = session_boot.companion_ack("session-one", receipt, config=config)
     assert accepted["status"] == "accepted"
     assert accepted["acceptance_evidence"]["pid"] == 321
+    monkeypatch.setattr(session_boot.importlib, "import_module",
+                        lambda name: pytest.fail("recorded ACK must not require a live SDK"))
+    assert session_boot.companion_ack("session-one", receipt, config=config) == accepted
+    with pytest.raises(ValueError, match="differs from recorded acceptance"):
+        session_boot.companion_ack("session-one", "agent-launcher:other", config=config)
     assert session_boot.companion_claim("session-one", config=config) == accepted
     assert session_boot.companion_claim("session-two", config=config)["role"] == "tasksolver"
     with pytest.raises(ValueError, match="receipt"):
@@ -463,6 +468,46 @@ def test_removed_sdk_root_cannot_ack_prepared_claim(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="work root"):
         session_boot.companion_ack("session-one",
                                    f"agent-launcher:{claim['dispatch_name']}", config=config)
+    assert own.read_bytes() == before
+
+
+@pytest.mark.parametrize("mutation", ["missing-attempt", "wrong-attempt",
+                                      "relative-root", "missing-evidence"])
+def test_recorded_acceptance_without_durable_proof_requires_reconciliation(
+        tmp_path, monkeypatch, capsys, mutation):
+    config, claim, _ = _configured_claim_with_synthetic_intent(tmp_path, monkeypatch)
+    ledger = tmp_path / ".ticket-master-companion"
+    own = ledger / "session-one.json"
+    receipt = f"agent-launcher:{claim['dispatch_name']}"
+    evidence = {"provider": "agent-launcher", "name": claim["dispatch_name"],
+                "claim_id": claim["claim_id"], "pid": 321,
+                "process_create_time": datetime.fromisoformat(claim["created_at"]).timestamp() + 1}
+    claim.update(status="accepted", acceptance=receipt, acceptance_evidence=evidence,
+                 accepted_at=datetime.now(timezone.utc).isoformat())
+    if mutation == "missing-evidence":
+        del claim["acceptance_evidence"]
+    own.write_text(json.dumps(claim), encoding="utf-8")
+    attempt_path = ledger / "session-one.dispatch-attempt"
+    if mutation == "missing-attempt":
+        attempt_path.unlink()
+    elif mutation == "wrong-attempt":
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        attempt["claim_id"] = "b" * 32
+        attempt_path.write_text(json.dumps(attempt), encoding="utf-8")
+    elif mutation == "relative-root":
+        attempt = json.loads(attempt_path.read_text(encoding="utf-8"))
+        attempt["sdk_work_root"] = "sdk"
+        attempt_path.write_text(json.dumps(attempt), encoding="utf-8")
+    before = own.read_bytes()
+    with pytest.raises(ValueError, match="reconciliation"):
+        session_boot.companion_ack("session-one", receipt, config=config)
+    monkeypatch.setattr(session_boot.config_paths, "tm_config", lambda path=None: config)
+    monkeypatch.setattr(sys, "argv", ["session_boot.py", "--ack-companion", "session-one",
+                                      "--receipt", receipt])
+    assert session_boot._cli() == 1
+    assert json.loads(capsys.readouterr().out)["status"] == "unknown"
+    with pytest.raises(ValueError, match="reconciliation"):
+        session_boot.companion_claim("session-one", config=config)
     assert own.read_bytes() == before
 
 

@@ -30,6 +30,11 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
   `--report` und ein deaktiviertes Begleitprofil bleiben ohne SDK-Start
   nutzbar; alte profilnahe Claimdateien bleiben für die manuelle
   Reconciliation erhalten, sind aber kein unterstützter Start-/ACK-Pfad.
+  Auch ein gespeicherter `accepted`-Claim ist nur mit passendem dauerhaftem
+  Startattempt und gebundenem Acceptance-Beleg erneut als Erfolg ausgebbar.
+  Unvollständige Altbestände bleiben lesbar und verlangen Reconciliation;
+  ein bereits belegter Start benötigt dagegen bei späterem Idempotenzabruf
+  keinen erneut laufenden Worker.
 - Der Steueragent hat einen konkreten TASKPLAN-Auftrag mit gültigen Task-,
   Lock- und Scope-Gates sowie einen tatsächlich freien niedrigen/mittleren
   Slot und positives Providerbudget frisch geprüft. `max_luna` ist nur eine

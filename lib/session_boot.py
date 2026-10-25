@@ -477,6 +477,57 @@ def _verified_launcher_dispatch(item: dict[str, Any], receipt: str,
             "process_create_time": birth, "claim_id": item["claim_id"]}
 
 
+def _validated_recorded_acceptance(item: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """Validate durable ACK data without treating a stopped child as a failed start."""
+    session_id, claim_id = item.get("session_id"), item.get("claim_id")
+    name, role = item.get("dispatch_name"), item.get("role")
+    evidence = item.get("acceptance_evidence")
+    if (item.get("status") != "accepted" or not isinstance(session_id, str)
+            or not SESSION_ID.fullmatch(session_id)
+            or not isinstance(claim_id, str)
+            or not re.fullmatch(r"[0-9a-f]{32}", claim_id)
+            or role not in ROLES or name != _dispatch_name(session_id, claim_id)
+            or item.get("acceptance") != f"agent-launcher:{name}"
+            or not isinstance(evidence, dict)):
+        raise ValueError("recorded companion acceptance requires reconciliation")
+    try:
+        created = datetime.fromisoformat(item["created_at"])
+        accepted = datetime.fromisoformat(item["accepted_at"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("recorded companion acceptance requires reconciliation") from exc
+    pid, birth = evidence.get("pid"), evidence.get("process_create_time")
+    if (created.tzinfo is None or accepted.tzinfo is None or accepted < created
+            or evidence.get("provider") != "agent-launcher"
+            or evidence.get("name") != name or evidence.get("claim_id") != claim_id
+            or not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
+            or not isinstance(birth, (int, float)) or isinstance(birth, bool)
+            or not math.isfinite(birth) or birth <= created.timestamp()):
+        raise ValueError("recorded companion acceptance requires reconciliation")
+    try:
+        attempt = json.loads((directory / f"{session_id}.dispatch-attempt").read_text(
+            encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError("recorded companion start intent requires reconciliation") from exc
+    if not isinstance(attempt, dict) or not isinstance(attempt.get("sdk_work_root"), str):
+        raise ValueError("recorded companion start intent requires reconciliation")
+    # The original SDK root belongs to the durable attempt. Another profile
+    # may read this shared ledger using a different root after the child ends.
+    work_root = Path(attempt["sdk_work_root"])
+    work_dir = work_root / f"agent_{name}"
+    if (not work_root.is_absolute() or not attempt["sdk_work_root"].strip()
+            or attempt.get("schema") != "ticket-master.companion-dispatch-attempt.v1"
+            or attempt.get("session_id") != session_id
+            or attempt.get("claim_id") != claim_id
+            or attempt.get("dispatch_name") != name
+            or attempt.get("expected_work_dir") != str(work_dir)
+            or not isinstance(attempt.get("expected_cwd"), str)):
+        raise ValueError("recorded companion start intent requires reconciliation")
+    intended_cwd = Path(attempt["expected_cwd"])
+    if not intended_cwd.is_absolute() or not intended_cwd.is_relative_to(work_root):
+        raise ValueError("recorded companion start intent requires reconciliation")
+    return item
+
+
 def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if not SESSION_ID.fullmatch(session_id):
         raise ValueError("invalid session ID")
@@ -494,9 +545,8 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
             raise ValueError(f"companion ledger unreadable: {path}: {exc}") from exc
         if not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2":
             raise ValueError(f"companion ledger invalid: {path}")
-        if item.get("status") == "accepted" and item.get("role") in ROLES:
-            if not isinstance(item.get("acceptance_evidence"), dict):
-                raise ValueError(f"companion acceptance unverified: {path}")
+        if item.get("status") == "accepted":
+            _validated_recorded_acceptance(item, directory)
             accepted.append((item.get("created_at", ""), item["role"]))
     previous = max(accepted, default=("", ROLES[-1]))[1]
     role = ROLES[(ROLES.index(previous) + 1) % len(ROLES)]
@@ -510,7 +560,10 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
             json.dump(claim, handle, ensure_ascii=False)
             handle.write("\n")
     except FileExistsError:
-        return json.loads(own.read_text(encoding="utf-8"))
+        existing = json.loads(own.read_text(encoding="utf-8"))
+        if isinstance(existing, dict) and existing.get("status") == "accepted":
+            _validated_recorded_acceptance(existing, directory)
+        return existing
     return claim
 
 
@@ -520,12 +573,16 @@ def companion_ack(session_id: str, receipt: str, *, config: dict[str, Any] | Non
     profile = session_profile.effective_settings(config)
     if not profile["settings"]["companion"]["enabled"]:
         raise ValueError("companion is disabled by profile")
-    own = _ledger_dir(profile, config) / f"{session_id}.json"
+    directory = _ledger_dir(profile, config)
+    own = directory / f"{session_id}.json"
     item = json.loads(own.read_text(encoding="utf-8"))
     if (not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2"
             or item.get("session_id") != session_id):
         raise ValueError("companion claim is not verifiable")
     if item["status"] == "accepted":
+        if receipt != item.get("acceptance"):
+            raise ValueError("dispatch receipt differs from recorded acceptance")
+        _validated_recorded_acceptance(item, directory)
         return item
     if item["status"] != "pending":
         raise ValueError("claim is not pending")
