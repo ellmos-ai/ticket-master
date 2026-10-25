@@ -7,10 +7,14 @@ never starts a model, approves a decision or publishes anything.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import importlib
 import importlib.util
 import json
+import math
 import os
 import re
+import secrets
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -260,7 +264,15 @@ def approval_ticket_plan(case: dict[str, Any], tickets_dir: str | Path) -> dict[
         base = ticket_writer.require_verified_queue_root(Path(tickets_dir))
         matches = []
         for path, *_rest in ticket_writer.iter_lifecycle_files(base):
-            if marker in path.read_text(encoding="utf-8-sig"):
+            content = path.read_text(encoding="utf-8-sig")
+            if marker.startswith("D-"):
+                # A prefix such as D-...-001 must not reuse D-...-0012.
+                found = marker in re.findall(
+                    r"(?<![A-Za-z0-9_-])D-\d{8}-\d{3,}(?![A-Za-z0-9_-])", content
+                )
+            else:
+                found = marker in (line.strip() for line in content.splitlines())
+            if found:
                 matches.append(str(path))
     except (OSError, UnicodeError, ValueError) as exc:
         return {"status": "unknown", "reason": str(exc), "routing": verdict}
@@ -300,6 +312,61 @@ def _ledger_dir(profile: dict[str, Any]) -> Path:
     return Path(profile["source"]).parent / "session-claims"
 
 
+def _dispatch_name(session_id: str, claim_id: str) -> str:
+    digest = hashlib.sha256(f"{session_id}:{claim_id}".encode("utf-8")).hexdigest()[:32]
+    return f"tm-{digest}"
+
+
+def _verified_launcher_dispatch(item: dict[str, Any], receipt: str,
+                                config: dict[str, Any] | None) -> dict[str, Any]:
+    """Read the installed agent-launcher registry; a caller string is no proof."""
+    name = item.get("dispatch_name")
+    claim_id = item.get("claim_id")
+    role = item.get("role")
+    if (not isinstance(claim_id, str) or not re.fullmatch(r"[0-9a-f]{32}", claim_id)
+            or role not in ROLES or name != _dispatch_name(item["session_id"], claim_id)
+            or receipt != f"agent-launcher:{name}"):
+        raise ValueError("unsupported or mismatched dispatch receipt")
+    try:
+        launcher = importlib.import_module("agent_launcher")
+    except ImportError as exc:
+        raise ValueError("agent-launcher readback unavailable; claim remains pending") from exc
+    registry_dir = (config or {}).get("agent_launcher_registry_dir")
+    if registry_dir is None:
+        registry_dir = Path.home() / ".agent-launcher" / "registry"
+    elif not isinstance(registry_dir, str) or not registry_dir:
+        raise ValueError("invalid agent-launcher registry directory")
+    registry_type = getattr(launcher, "AgentProcessRegistry", None)
+    if registry_type is None:
+        raise ValueError("agent-launcher registry API unavailable")
+    registry = registry_type(Path(registry_dir))
+    metadata = registry.load_metadata(name)
+    if not isinstance(metadata, dict) or metadata.get("launch_state") != "active":
+        raise ValueError("agent-launcher active receipt missing")
+    pid = metadata.get("pid")
+    birth = metadata.get("process_create_time")
+    created = datetime.fromisoformat(item["created_at"])
+    if (not isinstance(pid, int) or isinstance(pid, bool) or pid <= 0
+            or not isinstance(birth, (int, float)) or isinstance(birth, bool)
+            or not math.isfinite(birth) or birth <= 0
+            or created.tzinfo is None
+            or birth < created.timestamp()
+            or metadata.get("name") != name
+            or metadata.get("ticket_master_session_id") != item["session_id"]
+            or metadata.get("ticket_master_claim_id") != item["claim_id"]
+            or metadata.get("ticket_master_role") != item["role"]):
+        raise ValueError("agent-launcher receipt is not bound to this claim")
+    try:
+        observed = registry.probe_running(name)
+    except (AttributeError, OSError, ValueError) as exc:
+        raise ValueError("agent-launcher process identity is unreadable") from exc
+    if (not isinstance(observed, int) or isinstance(observed, bool)
+            or observed != pid or registry.load_metadata(name) != metadata):
+        raise ValueError("agent-launcher process identity is not verifiable")
+    return {"provider": "agent-launcher", "name": name, "pid": pid,
+            "process_create_time": birth, "claim_id": item["claim_id"]}
+
+
 def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) -> dict[str, Any]:
     if not SESSION_ID.fullmatch(session_id):
         raise ValueError("invalid session ID")
@@ -315,15 +382,19 @@ def companion_claim(session_id: str, *, config: dict[str, Any] | None = None) ->
             item = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
             raise ValueError(f"companion ledger unreadable: {path}: {exc}") from exc
-        if not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v1":
+        if not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2":
             raise ValueError(f"companion ledger invalid: {path}")
         if item.get("status") == "accepted" and item.get("role") in ROLES:
+            if not isinstance(item.get("acceptance_evidence"), dict):
+                raise ValueError(f"companion acceptance unverified: {path}")
             accepted.append((item.get("created_at", ""), item["role"]))
     previous = max(accepted, default=("", ROLES[-1]))[1]
     role = ROLES[(ROLES.index(previous) + 1) % len(ROLES)]
-    claim = {"schema": "ticket-master.companion-claim.v1", "session_id": session_id,
+    claim_id = secrets.token_hex(16)
+    claim = {"schema": "ticket-master.companion-claim.v2", "session_id": session_id,
              "role": role, "status": "pending", "created_at": datetime.now(timezone.utc).isoformat(),
-             "model_tier": "low-or-medium", "acceptance": None}
+             "model_tier": "low-or-medium", "claim_id": claim_id,
+             "dispatch_name": _dispatch_name(session_id, claim_id), "acceptance": None}
     try:
         with own.open("x", encoding="utf-8") as handle:
             json.dump(claim, handle, ensure_ascii=False)
@@ -338,11 +409,16 @@ def companion_ack(session_id: str, receipt: str, *, config: dict[str, Any] | Non
         raise ValueError("session ID and real dispatch receipt required")
     own = _ledger_dir(session_profile.effective_settings(config)) / f"{session_id}.json"
     item = json.loads(own.read_text(encoding="utf-8"))
+    if (not isinstance(item, dict) or item.get("schema") != "ticket-master.companion-claim.v2"
+            or item.get("session_id") != session_id):
+        raise ValueError("companion claim is not verifiable")
     if item["status"] == "accepted":
         return item
     if item["status"] != "pending":
         raise ValueError("claim is not pending")
-    item.update(status="accepted", acceptance=receipt, accepted_at=datetime.now(timezone.utc).isoformat())
+    evidence = _verified_launcher_dispatch(item, receipt, config)
+    item.update(status="accepted", acceptance=receipt, acceptance_evidence=evidence,
+                accepted_at=datetime.now(timezone.utc).isoformat())
     temp = own.with_suffix(f".{os.getpid()}.tmp")
     with temp.open("x", encoding="utf-8") as handle:
         json.dump(item, handle, ensure_ascii=False)
@@ -361,7 +437,7 @@ def _cli() -> int:
                        help="classify current approval evidence without changing a ticket")
     group.add_argument("--plan-approval-ticket", metavar="JSON_FILE",
                        help="find a lifecycle ticket for a documented user approval")
-    parser.add_argument("--receipt", help="real dispatch acceptance reference, for --ack-companion")
+    parser.add_argument("--receipt", help="agent-launcher:<claim dispatch_name>, verified against its native registry")
     parser.add_argument("--tickets-dir", help="verified canonical queue root for --plan-approval-ticket")
     parser.add_argument("--config")
     args = parser.parse_args()

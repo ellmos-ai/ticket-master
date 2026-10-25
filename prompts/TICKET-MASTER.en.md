@@ -627,9 +627,17 @@ slot and task/lock/scope gates exist. Respect at most two Luna and one
 Sol/Astra. Low/medium describes model class, not task difficulty. With an
 authoritative session ID, call `python -X utf8 lib/session_boot.py --claim-companion
 <ID>` after live gates. Reconcile an existing pending claim before any new
-start. Actually dispatch the proposed role with a useful task, record genuine
-acceptance via `--ack-companion <ID> --receipt <acceptance-reference>`, and
-supervise it. If gates fail, retain the task for later in the same session.
+start. Actually dispatch the proposed role with a useful task. For a verifiable
+`agent-launcher` start, use the claim's `dispatch_name` and pass
+`ticket_master_session_id`, `ticket_master_claim_id`, and `ticket_master_role`
+unchanged through `AgentLauncher.start(..., extra_metadata=...)`. After a
+successful start and native registry readback, call `--ack-companion <ID>
+--receipt agent-launcher:<dispatch_name>`; the helper checks active state,
+PID/birth time, claim binding, and process identity. Free text, a launcher
+exit code alone, or a native chat spawn without a readable acceptance record
+remain pending; no adapter for the latter exists yet. A missing optional
+`agent-launcher` runtime also cannot acknowledge. Supervise the result. If
+gates fail, retain the task for later in the same session.
 The optional manual menu remains available; its Enter default applies when
 this personal automation is off.
 

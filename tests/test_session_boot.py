@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -187,6 +188,20 @@ def test_approval_ticket_plan_reuses_canonical_lifecycle_ticket(tmp_path):
     assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "not-user-approval"
 
 
+def test_approval_ticket_plan_rejects_decision_prefix_collision(tmp_path):
+    (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
+    inbox = tmp_path / "INBOX"
+    inbox.mkdir()
+    case = _approval_case()
+    case["approval_identity"] = {"decision_id": "D-20261025-001"}
+    ticket = inbox / "T-20261025-123456789.txt"
+    ticket.write_text("ID: T-20261025-123456789\nD-20261025-0012\n", encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "create-with-ticket-writer"
+    ticket.write_text("ID: T-20261025-123456789\nD-20261025-0012\nD-20261025-001\n",
+                      encoding="utf-8")
+    assert session_boot.approval_ticket_plan(case, tmp_path)["status"] == "reuse"
+
+
 def test_approval_ticket_plan_requires_concrete_action_identity(tmp_path):
     (tmp_path / ".ticket-master-queue").write_text("ticket-master-queue-v1\n", encoding="utf-8")
     case = _approval_case()
@@ -233,12 +248,92 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
     first = session_boot.companion_claim("session-one")
     assert first["role"] == "taskwriter"
     assert session_boot.companion_claim("session-one") == first
-    accepted = session_boot.companion_ack("session-one", "dispatch accepted: worker-1")
+    receipt = f"agent-launcher:{first['dispatch_name']}"
+    with pytest.raises(ValueError, match="unsupported"):
+        session_boot.companion_ack("session-one", "not-a-real-dispatch-proof")
+    assert session_boot.companion_claim("session-one")["status"] == "pending"
+
+    metadata = {"name": first["dispatch_name"], "pid": 321,
+                "process_create_time": datetime.fromisoformat(first["created_at"]).timestamp() + 1,
+                "launch_state": "active", "ticket_master_session_id": "session-one",
+                "ticket_master_claim_id": first["claim_id"],
+                "ticket_master_role": first["role"]}
+
+    class Registry:
+        def __init__(self, path):
+            assert path == Path.home() / ".agent-launcher" / "registry"
+
+        def load_metadata(self, name):
+            assert name == first["dispatch_name"]
+            return metadata.copy()
+
+        def probe_running(self, name):
+            assert name == first["dispatch_name"]
+            return 321
+
+    monkeypatch.setattr(session_boot.importlib, "import_module",
+                        lambda name: SimpleNamespace(AgentProcessRegistry=Registry))
+    accepted = session_boot.companion_ack("session-one", receipt)
     assert accepted["status"] == "accepted"
+    assert accepted["acceptance_evidence"]["pid"] == 321
     assert session_boot.companion_claim("session-one") == accepted
     assert session_boot.companion_claim("session-two")["role"] == "tasksolver"
     with pytest.raises(ValueError, match="receipt"):
         session_boot.companion_ack("session-two", "")
+
+
+@pytest.mark.parametrize("mutation", ["missing-sdk", "missing-api", "pending", "old-process",
+                                     "wrong-session", "wrong-claim", "wrong-role",
+                                     "dead-process", "unreadable-probe", "changed-record"])
+def test_companion_ack_requires_bound_native_readback(tmp_path, monkeypatch, mutation):
+    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
+    claim = session_boot.companion_claim("session-one")
+    receipt = f"agent-launcher:{claim['dispatch_name']}"
+    birth = datetime.fromisoformat(claim["created_at"]).timestamp() + 1
+    metadata = {"name": claim["dispatch_name"], "pid": 321,
+                "process_create_time": birth, "launch_state": "active",
+                "ticket_master_session_id": claim["session_id"],
+                "ticket_master_claim_id": claim["claim_id"],
+                "ticket_master_role": claim["role"]}
+    if mutation == "pending":
+        metadata["launch_state"] = "pending"
+    elif mutation == "old-process":
+        metadata["process_create_time"] = birth - 10
+    elif mutation == "wrong-session":
+        metadata["ticket_master_session_id"] = "another-session"
+    elif mutation == "wrong-claim":
+        metadata["ticket_master_claim_id"] = "other-claim"
+    elif mutation == "wrong-role":
+        metadata["ticket_master_role"] = "maintainer"
+
+    class Registry:
+        def __init__(self, path):
+            self.reads = 0
+
+        def load_metadata(self, name):
+            self.reads += 1
+            if mutation == "changed-record" and self.reads > 1:
+                return {**metadata, "process_create_time": birth + 1}
+            return metadata.copy()
+
+        def probe_running(self, name):
+            if mutation == "unreadable-probe":
+                raise OSError("identity unavailable")
+            return 0 if mutation == "dead-process" else 321
+
+    def import_launcher(name):
+        if mutation == "missing-sdk":
+            raise ImportError("not installed")
+        if mutation == "missing-api":
+            return SimpleNamespace()
+        return SimpleNamespace(AgentProcessRegistry=Registry)
+
+    monkeypatch.setattr(session_boot.importlib, "import_module", import_launcher)
+    with pytest.raises(ValueError):
+        session_boot.companion_ack("session-one", receipt)
+    assert json.loads((tmp_path / "session-claims" / "session-one.json").read_text())["status"] == "pending"
+    assert session_boot.companion_claim("session-two")["role"] == "taskwriter"
 
 
 def test_companion_rotation_refuses_corrupt_ledger(tmp_path, monkeypatch):

@@ -652,8 +652,16 @@ Grenze: höchstens zwei Luna und ein Sol/Astra. Niedrig/mittel bezeichnet das
 Modell, nicht die Aufgabenschwierigkeit. Mit autoritativer Session-ID
 `python -X utf8 lib/session_boot.py --claim-companion <ID>` exklusiv vormerken.
 Bestehendes `pending` erst klären, keine zweite Instanz starten. Rolle mit
-sinnvollem Auftrag tatsächlich dispatchen, nur nach echter Annahme
-`--ack-companion <ID> --receipt <Annahmebeleg>` buchen, Ergebnis betreuen.
+sinnvollem Auftrag tatsächlich dispatchen. Für eine prüfbare Annahme über
+`agent-launcher` den vom Claim gelieferten `dispatch_name` verwenden und beim
+`AgentLauncher.start(..., extra_metadata=...)` die Claimfelder
+`ticket_master_session_id`, `ticket_master_claim_id` und `ticket_master_role`
+unverändert mitgeben. Erst nach erfolgreichem Start und nativem Registry-Readback
+`--ack-companion <ID> --receipt agent-launcher:<dispatch_name>` buchen; der
+Helper prüft aktive Registry, PID/Geburtszeit, Claim-Bindung und Prozessidentität.
+Freitext, ein bloßer Launcher-Exitcode oder ein nativer Chat-Spawn ohne
+lesbaren Annahmebeleg bleiben `pending`; dafür ist noch kein Adapter vorhanden.
+Fehlt die optionale `agent-launcher`-Runtime, ebenfalls nicht quittieren. Ergebnis betreuen.
 Bei fehlendem Slot/Gate den Rest in derselben Session offen halten. Das
 manuelle Rollenmenü bleibt; sein Enter-Default gilt bei ausgeschalteter
 persönlicher Automatik.
