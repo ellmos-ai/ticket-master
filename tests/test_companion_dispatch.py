@@ -288,6 +288,11 @@ def test_real_claim_ack_then_fresh_native_snapshot_still_blocks_second_sdk_child
                                        _file(tmp_path, _admission(first)),
                                        config=config)["status"] == "accepted"
     assert session_boot.companion_claim(first["session_id"])["status"] == "accepted"
+    # Isolate R1 from R2 even on Windows clocks with coarse timestamp ticks.
+    prior = tmp_path / "session-claims" / f"{first['session_id']}.dispatch-attempt"
+    record = json.loads(prior.read_text(encoding="utf-8"))
+    record["created_at"] = (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat()
+    prior.write_text(json.dumps(record), encoding="utf-8")
     with pytest.raises(ValueError, match="no attested companion slot"):
         dispatch.dispatch_companion(second["session_id"],
                                     _file(tmp_path, _admission(second)), config=config)
