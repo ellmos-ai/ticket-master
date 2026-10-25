@@ -34,12 +34,16 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
 1. `python -X utf8 lib/session_boot.py --claim-companion <SESSION_ID>` liefert
    `claim_id`, `role` und `dispatch_name`. Ein bereits offener Claim wird
    wiedergegeben. Vor einem weiteren Versuch ist dessen Zustand zu klären.
-   Bei konfiguriertem SDK-Workroot liegen Claim und Attempt gemeinsam unter
-   dessen kanonisch aufgelöstem `.ticket-master-companion/`: verschiedene
-   Profilordner und zulässige Pfad-Aliasse desselben Workroots teilen damit
-   Rotation, persistente Sicht und Reservation. Ein vor der Konfiguration
-   angelegtes profilgebundenes Ledger muss zuerst geklärt werden; es wird
-   nicht still in den gemeinsamen Bereich übernommen.
+   Bei konfiguriertem SDK-Workroot liegen Claim, Attempt und Reservation im
+   einen kanonischen Datenverzeichnis des aktuellen OS-Nutzers unter
+   `.ticket-master-companion/` (Windows: LocalAppData aus der OS-API;
+   POSIX: Home aus der Nutzerkennung). Profilpfade, Umgebungsvariablen,
+   Registry- und Workroot-Optionen wählen diesen Bereich nicht. Verschiedene
+   gültige Workroots mit derselben oder verschiedenen Registries teilen daher
+   die laufenden und ungewissen Startversuche. Der Workroot bleibt ein
+   getrennter, kanonisch geprüfter SDK-Arbeitspfad. Vorherige profil- oder
+   workrootgebundene Ledgers mit Inhalt müssen ausdrücklich reconciliert
+   werden; sie werden nicht still als freie Kapazität übergangen.
 2. Der Steueragent schreibt einen **privaten** Admission-Beleg. Schema:
    `ticket-master.companion-admission.v1`; Felder `session_id`, `claim_id`,
    `role`, `provider`, `model`, `model_class: low-medium`, `issued_at`,
@@ -100,11 +104,11 @@ als Annahme verbucht.
 ## Späterer isolierter Runtime-Kandidat
 
 Nach unabhängigem Source-GO kann ein ausdrücklich beaufsichtigter Test ein
-separates privates Profil mit `runtime_compatibility: active` nutzen. Bei
-demselben kanonischen SDK-Workroot teilt es das Claim-/Attemptledger mit dem
-persönlichen Profil; ein anderer Workroot belegt keinen gemeinsamen
-Reservationsbereich und darf nicht als isolierender Freislot missverstanden
-werden. `TM_SESSION_PROFILE` hat Vorrang vor
+separates privates Profil mit `runtime_compatibility: active` nutzen. Unter
+derselben OS-Nutzerkennung teilt es Claim-/Attemptledger und Reservation mit
+dem persönlichen Profil, auch bei einem anderen SDK-Workroot. Ein eigener
+Workroot oder eine eigene Registry ist kein isolierender Freislot.
+`TM_SESSION_PROFILE` hat Vorrang vor
 `session_profile_path` in der Konfiguration; der steuernde Agent muss diesen
 Wert für den konkreten Prozess nachweisen. `TASKPLAN_CONFIG` wählt eine
 isolierte TASKPLAN-Konfiguration mit explizitem Rollenmodell. Das persönliche

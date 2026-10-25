@@ -310,12 +310,39 @@ def report(config: dict[str, Any] | None = None) -> dict[str, Any]:
                         "rule": "Concrete version-linked user approval may replace model reviews; publication requires explicit publication-linked approval."}}
 
 
+def _capacity_root() -> Path:
+    """Resolve the OS account's data directory, independent of profile and env."""
+    try:
+        if os.name == "nt":
+            import ctypes
+
+            buffer = ctypes.create_unicode_buffer(32768)
+            # CSIDL_LOCAL_APPDATA resolves against the process token, unlike
+            # USERPROFILE/LOCALAPPDATA environment variables.
+            result = ctypes.windll.shell32.SHGetFolderPathW(
+                None, 0x001C, None, 0, buffer)
+            if result != 0 or not buffer.value:
+                raise ValueError("companion user data directory is unavailable")
+            path = Path(buffer.value)
+        else:
+            import pwd
+
+            path = Path(pwd.getpwuid(os.geteuid()).pw_dir)
+        root = path.resolve(strict=True)
+    except (OSError, RuntimeError, KeyError) as exc:
+        raise ValueError("companion user data directory is unavailable") from exc
+    if not root.is_dir():
+        raise ValueError("companion user data directory is not a directory")
+    return root
+
+
 def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -> Path:
-    """Keep SDK claims and attempts under one canonical workroot across profiles.
+    """Keep SDK claims and attempts in one per-user capacity domain.
 
     A claim may still be prepared without an SDK workroot. Such a local claim
-    cannot be dispatched after switching to a configured workroot; it must be
-    reconciled rather than silently treated as a claim in the shared ledger.
+    cannot be dispatched after switching to a configured workroot. Likewise,
+    prior workroot-local claims require reconciliation before joining the
+    shared ledger; neither may silently disappear from capacity accounting.
     """
     raw = (config or {}).get("agent_launcher_work_root")
     if raw is None:
@@ -331,11 +358,15 @@ def _ledger_dir(profile: dict[str, Any], config: dict[str, Any] | None = None) -
         raise ValueError("agent-launcher work root is not resolvable") from exc
     if root is None or not root.is_dir():
         raise ValueError("agent-launcher work root is not a directory")
-    directory = root / ".ticket-master-companion"
+    directory = _capacity_root() / ".ticket-master-companion"
     legacy = Path(profile["source"]).parent / "session-claims"
+    prior_workroot = root / ".ticket-master-companion"
     try:
         if legacy != directory and legacy.exists() and any(legacy.iterdir()):
             raise ValueError("legacy companion ledger requires reconciliation")
+        if (prior_workroot != directory and prior_workroot.exists()
+                and any(prior_workroot.iterdir())):
+            raise ValueError("workroot companion ledger requires reconciliation")
         directory.mkdir(mode=0o700, exist_ok=True)
         if not directory.is_dir() or directory.resolve(strict=True) != directory:
             raise ValueError("companion coordination directory is redirected")

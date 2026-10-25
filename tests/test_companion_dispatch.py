@@ -19,6 +19,8 @@ import session_boot  # noqa: E402
 
 
 def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna"):
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+    monkeypatch.setattr(session_boot, "_capacity_root", lambda: tmp_path)
     profile = tmp_path / "profile.json"
     profile.write_text(json.dumps({"schema": "ticket-master.session-profile.v1",
                                    "runtime_compatibility": compatibility,
@@ -502,10 +504,23 @@ def _other_profile(tmp_path, config):
             "agent_launcher_work_root": str(tmp_path) + "/."}
 
 
-def test_cross_profile_parallel_claims_share_real_file_reservation(tmp_path, monkeypatch):
+def test_capacity_root_is_bound_to_os_user_not_environment(tmp_path, monkeypatch):
+    expected = session_boot._capacity_root()
+    for name in ("HOME", "USERPROFILE", "LOCALAPPDATA"):
+        monkeypatch.setenv(name, str(tmp_path))
+    assert session_boot._capacity_root() == expected
+
+
+@pytest.mark.parametrize("separate_workroot", [False, True])
+def test_cross_profile_parallel_claims_share_real_file_reservation(
+        tmp_path, monkeypatch, separate_workroot):
     first, calls, config_a = _fixture(tmp_path, monkeypatch)
     monkeypatch.delenv("TM_SESSION_PROFILE")
     config_b = _other_profile(tmp_path, config_a)
+    if separate_workroot:
+        other_root = tmp_path / "other-root"
+        other_root.mkdir()
+        config_b["agent_launcher_work_root"] = str(other_root)
     second = session_boot.companion_claim("other-session", config=config_b)
     assert session_boot._ledger_dir(session_boot.session_profile.effective_settings(config_a), config_a) == (
         session_boot._ledger_dir(session_boot.session_profile.effective_settings(config_b), config_b))
@@ -550,10 +565,16 @@ def test_cross_profile_parallel_claims_share_real_file_reservation(tmp_path, mon
     assert len(calls) == 1
 
 
-def test_cross_profile_uncertain_attempt_remains_visible(tmp_path, monkeypatch):
+@pytest.mark.parametrize("separate_workroot", [False, True])
+def test_cross_profile_uncertain_attempt_remains_visible(
+        tmp_path, monkeypatch, separate_workroot):
     first, calls, config_a = _fixture(tmp_path, monkeypatch)
     monkeypatch.delenv("TM_SESSION_PROFILE")
     config_b = _other_profile(tmp_path, config_a)
+    if separate_workroot:
+        other_root = tmp_path / "other-root"
+        other_root.mkdir()
+        config_b["agent_launcher_work_root"] = str(other_root)
     second = session_boot.companion_claim("other-session", config=config_b)
     runtime = dispatch._runtime()
 
@@ -581,6 +602,18 @@ def test_cross_profile_uncertain_attempt_remains_visible(tmp_path, monkeypatch):
         dispatch.dispatch_companion(second["session_id"], second_file,
                                     config=config_b)
     assert len(calls) == 1
+
+
+def test_previous_workroot_ledger_requires_reconciliation(tmp_path, monkeypatch):
+    _, calls, config = _fixture(tmp_path, monkeypatch)
+    other_root = tmp_path / "other-root"
+    old_ledger = other_root / ".ticket-master-companion"
+    old_ledger.mkdir(parents=True)
+    (old_ledger / "prior.dispatch-attempt").write_text("uncertain", encoding="utf-8")
+    config["agent_launcher_work_root"] = str(other_root)
+    with pytest.raises(ValueError, match="workroot companion ledger requires reconciliation"):
+        session_boot.companion_claim("other-session", config=config)
+    assert calls == []
 
 
 @pytest.mark.parametrize("root", ["relative-work-root", "missing-work-root"])
