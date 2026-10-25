@@ -32,7 +32,8 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
-from config_paths import expand_placeholders, resolve_queue_alias  # noqa: E402
+from config_paths import expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
+from ticket_inventory import capture_inventory  # noqa: E402
 
 
 class ConfigError(ValueError):
@@ -123,10 +124,17 @@ def _resolve_path(raw: Any, *, root: Path, field: str, allow_outside: bool) -> P
 def resolve_tickets_dir(
     config: str | Path | None = None,
     override: str | Path | None = None,
+    *, preserve_links: bool = False,
 ) -> Path:
     cfg = load_config(config)
     raw = override if override is not None else cfg.get("tickets_dir", "tickets")
-    path = _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
+    if preserve_links:
+        path = resolve_config_path(raw)
+        if path is None:
+            raise ConfigError("tickets_dir must be a non-empty path")
+        path = Path(os.path.abspath(path if path.is_absolute() else REPO_ROOT / path))
+    else:
+        path = _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
     # Rename-tolerant, solange `_TICKETS` -> `TICKETS` nicht auf allen Hosts
     # angekommen ist (T-20260906-387521104).
     return resolve_queue_alias(path)
@@ -426,7 +434,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="create one exclusive INBOX intake ticket; DESCRIPTION may also come from --body",
     )
     mode.add_argument("--print-prompt", action="store_true", help="resolve and print the prompt path")
-    parser.add_argument("--json", action="store_true", help="emit --list output as JSON")
+    mode.add_argument("--ticket-inventory", "--ticketinventur", action="store_true",
+                      help="capture a read-only Ticketinventur matrix as JSON; no provider starts")
+    parser.add_argument("--inventory-content", action="store_true",
+                        help="include private source text in inventory JSON; store outside the watched queue")
+    parser.add_argument("--json", action="store_true", help="emit --list or --ticket-inventory output as JSON")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")
     parser.add_argument("--config", help="path to local JSON config")
     parser.add_argument(
@@ -446,8 +458,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.json and not args.list:
-            raise ConfigError("--json is only valid with --list")
+        if args.json and not (args.list or args.ticket_inventory):
+            raise ConfigError("--json is only valid with --list or --ticket-inventory")
+        if args.inventory_content and not args.ticket_inventory:
+            raise ConfigError("--inventory-content requires --ticket-inventory")
+        if args.ticket_inventory:
+            report = capture_inventory(resolve_tickets_dir(args.config, args.tickets_dir, preserve_links=True),
+                                       include_content=args.inventory_content)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 2 if report["errors"] else 0
         if args.print_prompt:
             _lang, path, warnings = resolve_prompt(config=args.config, language=args.lang)
             for warning in warnings:

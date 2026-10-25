@@ -52,3 +52,10 @@ resolves a domain/endpoint at intake and gates urgency (`sofort`/`heute`/
 
 The full protocol — decision ladder, score formula, gates, fallback chain,
 ticket lifecycle — lives in the prompt. Read it; do not duplicate it here.
+
+## Ticketinventur / ticket inventory
+
+For a bounded full queue inventory, use [the local Ticketinventur adapter](skills/ticket-inventory/SKILL.md).
+The read-only entry point is `python bin/ticket_master.py --ticket-inventory --tickets-dir /path/to/queue`.
+It captures source hashes and section coverage; semantic consolidation, reversible archives
+and independent acceptance remain explicit workflow steps. It starts no provider.

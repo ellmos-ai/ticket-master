@@ -87,6 +87,7 @@ include = ["lib*"]
 
 [tool.setuptools.data-files]
 "share/ticket-master" = ["ellmos-module.v2.json"]
+"share/ticket-master/skills/ticket-inventory" = ["skills/ticket-inventory/SKILL.md"]
 "share/ticket-master/prompts" = ["prompts/TICKET-MASTER.de.md", "prompts/TICKET-MASTER.en.md"]
 "share/ticket-master/starters/windows" = ["starters/windows/*.bat"]
 "share/ticket-master/starters/posix" = ["starters/posix/*.sh"]

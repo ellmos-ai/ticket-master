@@ -10,7 +10,8 @@
     "control.tickets",
     "workflow.ticket-triage",
     "tickets.capture",
-    "control.trithon-shadow"
+    "control.trithon-shadow",
+    "tickets.inventory"
   ],
   "requires": [],
   "optional": [

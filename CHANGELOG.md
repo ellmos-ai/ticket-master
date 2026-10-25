@@ -4,6 +4,12 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Ticketinventur / ticket inventory
+
+- Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.
+- Add the local workflow adapter for complete semantic consolidation, active remainder preservation, reversible native archive moves and separate independent acceptance.
+
+
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
 
 - **Bilinguale CONTRIBUTING Guidelines (EN/DE)**: Deployed canonical `CONTRIBUTING.md` defining development guidelines, Plan D local-first clone setup (`C:\_Local_DEV\repos\ticket-master`), quality gates (`pytest`, `ruff check`, `compileall`, `git diff --check`), unprivileged `RunAsInvoker` mode, all ten governance invariants `INV-LOCAL-01` through `INV-SLA-10`, canonical lock discipline, version freeze rule (`T-20260920-167562623`), and 48-hour security response SLA.
