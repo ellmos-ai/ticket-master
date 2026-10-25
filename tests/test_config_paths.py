@@ -55,7 +55,8 @@ def test_cli_dry_run_dedups_through_a_home_placeholder(tmp_path, monkeypatch, ca
     """Der eigentliche Regressionsfall: `<HOME>` in der Config, Ticket existiert.
 
     Vor dem Fix meldete der Trockenlauf hier `planned`, weil er im Verzeichnis
-    "<HOME>/tickets" nachsah statt im echten. Erwartet ist `skipped_existing`.
+    "<HOME>/tickets" nachsah statt im echten. Der reine ID-Link ergibt jetzt
+    `needs_readback`; der Pfadbeleg zeigt, dass das echte Ticket gefunden wurde.
     """
     home = tmp_path / "home"
     findings_dir = home / "findings"
@@ -80,7 +81,8 @@ def test_cli_dry_run_dedups_through_a_home_placeholder(tmp_path, monkeypatch, ca
 
     assert rc == 0
     results = json.loads(capsys.readouterr().out)
-    assert [r["status"] for r in results] == ["skipped_existing"]
+    assert [r["status"] for r in results] == ["needs_readback"]
+    assert results[0]["existing_ticket_paths"] == [str(solved / "T-20260901-222222222.txt")]
 
 
 def test_cli_reports_planned_for_a_genuinely_new_finding(tmp_path, monkeypatch, capsys):
