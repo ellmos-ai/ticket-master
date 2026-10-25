@@ -648,7 +648,8 @@ und Fälligkeit nicht nachrechnen.
 Bei `companion.enabled` pro echter Session genau eine rotierende Aufgabe für
 taskwriter/tasksolver/maintainer automatisch durchführen, wenn ein
 autorisierter freier Slot und Task-/Lock-/Scope-Gates bestehen. Persönliche
-Grenze: höchstens zwei Luna und ein Sol/Astra. Niedrig/mittel bezeichnet das
+Grenze: das persönliche `max_luna` (eins oder zwei) und höchstens ein Sol/Astra;
+aktuelle Sitzungsgrenzen zusätzlich beachten. Niedrig/mittel bezeichnet das
 Modell, nicht die Aufgabenschwierigkeit. Mit autoritativer Session-ID
 `python -X utf8 lib/session_boot.py --claim-companion <ID>` exklusiv vormerken.
 Bestehendes `pending` erst klären, keine zweite Instanz starten. Rolle mit

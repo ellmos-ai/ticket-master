@@ -34,6 +34,18 @@ def test_profile_is_private_per_user_and_invalid_values_fail_closed(tmp_path, mo
         session_profile.effective_settings()
 
 
+def test_personal_one_luna_limit_preserves_other_user_default(tmp_path, monkeypatch):
+    one = _profile(tmp_path / "one.json", {"companion": {"enabled": True, "max_luna": 1}})
+    other = _profile(tmp_path / "other.json", {"companion": {"enabled": True}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(one))
+    assert session_profile.effective_settings()["settings"]["companion"]["max_luna"] == 1
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(other))
+    assert session_profile.effective_settings()["settings"]["companion"]["max_luna"] == 2
+    _profile(other, {"companion": {"enabled": True, "max_luna": 3}})
+    with pytest.raises(ValueError, match="slot ceiling"):
+        session_profile.effective_settings()
+
+
 def test_pending_profile_preserves_request_but_disables_runtime(tmp_path, monkeypatch):
     path = _profile(tmp_path / "pending.json", {"companion": {"enabled": True}}, "pending")
     monkeypatch.setenv("TM_SESSION_PROFILE", str(path))

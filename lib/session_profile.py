@@ -75,7 +75,10 @@ def load_profile(config: dict[str, Any] | None = None) -> dict[str, Any]:
     if not isinstance(filters, list) or any(x not in {"error", "blocked", "decision", "deadline"} for x in filters):
         raise ValueError("invalid attention.filters")
     companion = settings.get("companion", {})
-    if companion.get("max_luna", 2) != 2 or companion.get("max_high", 1) != 1:
+    luna_limit = companion.get("max_luna", 2)
+    high_limit = companion.get("max_high", 1)
+    if (type(luna_limit) is not int or luna_limit not in {1, 2}
+            or type(high_limit) is not int or high_limit != 1):
         raise ValueError("unsupported companion slot ceiling")
     return {"source": str(path), "configured": True,
             "runtime_compatibility": compatibility, "settings": settings}

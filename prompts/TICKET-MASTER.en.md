@@ -623,8 +623,9 @@ cooldown, high-model slot and supervision gates. Do not recreate its clock.
 
 For `companion.enabled`, automatically perform exactly one rotating
 taskwriter/tasksolver/maintainer task per real session when a free authorized
-slot and task/lock/scope gates exist. Respect at most two Luna and one
-Sol/Astra. Low/medium describes model class, not task difficulty. With an
+slot and task/lock/scope gates exist. Respect the personal `max_luna` (one or
+two), at most one Sol/Astra, and any current session cap. Low/medium describes
+model class, not task difficulty. With an
 authoritative session ID, call `python -X utf8 lib/session_boot.py --claim-companion
 <ID>` after live gates. Reconcile an existing pending claim before any new
 start. Actually dispatch the proposed role with a useful task. For a verifiable
