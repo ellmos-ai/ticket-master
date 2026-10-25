@@ -22,6 +22,26 @@ def _profile(path: Path, settings: dict, compatibility: str = "active") -> Path:
     return path
 
 
+def _configured_claim_with_synthetic_intent(tmp_path, monkeypatch):
+    """Exercise ACK guards with a pinned test intent, without starting SDK."""
+    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
+    monkeypatch.setattr(session_boot, "_capacity_root", lambda: tmp_path)
+    root = tmp_path / "sdk"
+    root.mkdir()
+    config = {"session_profile_path": str(profile), "agent_launcher_work_root": str(root)}
+    claim = session_boot.companion_claim("session-one", config=config)
+    child = root / f"agent_{claim['dispatch_name']}"
+    attempt = {"schema": "ticket-master.companion-dispatch-attempt.v1",
+               "session_id": claim["session_id"], "claim_id": claim["claim_id"],
+               "dispatch_name": claim["dispatch_name"], "sdk_work_root": str(root),
+               "expected_work_dir": str(child), "expected_cwd": str(child),
+               "status": "invoked-unknown"}
+    (tmp_path / ".ticket-master-companion" / "session-one.dispatch-attempt").write_text(
+        json.dumps(attempt), encoding="utf-8")
+    return config, claim, child
+
+
 def test_profile_is_private_per_user_and_invalid_values_fail_closed(tmp_path, monkeypatch):
     a = _profile(tmp_path / "a.json", {"companion": {"enabled": True}})
     b = _profile(tmp_path / "b.json", {"companion": {"enabled": False}})
@@ -285,21 +305,21 @@ def test_attention_extracts_bounded_evidence_from_long_canonical_log_line(tmp_pa
 
 
 def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
-    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
-    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
-    first = session_boot.companion_claim("session-one")
+    config, first, child = _configured_claim_with_synthetic_intent(tmp_path, monkeypatch)
     assert first["role"] == "taskwriter"
-    assert session_boot.companion_claim("session-one") == first
+    assert session_boot.companion_claim("session-one", config=config) == first
     receipt = f"agent-launcher:{first['dispatch_name']}"
     with pytest.raises(ValueError, match="unsupported"):
-        session_boot.companion_ack("session-one", "not-a-real-dispatch-proof")
-    assert session_boot.companion_claim("session-one")["status"] == "pending"
+        session_boot.companion_ack("session-one", "not-a-real-dispatch-proof", config=config)
+    assert session_boot.companion_claim("session-one", config=config)["status"] == "pending"
 
     metadata = {"name": first["dispatch_name"], "pid": 321,
                 "process_create_time": datetime.fromisoformat(first["created_at"]).timestamp() + 1,
                 "launch_state": "active", "ticket_master_session_id": "session-one",
                 "ticket_master_claim_id": first["claim_id"],
-                "ticket_master_role": first["role"]}
+                "ticket_master_role": first["role"],
+                "ticket_master_work_root": config["agent_launcher_work_root"],
+                "work_dir": str(child), "cwd": str(child)}
 
     class Registry:
         def __init__(self, path):
@@ -315,13 +335,13 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
 
     monkeypatch.setattr(session_boot.importlib, "import_module",
                         lambda name: SimpleNamespace(AgentProcessRegistry=Registry))
-    accepted = session_boot.companion_ack("session-one", receipt)
+    accepted = session_boot.companion_ack("session-one", receipt, config=config)
     assert accepted["status"] == "accepted"
     assert accepted["acceptance_evidence"]["pid"] == 321
-    assert session_boot.companion_claim("session-one") == accepted
-    assert session_boot.companion_claim("session-two")["role"] == "tasksolver"
+    assert session_boot.companion_claim("session-one", config=config) == accepted
+    assert session_boot.companion_claim("session-two", config=config)["role"] == "tasksolver"
     with pytest.raises(ValueError, match="receipt"):
-        session_boot.companion_ack("session-two", "")
+        session_boot.companion_ack("session-two", "", config=config)
 
 
 @pytest.mark.parametrize("mutation", ["missing-sdk", "missing-api", "pending", "old-process",
@@ -329,16 +349,16 @@ def test_companion_single_claim_acceptance_and_rotation(tmp_path, monkeypatch):
                                      "wrong-session", "wrong-claim", "wrong-role",
                                      "dead-process", "unreadable-probe", "changed-record"])
 def test_companion_ack_requires_bound_native_readback(tmp_path, monkeypatch, mutation):
-    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
-    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
-    claim = session_boot.companion_claim("session-one")
+    config, claim, child = _configured_claim_with_synthetic_intent(tmp_path, monkeypatch)
     receipt = f"agent-launcher:{claim['dispatch_name']}"
     birth = datetime.fromisoformat(claim["created_at"]).timestamp() + 1
     metadata = {"name": claim["dispatch_name"], "pid": 321,
                 "process_create_time": birth, "launch_state": "active",
                 "ticket_master_session_id": claim["session_id"],
                 "ticket_master_claim_id": claim["claim_id"],
-                "ticket_master_role": claim["role"]}
+                "ticket_master_role": claim["role"],
+                "ticket_master_work_root": config["agent_launcher_work_root"],
+                "work_dir": str(child), "cwd": str(child)}
     if mutation == "pending":
         metadata["launch_state"] = "pending"
     elif mutation == "old-process":
@@ -376,20 +396,83 @@ def test_companion_ack_requires_bound_native_readback(tmp_path, monkeypatch, mut
 
     monkeypatch.setattr(session_boot.importlib, "import_module", import_launcher)
     with pytest.raises(ValueError):
-        session_boot.companion_ack("session-one", receipt)
-    assert json.loads((tmp_path / "session-claims" / "session-one.json").read_text())["status"] == "pending"
-    assert session_boot.companion_claim("session-two")["role"] == "taskwriter"
+        session_boot.companion_ack("session-one", receipt, config=config)
+    assert json.loads((tmp_path / ".ticket-master-companion" / "session-one.json").read_text())["status"] == "pending"
+    assert session_boot.companion_claim("session-two", config=config)["role"] == "taskwriter"
 
 
 def test_companion_rotation_refuses_corrupt_ledger(tmp_path, monkeypatch):
     profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
     monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
-    directory = tmp_path / "session-claims"
+    monkeypatch.setattr(session_boot, "_capacity_root", lambda: tmp_path)
+    root = tmp_path / "sdk"
+    root.mkdir()
+    config = {"session_profile_path": str(profile), "agent_launcher_work_root": str(root)}
+    directory = tmp_path / ".ticket-master-companion"
     directory.mkdir()
     (directory / "prior.json").write_text("not JSON", encoding="utf-8")
     with pytest.raises(ValueError, match="ledger unreadable"):
-        session_boot.companion_claim("session-next")
+        session_boot.companion_claim("session-next", config=config)
     assert not (directory / "session-next.json").exists()
+
+
+@pytest.mark.parametrize("raw_root", ["__absent__", None, "", " "])
+@pytest.mark.parametrize("legacy_status", ["pending", "accepted"])
+def test_public_claim_ack_and_cli_refuse_legacy_without_sdk_root(
+        tmp_path, monkeypatch, capsys, raw_root, legacy_status):
+    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": True}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
+    config = {"session_profile_path": str(profile)}
+    if raw_root != "__absent__":
+        config["agent_launcher_work_root"] = raw_root
+    legacy = tmp_path / "session-claims"
+    legacy.mkdir()
+    claim_id = "a" * 32
+    name = session_boot._dispatch_name("session-one", claim_id)
+    claim = {"schema": "ticket-master.companion-claim.v2", "session_id": "session-one",
+             "claim_id": claim_id, "dispatch_name": name, "role": "taskwriter",
+             "status": legacy_status, "created_at": datetime.now(timezone.utc).isoformat(),
+             "acceptance_evidence": {"pid": 321} if legacy_status == "accepted" else None}
+    own = legacy / "session-one.json"
+    own.write_text(json.dumps(claim), encoding="utf-8")
+    before = own.read_bytes()
+    imports = []
+    monkeypatch.setattr(session_boot.importlib, "import_module",
+                        lambda name: imports.append(name) or SimpleNamespace())
+    with pytest.raises(ValueError, match="work root"):
+        session_boot.companion_claim("session-next", config=config)
+    receipt = f"agent-launcher:{name}"
+    with pytest.raises(ValueError, match="work root"):
+        session_boot.companion_ack("session-one", receipt, config=config)
+    monkeypatch.setattr(session_boot.config_paths, "tm_config", lambda path=None: config)
+    for args in (["--claim-companion", "session-next"],
+                 ["--ack-companion", "session-one", "--receipt", receipt]):
+        monkeypatch.setattr(sys, "argv", ["session_boot.py", *args])
+        assert session_boot._cli() == 1
+        assert json.loads(capsys.readouterr().out)["status"] == "unknown"
+    assert imports == []
+    assert own.read_bytes() == before
+    assert not (legacy / "session-next.json").exists()
+
+
+def test_removed_sdk_root_cannot_ack_prepared_claim(tmp_path, monkeypatch):
+    config, claim, _ = _configured_claim_with_synthetic_intent(tmp_path, monkeypatch)
+    own = tmp_path / ".ticket-master-companion" / "session-one.json"
+    before = own.read_bytes()
+    config.pop("agent_launcher_work_root")
+    with pytest.raises(ValueError, match="work root"):
+        session_boot.companion_ack("session-one",
+                                   f"agent-launcher:{claim['dispatch_name']}", config=config)
+    assert own.read_bytes() == before
+
+
+def test_disabled_companion_report_needs_no_sdk_root(tmp_path, monkeypatch):
+    profile = _profile(tmp_path / "profile.json", {"companion": {"enabled": False}})
+    monkeypatch.setenv("TM_SESSION_PROFILE", str(profile))
+    config = {"session_profile_path": str(profile)}
+    assert session_boot.companion_claim("session-one", config=config) == {"status": "disabled"}
+    assert session_boot.report(config)["companion"]["enabled"] is False
+    assert not (tmp_path / "session-claims").exists()
 
 
 def test_report_reuses_auditor_verdict_only_when_personally_enabled(tmp_path, monkeypatch):

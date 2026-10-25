@@ -24,6 +24,12 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
   absolut adressiertes Arbeitsverzeichnis;
   `agent_launcher_registry_dir` ist optional (sonst Nutzerstandard). Die
   Paketinstallation und Profilaktivierung erfolgen getrennt nach Review.
+  Fehlt der Workroot oder ist er leer/ungültig, verweigern sowohl der
+  öffentliche Claim- als auch der ACK-Pfad einschließlich CLI die Ausführung.
+  Ein natives PID-Signal ohne den gepinnten Startintent ist kein ACK.
+  `--report` und ein deaktiviertes Begleitprofil bleiben ohne SDK-Start
+  nutzbar; alte profilnahe Claimdateien bleiben für die manuelle
+  Reconciliation erhalten, sind aber kein unterstützter Start-/ACK-Pfad.
 - Der Steueragent hat einen konkreten TASKPLAN-Auftrag mit gültigen Task-,
   Lock- und Scope-Gates sowie einen tatsächlich freien niedrigen/mittleren
   Slot und positives Providerbudget frisch geprüft. `max_luna` ist nur eine
