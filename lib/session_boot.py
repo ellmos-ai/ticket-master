@@ -1,7 +1,9 @@
-"""Read-only session brief and a one-companion-per-session claim ledger.
+"""Session brief, one-companion claim ledger, and optional SDK dispatch CLI.
 
-The agent owns interpretation, permission checks and real dispatch. This module
-never starts a model, approves a decision or publishes anything.
+The controlling agent owns live slot, budget, task and scope admission. Report,
+claim and ACK do not start a model; --dispatch-companion delegates one bounded
+attempt to the optional SDK adapter after a private admission readback. Nothing
+here approves a decision or publishes anything.
 """
 
 from __future__ import annotations
@@ -433,11 +435,14 @@ def _cli() -> int:
     group.add_argument("--report", action="store_true")
     group.add_argument("--claim-companion", metavar="SESSION_ID")
     group.add_argument("--ack-companion", metavar="SESSION_ID")
+    group.add_argument("--dispatch-companion", metavar="SESSION_ID",
+                       help="attempt a claim-bound AgentLauncher SDK child after a fresh admission")
     group.add_argument("--route-evidence", metavar="JSON_FILE",
                        help="classify current approval evidence without changing a ticket")
     group.add_argument("--plan-approval-ticket", metavar="JSON_FILE",
                        help="find a lifecycle ticket for a documented user approval")
     parser.add_argument("--receipt", help="agent-launcher:<claim dispatch_name>, verified against its native registry")
+    parser.add_argument("--admission-file", help="private, current controller admission JSON for --dispatch-companion")
     parser.add_argument("--tickets-dir", help="verified canonical queue root for --plan-approval-ticket")
     parser.add_argument("--config")
     args = parser.parse_args()
@@ -459,6 +464,15 @@ def _cli() -> int:
             result = approval_ticket_plan(evidence, args.tickets_dir)
         elif args.claim_companion:
             result = companion_claim(args.claim_companion, config=config)
+        elif args.dispatch_companion:
+            if not args.admission_file:
+                raise ValueError("--admission-file is required for --dispatch-companion")
+            try:
+                from . import companion_dispatch
+            except ImportError:
+                import companion_dispatch
+            result = companion_dispatch.dispatch_companion(
+                args.dispatch_companion, args.admission_file, config=config)
         else:
             result = companion_ack(args.ack_companion, args.receipt or "", config=config)
     except (OSError, ValueError, KeyError) as exc:

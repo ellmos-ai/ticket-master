@@ -653,16 +653,22 @@ aktuelle Sitzungsgrenzen zusätzlich beachten. Niedrig/mittel bezeichnet das
 Modell, nicht die Aufgabenschwierigkeit. Mit autoritativer Session-ID
 `python -X utf8 lib/session_boot.py --claim-companion <ID>` exklusiv vormerken.
 Bestehendes `pending` erst klären, keine zweite Instanz starten. Rolle mit
-sinnvollem Auftrag tatsächlich dispatchen. Für eine prüfbare Annahme über
-`agent-launcher` den vom Claim gelieferten `dispatch_name` verwenden und beim
-`AgentLauncher.start(..., extra_metadata=...)` die Claimfelder
-`ticket_master_session_id`, `ticket_master_claim_id` und `ticket_master_role`
-unverändert mitgeben. Erst nach erfolgreichem Start und nativem Registry-Readback
-`--ack-companion <ID> --receipt agent-launcher:<dispatch_name>` buchen; der
-Helper prüft aktive Registry, PID/Geburtszeit, Claim-Bindung und Prozessidentität.
+sinnvollem Auftrag tatsächlich dispatchen. Für den optionalen AgentLauncher-SDK-
+Pfad nach frischem nativen Management- und Quotenreadback einen privaten,
+höchstens zwei Minuten gültigen Admission-Beleg für genau Session, Claim, Rolle,
+Provider und das in TASKPLAN konfigurierte Modell erstellen. Der Beleg enthält
+die hashgebundenen Readbacks, vom Steueragenten klassifizierte aktive Slots
+und Task-/Lock-/Scope-Belege; ein Profil-Ceiling oder Freitext ist kein freier
+Slot. Dann `python -X utf8 lib/session_boot.py --dispatch-companion <ID>
+--admission-file <privater-beleg.json>` aufrufen. Der Adapter löst den Rollenprompt
+über TASKPLAN auf, übergibt die Claimmetadaten an `AgentLauncher.start` und ruft
+nur nach erfolgreichem SDK-Start den vorhandenen nativen `companion_ack`-Prüfer.
+Nur dessen `accepted` ist eine Annahme. Bei `pending-reconcile` den eigenen
+Attempt und Registryprozess prüfen; denselben Claim nicht erneut starten.
 Freitext, ein bloßer Launcher-Exitcode oder ein nativer Chat-Spawn ohne
-lesbaren Annahmebeleg bleiben `pending`; dafür ist noch kein Adapter vorhanden.
-Fehlt die optionale `agent-launcher`-Runtime, ebenfalls nicht quittieren. Ergebnis betreuen.
+lesbaren Annahmebeleg bleiben `pending`. Fehlt die optionale Runtime, das
+konfigurierte Modell, ein freier Slot oder ein belastbarer Quotenreadback,
+ebenfalls nicht quittieren. Ergebnis betreuen.
 Bei fehlendem Slot/Gate den Rest in derselben Session offen halten. Das
 manuelle Rollenmenü bleibt; sein Enter-Default gilt bei ausgeschalteter
 persönlicher Automatik.

@@ -4,6 +4,12 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+- T411: Added an optional, one-attempt AgentLauncher SDK companion dispatcher
+  bound to the existing session claim and native ACK verifier. Controller
+  admissions bind fresh management/quota readbacks, slot classification, the
+  configured TASKPLAN role/provider/model and task/lock/scope gates. The
+  private profile and installed runtime remain separate activation gates.
+
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
 
 - **Bilinguale CONTRIBUTING Guidelines (EN/DE)**: Deployed canonical `CONTRIBUTING.md` defining development guidelines, Plan D local-first clone setup (`C:\_Local_DEV\repos\ticket-master`), quality gates (`pytest`, `ruff check`, `compileall`, `git diff --check`), unprivileged `RunAsInvoker` mode, all ten governance invariants `INV-LOCAL-01` through `INV-SLA-10`, canonical lock discipline, version freeze rule (`T-20260920-167562623`), and 48-hour security response SLA.

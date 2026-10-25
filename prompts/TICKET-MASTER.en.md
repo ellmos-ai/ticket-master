@@ -628,16 +628,20 @@ two), at most one Sol/Astra, and any current session cap. Low/medium describes
 model class, not task difficulty. With an
 authoritative session ID, call `python -X utf8 lib/session_boot.py --claim-companion
 <ID>` after live gates. Reconcile an existing pending claim before any new
-start. Actually dispatch the proposed role with a useful task. For a verifiable
-`agent-launcher` start, use the claim's `dispatch_name` and pass
-`ticket_master_session_id`, `ticket_master_claim_id`, and `ticket_master_role`
-unchanged through `AgentLauncher.start(..., extra_metadata=...)`. After a
-successful start and native registry readback, call `--ack-companion <ID>
---receipt agent-launcher:<dispatch_name>`; the helper checks active state,
-PID/birth time, claim binding, and process identity. Free text, a launcher
+start. Actually dispatch the proposed role with a useful task. For the optional
+AgentLauncher SDK route, collect fresh native management and provider-quota
+readbacks, then prepare a private admission bound to the exact session, claim,
+role, configured TASKPLAN provider/model, classified slot occupancy, and current
+task/lock/scope checks. Hash-bind the readbacks; a profile ceiling or free text
+does not prove availability. Call `python -X utf8 lib/session_boot.py
+--dispatch-companion <ID> --admission-file <private.json>`. The adapter resolves
+the canonical TASKPLAN role prompt, passes claim metadata to the SDK, and calls
+the existing native ACK verifier only after a successful new start. Only its
+`accepted` result counts. On `pending-reconcile`, inspect the one-shot attempt
+and native registry; never start the same claim again. Free text, a launcher
 exit code alone, or a native chat spawn without a readable acceptance record
-remain pending; no adapter for the latter exists yet. A missing optional
-`agent-launcher` runtime also cannot acknowledge. Supervise the result. If
+remain pending. Missing optional runtime, configured model, available slot or
+measured quota also cannot acknowledge. Supervise the result. If
 gates fail, retain the task for later in the same session.
 The optional manual menu remains available; its Enter default applies when
 this personal automation is off.
