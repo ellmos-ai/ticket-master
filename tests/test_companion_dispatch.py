@@ -27,7 +27,21 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
     claim = session_boot.companion_claim("test-session") if compatibility == "active" else None
     prompt = tmp_path / "TASKWRITER.txt"
     prompt.write_text("Authorized TASKPLAN role\n", encoding="utf-8")
+    (tmp_path / "registry").mkdir()
     calls = []
+
+    class FakeRegistry:
+        records = {}
+
+        def __init__(self, registry_dir):
+            self.registry_dir = registry_dir
+
+        def load_metadata(self, name):
+            return self.records.get(name, {})
+
+        def probe_running(self, name):
+            row = self.records.get(name, {})
+            return row.get("_probe", row.get("pid", 0))
 
     class FakeLauncher:
         def __init__(self, registry_dir, work_root):
@@ -36,6 +50,11 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
 
         def start(self, name, **kwargs):
             calls.append((name, kwargs))
+            FakeRegistry.records[name] = {
+                "name": name, "launch_state": "active", "pid": 4242 + len(calls),
+                "process_create_time": datetime.now(timezone.utc).timestamp(),
+                **kwargs["extra_metadata"],
+            }
             return SimpleNamespace(ok=True, name=name, already_running=False)
 
     class FakeLock:
@@ -57,7 +76,7 @@ def _fixture(tmp_path, monkeypatch, *, compatibility="active", model="gpt-6-luna
         SimpleNamespace(runtime_profile=lambda role, provider: {
             "role": role, "provider": provider, "model": model, "reasoning_effort": "medium"}),
         SimpleNamespace(get_workflow_prompt_path=lambda role: prompt),
-        SimpleNamespace(AgentLauncher=FakeLauncher),
+        SimpleNamespace(AgentLauncher=FakeLauncher, AgentProcessRegistry=FakeRegistry),
         SimpleNamespace(FileLock=FakeLock)))
     return claim, calls, {"agent_launcher_registry_dir": str(tmp_path / "registry"),
                           "agent_launcher_work_root": str(tmp_path)}
@@ -193,7 +212,8 @@ def test_failed_or_ambiguous_start_keeps_pending_without_retry(tmp_path, monkeyp
             return SimpleNamespace(ok=False, name=name, already_running=False)
 
     monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3],
-                        SimpleNamespace(AgentLauncher=FailedLauncher), runtime[4]))
+                        SimpleNamespace(AgentLauncher=FailedLauncher,
+                                        AgentProcessRegistry=runtime[3].AgentProcessRegistry), runtime[4]))
     admission = _file(tmp_path, _admission(claim))
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
@@ -230,6 +250,186 @@ def test_second_session_requires_new_management_readback_after_attempt(tmp_path,
     assert len(calls) == 1
 
 
+def _prior_attempt(tmp_path, claim, *, created):
+    path = tmp_path / "session-claims" / f"{claim['session_id']}.dispatch-attempt"
+    path.write_text(json.dumps({"schema": dispatch.ATTEMPT_SCHEMA,
+                                "session_id": claim["session_id"],
+                                "claim_id": claim["claim_id"],
+                                "dispatch_name": claim["dispatch_name"],
+                                "created_at": created.isoformat(),
+                                "status": "invoked-unknown"}), encoding="utf-8")
+
+
+def test_fresh_native_snapshot_still_counts_live_sdk_child(tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
+    registry = dispatch._runtime()[3].AgentProcessRegistry
+    registry.records[first["dispatch_name"]] = {
+        "name": first["dispatch_name"], "launch_state": "active", "pid": 4242,
+        "process_create_time": datetime.fromisoformat(first["created_at"]).timestamp() + 1,
+        "ticket_master_session_id": first["session_id"],
+        "ticket_master_claim_id": first["claim_id"],
+        "ticket_master_role": first["role"],
+    }
+    monkeypatch.setattr(dispatch, "_process_state", lambda pid, birth: "live")
+    with pytest.raises(ValueError, match="no attested companion slot"):
+        dispatch.dispatch_companion(second["session_id"],
+                                    _file(tmp_path, _admission(second)), config=config)
+    assert calls == []
+
+
+def test_real_claim_ack_then_fresh_native_snapshot_still_blocks_second_sdk_child(
+        tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    monkeypatch.setitem(sys.modules, "agent_launcher", dispatch._runtime()[3])
+    assert dispatch.dispatch_companion(first["session_id"],
+                                       _file(tmp_path, _admission(first)),
+                                       config=config)["status"] == "accepted"
+    assert session_boot.companion_claim(first["session_id"])["status"] == "accepted"
+    with pytest.raises(ValueError, match="no attested companion slot"):
+        dispatch.dispatch_companion(second["session_id"],
+                                    _file(tmp_path, _admission(second)), config=config)
+    assert len(calls) == 1
+
+
+def test_proven_ended_sdk_child_frees_slot_after_new_measurement(tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
+    registry = dispatch._runtime()[3].AgentProcessRegistry
+    registry.records[first["dispatch_name"]] = {
+        "name": first["dispatch_name"], "launch_state": "active", "pid": 4242,
+        "_probe": 0,
+        "process_create_time": datetime.fromisoformat(first["created_at"]).timestamp() + 1,
+        "ticket_master_session_id": first["session_id"],
+        "ticket_master_claim_id": first["claim_id"],
+        "ticket_master_role": first["role"],
+    }
+    monkeypatch.setattr(dispatch, "_process_state", lambda pid, birth: "ended")
+    monkeypatch.setattr(session_boot, "companion_ack",
+                        lambda *args, **kwargs: {"acceptance_evidence": {"pid": 43}})
+    assert dispatch.dispatch_companion(second["session_id"],
+                                       _file(tmp_path, _admission(second)),
+                                       config=config)["status"] == "accepted"
+    assert len(calls) == 1
+
+
+def test_pid_birth_probe_frees_only_proven_termination(monkeypatch):
+    class ProbeError(Exception):
+        pass
+
+    class Gone(ProbeError):
+        pass
+
+    class Unreadable(ProbeError):
+        pass
+
+    monkeypatch.setitem(sys.modules, "psutil", SimpleNamespace(
+        Process=lambda pid: (_ for _ in ()).throw(Gone()),
+        NoSuchProcess=Gone, Error=ProbeError))
+    assert dispatch._process_state(4242, 1234.0) == "ended"
+    monkeypatch.setitem(sys.modules, "psutil", SimpleNamespace(
+        Process=lambda pid: (_ for _ in ()).throw(Unreadable()),
+        NoSuchProcess=Gone, Error=ProbeError))
+    assert dispatch._process_state(4242, 1234.0) == "unknown"
+    monkeypatch.setitem(sys.modules, "psutil", SimpleNamespace(
+        Process=lambda pid: SimpleNamespace(create_time=lambda: 9999.0),
+        NoSuchProcess=Gone, Error=ProbeError))
+    assert dispatch._process_state(4242, 1234.0) == "ended"
+
+
+def test_unknown_prior_attempt_cannot_prove_sdk_slot_free(tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    _prior_attempt(tmp_path, first, created=datetime.now(timezone.utc) - timedelta(seconds=20))
+    with pytest.raises(ValueError, match="cannot be reconciled"):
+        dispatch.dispatch_companion(second["session_id"],
+                                    _file(tmp_path, _admission(second)), config=config)
+    assert calls == []
+
+
+def test_reissued_wrapper_cannot_refresh_prestart_measurement(tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    measured = datetime.now(timezone.utc) - timedelta(seconds=30)
+    _prior_attempt(tmp_path, first, created=measured + timedelta(seconds=10))
+    admission = _admission(second, now=measured)
+    admission["issued_at"] = datetime.now(timezone.utc).isoformat()
+    admission["expires_at"] = (datetime.now(timezone.utc) + timedelta(seconds=90)).isoformat()
+    with pytest.raises(ValueError, match="predates another dispatch"):
+        dispatch.dispatch_companion(second["session_id"],
+                                    _file(tmp_path, admission), config=config)
+    assert calls == []
+
+
+def test_new_management_with_old_quota_measurement_cannot_follow_attempt(tmp_path, monkeypatch):
+    first, calls, config = _fixture(tmp_path, monkeypatch)
+    second = session_boot.companion_claim("next-session")
+    old = datetime.now(timezone.utc) - timedelta(seconds=30)
+    _prior_attempt(tmp_path, first, created=old + timedelta(seconds=10))
+    admission = _admission(second)
+    admission["quota"]["checked_at"] = old.isoformat()
+    admission["quota"]["readback"]["checked_at"] = old.isoformat()
+    admission["quota"]["sha256"] = dispatch._digest(admission["quota"]["readback"])
+    with pytest.raises(ValueError, match="predates another dispatch"):
+        dispatch.dispatch_companion(second["session_id"],
+                                    _file(tmp_path, admission), config=config)
+    assert calls == []
+
+
+def test_unreadable_sdk_record_is_not_a_free_slot(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    registry_dir = tmp_path / "registry"
+    (registry_dir / f"{claim['dispatch_name']}.pid").write_text("invalid", encoding="utf-8")
+    with pytest.raises(ValueError, match="registry record is unreadable"):
+        dispatch.dispatch_companion(claim["session_id"],
+                                    _file(tmp_path, _admission(claim)), config=config)
+    assert calls == []
+
+
+def test_default_registry_child_counts_with_isolated_candidate_registry(tmp_path, monkeypatch):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    external_session, external_claim = "other-session", "a" * 32
+    name = session_boot._dispatch_name(external_session, external_claim)
+    default = tmp_path / "home" / ".agent-launcher" / "registry"
+    default.mkdir(parents=True)
+    (default / f"{name}.pid").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(dispatch.Path, "home", classmethod(lambda cls: tmp_path / "home"))
+    dispatch._runtime()[3].AgentProcessRegistry.records[name] = {
+        "name": name, "launch_state": "active", "pid": 4242,
+        "process_create_time": datetime.now(timezone.utc).timestamp(),
+        "ticket_master_session_id": external_session,
+        "ticket_master_claim_id": external_claim,
+        "ticket_master_role": "tasksolver",
+    }
+    with pytest.raises(ValueError, match="no attested companion slot"):
+        dispatch.dispatch_companion(claim["session_id"],
+                                    _file(tmp_path, _admission(claim)), config=config)
+    assert calls == []
+
+
+@pytest.mark.parametrize("windows,top", [
+    ({"primary": 100, "secondary": 0}, None),
+    ({"primary": 0}, 100),
+    ({"primary": 20, "secondary": 30}, 0),
+    ({"primary": 20, "secondary": None}, None),
+])
+def test_every_reported_quota_window_must_be_positive(tmp_path, monkeypatch, windows, top):
+    claim, calls, config = _fixture(tmp_path, monkeypatch)
+    admission = _admission(claim)
+    quota = admission["quota"]["readback"]
+    quota["windows"] = {key: {"remaining_percent": value} for key, value in windows.items()}
+    if top is not None:
+        quota["remaining_percent"] = top
+    admission["quota"]["sha256"] = dispatch._digest(quota)
+    with pytest.raises(ValueError, match="positive measured remainder"):
+        dispatch.dispatch_companion(claim["session_id"],
+                                    _file(tmp_path, admission), config=config)
+    assert calls == []
+
+
 def test_missing_configured_model_fails_before_attempt(tmp_path, monkeypatch):
     claim, calls, config = _fixture(tmp_path, monkeypatch, model="")
     with pytest.raises(ValueError, match="configured"):
@@ -247,7 +447,8 @@ def test_uncertain_sdk_exception_is_not_retried(tmp_path, monkeypatch):
             raise RuntimeError("spawn result unknown")
 
     monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3],
-                        SimpleNamespace(AgentLauncher=UncertainLauncher), runtime[4]))
+                        SimpleNamespace(AgentLauncher=UncertainLauncher,
+                                        AgentProcessRegistry=runtime[3].AgentProcessRegistry), runtime[4]))
     admission = _file(tmp_path, _admission(claim))
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
     assert dispatch.dispatch_companion("test-session", admission, config=config)["status"] == "pending-reconcile"
@@ -269,7 +470,8 @@ def test_parallel_same_claim_cannot_double_start(tmp_path, monkeypatch):
             return result
 
     monkeypatch.setattr(dispatch, "_runtime", lambda: (*runtime[:3],
-                        SimpleNamespace(AgentLauncher=SlowLauncher), runtime[4]))
+                        SimpleNamespace(AgentLauncher=SlowLauncher,
+                                        AgentProcessRegistry=runtime[3].AgentProcessRegistry), runtime[4]))
     monkeypatch.setattr(session_boot, "companion_ack",
                         lambda *args, **kwargs: {"acceptance_evidence": {"pid": 123}})
     admission = _file(tmp_path, _admission(claim))

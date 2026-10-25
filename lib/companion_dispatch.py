@@ -12,6 +12,7 @@ import importlib
 import json
 import math
 import re
+import stat
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -57,8 +58,30 @@ def _evidence(admission: dict[str, Any], key: str, now: datetime) -> dict[str, A
     return row["readback"]
 
 
+def _positive_remainder(value: Any) -> bool:
+    return (not isinstance(value, bool) and isinstance(value, (int, float))
+            and math.isfinite(value) and 0 < value <= 100)
+
+
+def _quota_has_budget(quota: dict[str, Any]) -> bool:
+    """Every reported provider window is a limit, not an alternative budget."""
+    values = []
+    if "remaining_percent" in quota:
+        values.append(quota["remaining_percent"])
+    if "windows" in quota:
+        windows = quota["windows"]
+        if not isinstance(windows, dict) or not windows:
+            return False
+        for window in windows.values():
+            if not isinstance(window, dict) or "remaining_percent" not in window:
+                return False
+            values.append(window["remaining_percent"])
+    return bool(values) and all(_positive_remainder(value) for value in values)
+
+
 def _validate_admission(admission: Any, claim: dict[str, Any], profile: dict[str, Any],
-                        provider: str, model: str, now: datetime) -> None:
+                        provider: str, model: str, now: datetime,
+                        sdk_active: int = 0) -> None:
     if not isinstance(admission, dict) or admission.get("schema") != ADMISSION_SCHEMA:
         raise ValueError("companion admission schema missing")
     for key in ("session_id", "claim_id", "role"):
@@ -104,7 +127,8 @@ def _validate_admission(admission: Any, claim: dict[str, Any], profile: dict[str
     limit = profile["settings"]["companion"]["max_luna"]
     high_limit = profile["settings"]["companion"]["max_high"]
     if (not isinstance(slot, dict) or type(slot.get("limit")) is not int
-            or not 0 < slot["limit"] <= limit or active_low >= slot["limit"]
+            or not 0 < slot["limit"] <= limit
+            or active_low + sdk_active >= slot["limit"]
             or active_high > high_limit):
         raise ValueError("no attested companion slot is available")
 
@@ -114,13 +138,7 @@ def _validate_admission(admission: Any, claim: dict[str, Any], profile: dict[str
     quota_checked = _stamp(quota.get("checked_at"), "quota.readback.checked_at")
     if quota_checked > now or now - quota_checked > MAX_AGE:
         raise ValueError("provider quota measurement is stale")
-    remaining = quota.get("remaining_percent")
-    if remaining is None:
-        windows = quota.get("windows")
-        primary = windows.get("primary") if isinstance(windows, dict) else None
-        remaining = primary.get("remaining_percent") if isinstance(primary, dict) else None
-    if (isinstance(remaining, bool) or not isinstance(remaining, (int, float))
-            or not math.isfinite(remaining) or remaining <= 0 or remaining > 100):
+    if not _quota_has_budget(quota):
         raise ValueError("provider quota has no positive measured remainder")
     gate = admission.get("task_gate")
     if not isinstance(gate, dict) or (
@@ -155,6 +173,138 @@ def _runtime() -> tuple[Any, Any, Any, Any, Any]:
                 importlib.import_module("filelock"))
     except ImportError as exc:
         raise ValueError("optional TASKPLAN/AgentLauncher runtime unavailable") from exc
+
+
+def _process_state(pid: Any, birth: Any) -> str:
+    """Only a measured missing/reused PID proves that a prior child ended."""
+    if (type(pid) is not int or pid <= 0 or isinstance(birth, bool)
+            or not isinstance(birth, (int, float)) or not math.isfinite(birth)
+            or birth <= 0):
+        return "unknown"
+    try:
+        psutil = importlib.import_module("psutil")  # AgentLauncher's dependency
+    except ImportError:
+        return "unknown"
+    try:
+        process = psutil.Process(pid)
+        if process.create_time() != float(birth):
+            return "ended"
+        return "live" if process.is_running() else "ended"
+    except psutil.NoSuchProcess:
+        return "ended"
+    except (psutil.Error, OSError, ValueError):
+        # AccessDenied and other probe errors cannot establish a free slot.
+        return "unknown"
+
+
+def _sdk_occupancy(directory: Path, registry_dirs: set[Path],
+                   launcher_module: Any, attempts: dict[str, dict[str, Any]]) -> int:
+    """Read existing SDK registries and claim ledger under the dispatch lock.
+
+    Native chat management cannot see these OS children.  Missing/corrupt
+    records and ambiguous attempts fail closed; no registry is modified.
+    """
+    registry_type = getattr(launcher_module, "AgentProcessRegistry", None)
+    if registry_type is None:
+        raise ValueError("agent-launcher registry API unavailable")
+    claims: dict[str, dict[str, Any]] = {}
+    for path in directory.glob("*.json"):
+        try:
+            item = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise ValueError("companion claim ledger unreadable") from exc
+        if (not isinstance(item, dict)
+                or item.get("schema") != "ticket-master.companion-claim.v2"
+                or not isinstance(item.get("session_id"), str)
+                or not isinstance(item.get("claim_id"), str)
+                or not isinstance(item.get("dispatch_name"), str)
+                or item["dispatch_name"] != session_boot._dispatch_name(
+                    item["session_id"], item["claim_id"])):
+            raise ValueError("companion claim ledger invalid")
+        claims[item["dispatch_name"]] = item
+    names = set(attempts) | set(claims)
+    record_sources: dict[str, set[Path]] = {}
+    registries = []
+    for registry_dir in registry_dirs:
+        registry = registry_type(registry_dir)
+        registries.append((registry_dir, registry))
+        # list_all() deliberately omits identity failures.  Enumerate its
+        # own registry records so a corrupt/uncertain tm-* child is not free.
+        try:
+            mode = registry_dir.stat().st_mode
+        except FileNotFoundError:
+            continue
+        except OSError as exc:
+            raise ValueError("companion registry is unreadable") from exc
+        if not stat.S_ISDIR(mode):
+            raise ValueError("companion registry is not a directory")
+        try:
+            for path in registry_dir.iterdir():
+                if path.name.startswith("tm-") and path.suffix == ".pid":
+                    record_sources.setdefault(path.stem, set()).add(registry_dir)
+        except OSError as exc:
+            raise ValueError("companion registry is unreadable") from exc
+        names.update(record_sources)
+    live_ids: set[tuple[int, float]] = set()
+    for name in names:
+        if not re.fullmatch(r"tm-[0-9a-f]{32}", name):
+            raise ValueError("companion registry name is invalid")
+        rows = []
+        for registry_dir, registry in registries:
+            row = registry.load_metadata(name)
+            if not row and registry_dir in record_sources.get(name, set()):
+                raise ValueError("companion registry record is unreadable")
+            if row:
+                rows.append((registry, row))
+        if len(rows) > 1 and any(row != rows[0][1] for _, row in rows[1:]):
+            raise ValueError("companion registry identities conflict")
+        if rows:
+            registry, row = rows[0]
+            session_id = row.get("ticket_master_session_id")
+            claim_id = row.get("ticket_master_claim_id")
+            role = row.get("ticket_master_role")
+            if (row.get("name") != name or row.get("launch_state") != "active"
+                    or not isinstance(session_id, str)
+                    or not isinstance(claim_id, str)
+                    or role not in session_boot.ROLES
+                    or session_boot._dispatch_name(session_id, claim_id) != name):
+                raise ValueError("companion registry identity is uncertain")
+            claim = claims.get(name)
+            if claim and (claim["session_id"] != session_id
+                          or claim["claim_id"] != claim_id or claim["role"] != role):
+                raise ValueError("companion registry differs from claim")
+            pid, birth = row.get("pid"), row.get("process_create_time")
+            if (type(pid) is not int or pid <= 0 or isinstance(birth, bool)
+                    or not isinstance(birth, (int, float))
+                    or not math.isfinite(birth) or birth <= 0):
+                raise ValueError("companion process identity is uncertain")
+            try:
+                observed = registry.probe_running(name)
+                stable = registry.load_metadata(name) == row
+            except (AttributeError, OSError, ValueError) as exc:
+                raise ValueError("companion process identity is unreadable") from exc
+            if not stable:
+                raise ValueError("companion process identity changed")
+            if observed == pid:
+                live_ids.add((pid, float(birth)))
+            elif observed == 0:
+                if _process_state(pid, birth) != "ended":
+                    raise ValueError("companion process identity is uncertain")
+            else:
+                raise ValueError("companion process identity changed")
+            continue
+        claim = claims.get(name)
+        evidence = claim.get("acceptance_evidence") if claim else None
+        if isinstance(evidence, dict) and evidence.get("name") == name:
+            pid, birth = evidence.get("pid"), evidence.get("process_create_time")
+            state = _process_state(pid, birth)
+            if state == "unknown":
+                raise ValueError("companion acceptance process is uncertain")
+            if state == "live":
+                live_ids.add((pid, float(birth)))
+        elif name in attempts:
+            raise ValueError("prior companion start cannot be reconciled")
+    return len(live_ids)
 
 
 def dispatch_companion(session_id: str, admission_file: str | Path, *,
@@ -222,15 +372,41 @@ def dispatch_companion(session_id: str, admission_file: str | Path, *,
         claim = _claim(session_id, profile)
         if claim["status"] != "pending" or attempt.exists():
             return {"status": "pending-reconcile", "claim_id": claim["claim_id"]}
-        # A second admission based on a pre-launch snapshot cannot fill the
-        # same observed free slot, even from another Ticket Master session.
-        issued = _stamp(admission["issued_at"], "admission.issued_at")
+        # The measurement, not a newly issued wrapper, must follow every
+        # earlier start attempt in this ledger.
+        management_checked = _stamp(admission["management"]["checked_at"],
+                                    "management.checked_at")
+        quota_checked = _stamp(admission["quota"]["checked_at"], "quota.checked_at")
+        quota_measured = _stamp(admission["quota"]["readback"]["checked_at"],
+                                "quota.readback.checked_at")
+        prior_attempts: dict[str, dict[str, Any]] = {}
         for prior in directory.glob("*.dispatch-attempt"):
             data = json.loads(prior.read_text(encoding="utf-8"))
-            if _stamp(data.get("created_at"), "attempt.created_at") >= issued:
+            if (not isinstance(data, dict) or data.get("schema") != ATTEMPT_SCHEMA
+                    or not isinstance(data.get("dispatch_name"), str)
+                    or data.get("dispatch_name") in prior_attempts):
+                raise ValueError("prior companion attempt is invalid")
+            prior_attempts[data["dispatch_name"]] = data
+            created = _stamp(data.get("created_at"), "attempt.created_at")
+            if min(management_checked, quota_checked, quota_measured) <= created:
                 raise ValueError("management admission predates another dispatch attempt")
+        registry_dirs = {Path(registry_dir)}
+        default_registry = Path.home() / ".agent-launcher" / "registry"
+        if default_registry != Path(registry_dir):
+            try:
+                default_mode = default_registry.stat().st_mode
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                raise ValueError("default companion registry is unreadable") from exc
+            else:
+                if not stat.S_ISDIR(default_mode):
+                    raise ValueError("default companion registry is not a directory")
+                registry_dirs.add(default_registry)
+        sdk_active = _sdk_occupancy(directory, registry_dirs, launcher_module,
+                                    prior_attempts)
         _validate_admission(admission, claim, profile, provider, model,
-                            datetime.now(timezone.utc))
+                            datetime.now(timezone.utc), sdk_active=sdk_active)
         record = {"schema": ATTEMPT_SCHEMA, "session_id": session_id,
                   "claim_id": claim["claim_id"], "dispatch_name": claim["dispatch_name"],
                   "admission_sha256": _digest(admission),

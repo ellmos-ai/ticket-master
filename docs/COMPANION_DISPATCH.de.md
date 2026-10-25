@@ -48,8 +48,11 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
    aus Namen erratene Modellklasse.
 4. `quota` enthält den geprüften `provider`, `checked_at`, ein natives
    `readback` mit `status: OK`, eigenem `checked_at` und positiv gemessenem
-   `remaining_percent` (alternativ `windows.primary.remaining_percent`) sowie
-   `sha256`. Ist ein solcher Readback für den Anbieter nicht erhältlich,
+   `remaining_percent` oder `windows.<fenster>.remaining_percent` sowie
+   `sha256`. **Alle** gelieferten Werte desselben Providerbelegs sind
+   wirksame Grenzen: der kleinste gemessene Rest ist maßgeblich; null,
+   fehlende oder ungültige Fenster sperren den Start. `status: OK` allein
+   belegt kein Budget. Ist ein solcher Readback für den Anbieter nicht erhältlich,
    bleibt der Start offen. Beide SHA-256-Werte sind die Hex-Digests von
    `json.dumps(readback, sort_keys=True, separators=(",", ":"),
    ensure_ascii=True).encode("utf-8")`.
@@ -61,7 +64,13 @@ bezeugt den aktuellen Management-, Aufgaben-, Lock- und Quotenstand.
    --admission-file <PRIVATE_JSON>` führt nach erneuter Prüfung genau einen
    SDK-Startversuch aus. Vor dem Aufruf wird ein exklusiver Attempt-Beleg
    unter dem privaten `session-claims`-Verzeichnis angelegt; ein kurzer
-   gemeinsamer Dateilock serialisiert Starts. Der SDK-Name ist ausschließlich
+   gemeinsamer Dateilock serialisiert Starts. Unter demselben Lock werden
+   vorhandene Claims und Attempts mit der AgentLauncher-Registry abgeglichen.
+   Ein laufender eigener SDK-Child zählt zusätzlich zur nativen Chat-Belegung;
+   ein unlesbarer Registryeintrag oder ungewisser Start lässt keinen freien
+   Slot entstehen. Die tatsächlichen Management- und Quotenmesszeiten müssen
+   nach früheren Startversuchen liegen; ein neues `issued_at` verjüngt keine
+   alte Messung. Der SDK-Name ist ausschließlich
    der Claim-`dispatch_name`; die drei `ticket_master_*`-Metadaten werden
    unverändert übergeben. Erst `StartResult.ok` plus der **bestehende**
    `companion_ack`-Registryprüfer ergibt `accepted`.
@@ -72,9 +81,28 @@ zweiter Start desselben Claims**, kein fremder Prozesskill und kein blindes
 Löschen. Bei eindeutig fehlgeschlagenem Vorstart kann die zuständige
 Steuerung einen neuen, dokumentierten Wiederanlauf planen; die Software
 entfernt einen unklaren Attempt nicht automatisch. Ein späterer Admission-
-Beleg muss den vorherigen Startversuch in seinem frischen Management-Readback
-erfassen. Native Chat-Spawns ohne AgentLauncher-Registry werden hier nicht
+Beleg muss nach dem vorherigen Startversuch neu gemessen werden. Die
+AgentLauncher-Registry wird separat im selben Reservationsbereich gelesen,
+weil native Chat-Verwaltung SDK-Prozesse nicht zuverlässig enthält. Nur ein
+identitätsgebunden laufender Child wird gezählt; eine nachweislich beendete
+PID/Geburtszeitbindung gibt den Platz frei. Unklare Prozesszustände bleiben
+gesperrt. Native Chat-Spawns ohne AgentLauncher-Registry werden hier nicht
 als Annahme verbucht.
+
+## Späterer isolierter Runtime-Kandidat
+
+Nach unabhängigem Source-GO kann ein ausdrücklich beaufsichtigter Test ein
+separates privates Profil mit `runtime_compatibility: active` und eigenem
+Claimledger nutzen. `TM_SESSION_PROFILE` hat Vorrang vor
+`session_profile_path` in der Konfiguration; der steuernde Agent muss diesen
+Wert für den konkreten Prozess nachweisen. `TASKPLAN_CONFIG` wählt eine
+isolierte TASKPLAN-Konfiguration mit explizitem Rollenmodell. Das persönliche
+Profil bleibt währenddessen `pending`. Ein isoliertes SDK-Registryverzeichnis
+darf keine vorhandene Produktivbelegung verbergen: die Nutzerstandard-Registry
+wird zusätzlich geprüft, wenn sie vorhanden ist; bei anderen bekannten
+Produktiv-Registryorten oder unbekannter Belegung hält die Steuerung den
+Test an. Der aktuelle Code behauptet weder vollständige OS-Belegungssicht
+noch Runtime-Wirksamkeit ohne echten Child-, Claim- und PID-/Geburtszeitbeleg.
 
 Die Hashes binden die vom **berechtigten Steueragenten** gelieferten Readbacks
 an den Beleg. Sie sind keine Signatur und verleihen einer erfundenen Datei
