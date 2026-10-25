@@ -6,9 +6,13 @@ never a real subprocess or network call), and findings_to_tickets()'s
 dry-run dedup. system-auditor itself is never invoked here.
 """
 import json
+import os
+import subprocess
 import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
@@ -636,3 +640,150 @@ def test_findings_to_tickets_apply_creates_ticket_then_dedups_on_rerun(tmp_path)
     assert second[0]["status"] == "needs_readback"
     assert second[0]["existing_ticket_paths"] == [str(ticket_path)]
     assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 1
+
+
+@pytest.mark.parametrize("qualification", [
+    "measurement failed", "measurement never performed",
+    "the measurement could not be taken", "die Messung ist gescheitert",
+    "no measurements collected", "not measured", "nicht gemessen",
+    "receipt unconfirmed", "Messung noch ausstehend",
+    "measurement remains hypothetical", "measurement was merely requested",
+    "the reported result was copied from an earlier note",
+])
+@pytest.mark.parametrize("position", ["statement", "before-evidence", "after-evidence"])
+def test_unrecognized_qualification_cannot_borrow_positive_markers(qualification, position):
+    """All clauses matter, including unseen wording beyond a negation list."""
+    finding_id = current_finding_id("qualified")
+    statement = f"Finding {finding_id} location=lib/auditor_bridge.py value=clear"
+    evidence = "SHA256 deadbeef; report=readback.log"
+    if position == "statement":
+        statement += f"; {qualification}"
+    elif position == "before-evidence":
+        evidence = f"{qualification}; {evidence}"
+    else:
+        evidence += f"; {qualification}"
+    line = f"{date.today()} | reviewer@host | {statement} — {evidence}"
+    assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize("value", [
+    "unmeasured", "ungemessen", "unverified", "unconfirmed", "unread",
+    "missing", "unavailable", "failed",
+])
+def test_nonmeasurement_or_ambiguous_failure_with_hash_alone_is_observed(value):
+    finding_id = current_finding_id("no-measurement")
+    line = (
+        f"{date.today()} | reviewer@host | Finding {finding_id} "
+        f"location=lib/auditor_bridge.py value={value} — SHA256 deadbeef"
+    )
+    assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize(("value", "evidence"), [
+    ("missing", "command=stat exit_code=1 result=missing; log=stat.log"),
+    ("unavailable", "API returned http=503 status=unavailable; log=api.log"),
+    ("error", "command=probe exit_code=2 result=error; log=probe.log"),
+    ("failed", "pytest tests/test_probe.py -q: 2 failed; log=pytest.log"),
+    ("unknown", "API readback returned status=unknown; SHA256 deadbeef"),
+    ("locked", r"lock_scan --check-dir C:\repo exit_code=1 status=locked"),
+    ("clear", r"lock_scan --check-dir C:\repo exit_code=0 status=clear; no lock found"),
+])
+def test_executed_failure_and_absence_are_real_observations(value, evidence):
+    finding_id = current_finding_id("executed")
+    line = (
+        f"{date.today()} | reviewer@host | Finding {finding_id} "
+        f"location=lib/auditor_bridge.py value={value} — {evidence}"
+    )
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize(("statement", "evidence"), [
+    ("location=lib/target.py value=clear", "command=probe exit_code=1 result=failed; log=probe.log"),
+    ("location=lib/target.py value=clear", "API returned status=clear status=failed"),
+    ("location=lib/target.py value=clear value=failed", "SHA256 deadbeef"),
+    ("location=lib/target.py value=clear state=failed", "SHA256 deadbeef"),
+    ("location=lib/target.py value=failed", "pytest tests/test_probe.py -q: 2 passed"),
+    ("location=lib/target.py value=clear", "pytest tests/test_probe.py -q: 2 failed"),
+    ("location=unknown value=clear", "SHA256 deadbeef"),
+    ("value=clear", "log=lib/target.py"),
+    ("location=lib/target.py", "API returned value=clear"),
+    ("location=lib/target.py value=clear", "SHA256 deadbeef not measured"),
+    ("location=lib/target.py value=clear", "not measured SHA256 deadbeef"),
+    ("location=lib/target.py value=clear", "no lock found"),
+    ("at lib/target.py currently reports 0 linked tickets; measurement failed", "SHA256 deadbeef"),
+])
+def test_fields_and_evidence_cannot_be_spliced_into_an_assertion(statement, evidence):
+    finding_id = current_finding_id("binding")
+    line = f"{date.today()} | reviewer@host | Finding {finding_id} {statement} — {evidence}"
+    assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize("statement", [
+    "at lib/target.py currently reports 0 linked tickets",
+    "bei lib/target.py zeigt 0 verknüpfte Tickets",
+    "in /repo/target.py ist unknown",
+    "Ort=lib/target.py Wert=0",
+    "path=lib/target.py observed=0",
+    "location=lib/target.py state=unknown",
+])
+def test_free_text_and_existing_field_aliases_remain_supported(statement):
+    finding_id = current_finding_id("legacy")
+    line = f"{date.today()} | reviewer@host | Finding {finding_id} {statement} — SHA256 deadbeef"
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+@pytest.mark.parametrize(("finding_id", "when"), [
+    ("M-20260230-invalid", "2026-03-01"),
+    ("M-20260101-invalid", "2026-02-30"),
+    ("M-20261301-invalid", "2026-12-01"),
+])
+def test_invalid_calendar_dates_do_not_validate_receipts(finding_id, when):
+    assert not auditor_bridge._has_current_readback(
+        finding_id, readback_line(finding_id, measured_date=when),
+    )
+
+
+def test_readback_id_is_case_sensitive_and_cannot_be_rebound_in_evidence():
+    finding_id = current_finding_id("exact-case")
+    assert not auditor_bridge._has_current_readback(
+        finding_id, readback_line(finding_id, referenced_id=finding_id.upper()),
+    )
+    other_id = current_finding_id("other")
+    assert not auditor_bridge._has_current_readback(
+        finding_id, readback_line(other_id) + f"; Finding {finding_id}",
+    )
+
+
+def test_real_cli_apply_preserves_links_and_distinguishes_measurement(tmp_path):
+    findings = tmp_path / "findings"
+    tickets = verified_queue(tmp_path / "tickets")
+    absent, measured, fresh = [current_finding_id(name) for name in ("absent", "measured", "fresh")]
+    for finding_id in (absent, measured, fresh):
+        make_finding(findings, finding_id, "Isolated CLI fixture")
+    linked = []
+    for index in (1, 2):
+        linked.append(link_ticket(
+            tickets, f"T-20261025-{index:09d}.txt",
+            f"{date.today()} | reviewer@host | Finding {absent} "
+            "location=lib/probe.py value=clear; measurement never performed — SHA256 deadbeef",
+        ))
+    link_ticket(tickets, "T-20261025-000000003.txt",
+                f"{date.today()} | reviewer@host | Finding {measured} "
+                "location=lib/probe.py value=missing — command=stat exit_code=1 result=missing; log=stat.log")
+    config = write_json(tmp_path / "config.json", {})
+    env = os.environ.copy()
+    env.pop("PYTHONPATH", None)
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    command = [sys.executable, "-S", "-X", "utf8", str(ROOT / "lib" / "auditor_bridge.py"),
+               "--findings-to-tickets", "--config", str(config), "--findings-dir", str(findings),
+               "--tickets-dir", str(tickets), "--apply"]
+    for expected in ("created", "needs_readback"):
+        run = subprocess.run(command, capture_output=True, encoding="utf-8", env=env, timeout=30)
+        assert run.returncode == 0, run.stderr
+        results = {row["finding_id"]: row for row in json.loads(run.stdout)}
+        assert results[absent]["status"] == "needs_readback"
+        assert set(results[absent]["existing_ticket_paths"]) == {str(path) for path in linked}
+        assert results[absent]["reason"]
+        assert results[measured]["status"] == "skipped_existing"
+        assert results[fresh]["status"] == expected
+        assert len(list(ticket_writer.iter_lifecycle_files(tickets))) == 4

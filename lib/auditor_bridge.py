@@ -391,73 +391,138 @@ _READBACK_LOG_LINE_RE = re.compile(
     r"(?P<statement>.+?)\s+—\s+(?P<evidence>\S.*)\s*$",
     re.IGNORECASE,
 )
-_READBACK_LOCATION_RE = re.compile(
-    r"\b(?:location|ort|path|pfad)\s*[:=]\s*\S+|"
-    r"(?:[A-Za-z]:\\|\\\\|/)[^\s,;]+|"
-    r"\b[\w.-]+[/\\][\w./\\-]+|"
-    r"\b[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt)\b",
+# This is a bounded recognizer, not a bag of positive/negative keywords.
+# Every clause must be consumed by an assertion or evidence production. Thus
+# an unrecognized qualification cannot borrow a neighbouring hash/path to
+# turn a non-measurement into a receipt. See docs/AUDITOR_READBACK.md.
+_READBACK_PATH = r"(?:[A-Za-z]:[\\/]|[./\\]|[\w.-]+[/\\])[\w./\\:-]+|[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)"
+_READBACK_SCALAR = (
+    r"(?:-?\d+(?:\.\d+)?|true|false|none|unknown|clear|locked|open|closed|"
+    r"present|missing|available|unavailable|error|failed|pass|passed|fail|"
+    r"frei|gesperrt|offen|geschlossen|vorhanden|fehlt|unbekannt|"
+    r"aktiv|inaktiv|dedup-aware)"
+)
+_READBACK_FIELDS_RE = re.compile(
+    rf"(?P<key>location|ort|path|pfad|value|wert|observed|beobachtet|state|status|lock)"
+    rf"\s*[:=]\s*(?P<value>{_READBACK_PATH}|{_READBACK_SCALAR})(?=\s|$)",
     re.IGNORECASE,
 )
-_READBACK_VALUE_RE = re.compile(
-    r"\b(?:value|wert|observed|beobachtet|state|status)\s*"
-    r"(?::|=|\b(?:is|was|ist|sind)\b|\s)\s*\S+|"
-    r"\b(?!path\b|pfad\b|location\b|ort\b|lock\b|ownership\b|owner\b|"
-    r"claim\b|finding(?:_id)?\b|ticket(?:_id)?\b|sha-?256\b|hash\b)"
-    r"[A-Za-z_][\w.-]*\s*=\s*\S+|"
-    r"(?:[A-Za-z]:\\|/)[^\s,;]+\s+"
-    r"\b(?:is|was|ist|sind|currently|derzeit|bleibt|steht|shows?|showed|"
-    r"reports?|reported|returns?|returned|contains?|contained|lists?|listed|"
-    r"zeigt|zeigte|meldet|meldete|liefert|lieferte|enthaelt|enthält|"
-    r"ergibt|ergab|beträgt|betraegt)\b\s+"
-    r"(?:\d+|true|false|none|no|not|clear|locked|open|closed|present|missing|"
-    r"available|unavailable|frei|gesperrt|offen|geschlossen|vorhanden|fehlt|"
-    r"kein|keine|keinen|nicht|aktiv|inaktiv|\S+)",
+_READBACK_PROSE_RE = re.compile(
+    rf"(?:at|in|bei|an|Ort:|Pfad:)?\s*(?P<location>{_READBACK_PATH})\s+"
+    rf"(?:(?:currently|derzeit|aktuell)\s+)?"
+    rf"(?:is|was|ist|sind|shows?|showed|reports?|reported|returns?|returned|"
+    rf"contains?|contained|lists?|listed|zeigt|zeigte|meldet|meldete|liefert|"
+    rf"lieferte|enthält|ergibt|ergab|beträgt)\s+(?P<value>{_READBACK_SCALAR})"
+    rf"(?:\s+(?:linked\s+|verknüpfte\s+)?(?:tickets?|files?|Dateien|locks?|entries|Einträge|tests?))?",
     re.IGNORECASE,
 )
-_READBACK_CLAIM_WORD = (
-    r"(?:readbacks?|receipts?|evidence|proofs?|results?|"
-    r"measur(?:e|es|ed|ing|ement(?:s)?)|observ(?:e|ed|ation(?:s)?)|"
-    r"verif(?:y|ied|ication)|confirm(?:ed|ation)|"
-    r"beleg(?:e|en)?|nachweis(?:e|en)?|mess(?:ung(?:en)?|en)|gemessen|"
-    r"beobacht(?:et|ung(?:en)?)|bestätig(?:t|ung)|verifizier(?:t|ung))"
-)
-_READBACK_NEGATIVE_RE = re.compile(
-    # The whole dated line is one claim: a negative measurement assertion
-    # invalidates later hashes, paths and command-looking fragments on it.
-    rf"\b(?:no|not|without|never|missing|absent|unverified|unconfirmed|"
-    rf"unmeasured|unread|unavailable|pending|kein(?:e|en|em|er|es)?|"
-    rf"ohne|fehlend|unverifiziert|unbestätigt|ungemessen|ausstehend|nicht)\b"
-    rf"(?:\s+[\w-]+){{0,4}}\s+\b{_READBACK_CLAIM_WORD}\b|"
-    rf"\b{_READBACK_CLAIM_WORD}\b(?:\s+[\w-]+){{0,4}}\s+"
-    rf"\b(?:missing|absent|unverified|unconfirmed|unmeasured|unavailable|"
-    rf"pending|fehlt|fehlend|ausstehend|unbestätigt|unverifiziert|"
-    rf"not\s+(?:provided|present|attached|available|verified|confirmed|"
-    rf"measured|observed|recorded|read|collected|performed|taken)|"
-    rf"nicht\s+(?:vorhanden|bestätigt|verifiziert|gemessen|belegt|"
-    rf"erfasst|durchgeführt))\b|"
-    r"\b(?:location|ort|path|pfad)\s*[:=]\s*"
-    r"(?:unread|unknown|missing|none|n/?a|unavailable|not[- ](?:read|found|provided|available)|"
-    r"unbekannt|ungelesen|fehlt|nicht[- ](?:gelesen|gefunden|vorhanden))\b|"
-    r"\b(?:value|wert|status|state)\s*[:=]\s*"
-    r"(?:unverified|unconfirmed|not[- ](?:verified|confirmed|measured|read)|"
-    r"unverifiziert|unbestätigt|nicht[- ](?:verifiziert|bestätigt|gemessen))\b",
+_READBACK_ARTIFACT_RE = re.compile(
+    rf"(?:(?:sha-?256|hash)\s*[:=]?\s*[0-9a-f]{{8,64}}|"
+    rf"commit\s+[0-9a-f]{{7,40}}|https?://[^\s;]+|"
+    rf"(?:(?:log|receipt|report|Beleg|Protokoll)\s*[:=]\s*)?(?:{_READBACK_PATH}))",
     re.IGNORECASE,
 )
-_READBACK_CONCRETE_EVIDENCE_RE = re.compile(
-    r"\b(?:sha-?256|hash)\s*[:=]?\s*[0-9a-f]{8,64}\b|"
-    r"\b(?:pytest|tests?)\b.{0,120}\b\d+\s+(?:passed|pass|failed|fails?|skipped|errors?)\b|"
-    r"\b\d+\s+(?:passed|pass|failed|fails?|skipped|errors?)\b.{0,120}\b(?:pytest|tests?)\b|"
-    r"\bcommit\s+(?:[0-9a-f]{7,40})\b|"
-    r"https?://[^\s,;]+|"
-    r"(?:[A-Za-z]:\\|\\\\|/)[^\s,;]+|"
-    r"\b[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)\b|"
-    r"\b(?:command|query|measurement|measured|messung|gemessen|readback|api|cli|lock_scan)\b"
-    r".{0,120}\b(?:exit(?:[_ -]?code)?|http|status|value|result|output|returned|reports?|"
-    r"shows?|showed|liefert|meldet|ergibt|zeigt)\b\s*[:=]?\s*"
-    r"(?:\d{1,4}|true|false|none|unknown|locked|open|closed|present|missing|available|"
-    r"unavailable|frei|gesperrt|offen|geschlossen|vorhanden|fehlt|[A-Za-z0-9_.-]+)",
+_READBACK_TEST_RE = re.compile(
+    # Arguments are flags/paths, not arbitrary prose that could hide a denial.
+    rf"(?:python\s+-m\s+)?pytest(?:\s+(?:-[\w=-]+|(?:{_READBACK_PATH})))*\s*:\s*"
+    rf"\d+\s+(?:passed|failed|skipped|errors?)(?:,\s*\d+\s+(?:passed|failed|skipped|errors?))*",
     re.IGNORECASE,
 )
+_READBACK_COMMAND_RE = re.compile(
+    rf"(?:lock_scan|(?:API|CLI|query|command|Messung)\s+(?:readback\s+)?"
+    rf"(?:returned|reports?|shows?|liefert|meldet|ergibt|zeigt)|"
+    rf"command\s*[:=]\s*[\w./\\-]+)"
+    rf"(?:\s+(?:--[\w-]+|(?:{_READBACK_PATH})))*\s+"
+    rf"(?P<outputs>(?:(?:exit(?:[_ -]?code)?|http|status|value|result|output)"
+    rf"\s*[:=]\s*{_READBACK_SCALAR}\s*)+)",
+    re.IGNORECASE,
+)
+_READBACK_OUTPUT_RE = re.compile(
+    rf"(?P<key>exit(?:[_ -]?code)?|http|status|value|result|output)\s*[:=]\s*"
+    rf"(?P<value>{_READBACK_SCALAR})", re.IGNORECASE,
+)
+
+
+def _readback_assertion(finding_id: str, statement: str) -> str | None:
+    """Bind one ID, an actual location and a value in one complete assertion."""
+    prefix = re.match(
+        rf"(?i:Finding|Readback|Messung)?\s*{re.escape(finding_id)}\s+", statement,
+    )
+    if prefix is None:
+        return None
+    body = statement[prefix.end():].strip()
+    prose = _READBACK_PROSE_RE.fullmatch(body)
+    if prose:
+        return prose.group("value").lower()
+    fields: dict[str, str] = {}
+    while body:
+        field = _READBACK_FIELDS_RE.match(body)
+        if field is None:
+            return None
+        key, value = field.group("key").lower(), field.group("value")
+        if key in {"location", "ort", "path", "pfad"}:
+            key = "location"
+            if re.fullmatch(_READBACK_PATH, value, re.IGNORECASE) is None:
+                return None
+        elif key in {"value", "wert", "observed", "beobachtet"}:
+            key = "value"
+        if key != "location" and re.fullmatch(_READBACK_SCALAR, value, re.IGNORECASE) is None:
+            return None
+        if key in fields:
+            return None  # ambiguous, even if two spellings happen to agree
+        fields[key] = value.lower()
+        body = body[field.end():].strip()
+    if "location" not in fields:
+        return None
+    results = {fields[key] for key in ("value", "state", "status") if key in fields}
+    if len(results) != 1:
+        return None
+    return fields.get("value", fields.get("state", fields.get("status")))
+
+
+def _readback_evidence(value: str, evidence: str) -> bool:
+    """Recognize entire evidence clauses; unknown context stays observable.
+
+    A failed command is an observation too. Its exit code need not be zero;
+    reported state/value outputs, however, must agree with the assertion.
+    """
+    measured = False
+    concrete = False
+    for clause in evidence.split(";"):
+        clause = clause.strip()
+        if not clause:
+            return False
+        command = _READBACK_COMMAND_RE.fullmatch(clause)
+        if command:
+            outputs = list(_READBACK_OUTPUT_RE.finditer(command.group("outputs")))
+            keys = [item.group("key").lower() for item in outputs]
+            if len(keys) != len(set(keys)):
+                return False
+            states = [item.group("value").lower() for item in outputs
+                      if item.group("key").lower() in {"status", "value", "result", "output"}]
+            if states and any(state != value for state in states):
+                return False
+            measured = True
+            concrete = True
+        elif _READBACK_TEST_RE.fullmatch(clause):
+            failures = sum(int(count) for count in re.findall(r"(\d+)\s+(?:failed|errors?)", clause, re.I))
+            if value in {"failed", "fail", "error"} and not failures:
+                return False
+            if value in {"clear", "frei", "pass", "passed"} and failures:
+                return False
+            measured = True
+            concrete = True
+        elif _READBACK_ARTIFACT_RE.fullmatch(clause):
+            concrete = True
+        elif clause.lower() in {"no lock found", "kein lock gefunden"} and value in {"clear", "frei"}:
+            pass  # observed absence of a lock, not absence of a measurement
+        else:
+            return False
+    # Ambiguous failure/absence words require an execution result. A standalone
+    # hash plus "unavailable" cannot establish whether anything was measured.
+    return concrete and (
+        measured or value not in {"missing", "unavailable", "error", "failed", "fehlt", "fail"}
+    )
 
 
 def _finding_observation_date(finding_id: str) -> date | None:
@@ -481,15 +546,11 @@ def _contains_finding_id(text: str, finding_id: str) -> bool:
 
 
 def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
-    """Recognize explicit dated receipts; this is not a semantic review.
+    """Recognize bounded dated assertions, never infer truth from ID linkage.
 
-    The conservative check requires the dated actor@host/evidence envelope,
-    a matching finding ID, visible location and observed-value text, and
-    concrete evidence such as a hash, test result, artifact path, URL, or
-    command/query result. A bare "receipt" label is not evidence, and explicit
-    missing/unverified wording overrides otherwise matching markers. A receipt
-    dated before the finding is stale; future-dated lines are not current. No
-    extra age limit or full semantic verification is claimed.
+    A receipt predating the finding is stale; future dates are not current.
+    There is no additional TTL or claim of general natural-language validation.
+    Unrecognized/ambiguous assertions remain needs_readback, without a duplicate.
     """
     observation_date = _finding_observation_date(finding_id)
     if observation_date is None:
@@ -506,18 +567,11 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
         if readback_date < observation_date or readback_date > date.today():
             continue
 
-        statement = match.group("statement")
-        observation = f"{statement} — {match.group('evidence')}"
-        if not _contains_finding_id(observation, finding_id):
-            continue
-        if _READBACK_LOCATION_RE.search(observation) is None:
-            continue
-        if _READBACK_VALUE_RE.search(observation) is None:
+        value = _readback_assertion(finding_id, match.group("statement"))
+        if value is None:
             continue
         evidence = match.group("evidence")
-        if _READBACK_NEGATIVE_RE.search(observation) is not None:
-            continue
-        if _READBACK_CONCRETE_EVIDENCE_RE.search(evidence) is None:
+        if not _readback_evidence(value, evidence):
             continue
         return True
     return False
