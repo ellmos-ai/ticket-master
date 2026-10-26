@@ -17,6 +17,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -32,7 +33,7 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
-from config_paths import expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
+from config_paths import QueueAliasError, expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
 from ticket_inventory import capture_inventory  # noqa: E402
 
 
@@ -159,10 +160,22 @@ def resolve_prompt(
     """
 
     cfg = load_config(config)
-    raw_dir = cfg.get("prompts_dir", "prompts")
-    prompt_dir = _resolve_path(
-        raw_dir, root=REPO_ROOT, field="prompts_dir", allow_outside=False
-    )
+    raw_dir = cfg.get("prompts_dir")
+    if raw_dir is None:
+        source_prompts = REPO_ROOT / "prompts"
+        installed_prompts = (
+            Path(sysconfig.get_path("data")) / "share" / "ticket-master" / "prompts"
+        )
+        if source_prompts.is_dir():
+            prompt_dir = source_prompts.resolve()
+        elif installed_prompts.is_dir():
+            prompt_dir = installed_prompts.resolve()
+        else:
+            raise ConfigError("default prompt data not found in source tree or installed distribution")
+    else:
+        prompt_dir = _resolve_path(
+            raw_dir, root=REPO_ROOT, field="prompts_dir", allow_outside=False
+        )
     requested = language if language is not None else os.environ.get("TM_LANG")
     if requested is None:
         requested = cfg.get("default_language", "en")
@@ -494,7 +507,7 @@ def main(argv: list[str] | None = None) -> int:
             language=args.lang,
             skip_permissions=args.skip_permissions,
         )
-    except (ConfigError, ValueError, OSError) as exc:
+    except (ConfigError, QueueAliasError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

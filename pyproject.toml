@@ -50,6 +50,9 @@ keywords = [
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+ticket-master = "ticket_master_runtime.cli:main"
+
 [project.optional-dependencies]
 routing-v2 = ["clutch-router>=0.5,<0.6"]
 dev = [
@@ -83,7 +86,7 @@ testpaths = ["tests"]
 norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".hypothesis", ".turbo", ".nyc_output", ".tox", "__pycache__", "build", "dist", "tickets"]
 
 [tool.setuptools.packages.find]
-include = ["lib*"]
+include = ["lib*", "bin*", "ticket_master_runtime*"]
 
 [tool.setuptools.data-files]
 "share/ticket-master" = ["ellmos-module.v2.json"]

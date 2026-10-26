@@ -62,6 +62,43 @@ class TicketMasterCliTests(unittest.TestCase):
                 with self.assertRaises(cli.ConfigError):
                     cli.resolve_prompt(config)
 
+    def test_default_prompt_resolves_from_installed_data_without_checkout(self):
+        cli = _load_cli()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            data_root = root / "python-data"
+            prompt_dir = data_root / "share" / "ticket-master" / "prompts"
+            prompt_dir.mkdir(parents=True)
+            (prompt_dir / "TICKET-MASTER.en.md").write_text("installed prompt", encoding="utf-8")
+            config = root / "empty-config.json"
+            config.write_text("{}", encoding="utf-8")
+            with patch.object(cli, "REPO_ROOT", root), patch.object(
+                cli.sysconfig, "get_path", return_value=str(data_root)
+            ):
+                lang, path, warnings = cli.resolve_prompt(config)
+            self.assertEqual((lang, path.read_text(encoding="utf-8")), ("en", "installed prompt"))
+            self.assertEqual(warnings, [])
+
+    def test_packaged_entrypoints_share_inventory_implementation(self):
+        import bin.ticket_master as source_cli
+        import ticket_master_runtime.cli as packaged_cli
+        from lib.ticket_inventory import capture_inventory as canonical_inventory
+        from ticket_master_runtime.inventory import capture_inventory as public_inventory
+        from ticket_master_runtime.adapters.bach import capture_inventory as bach_inventory
+        from ticket_master_runtime.adapters.ocean import capture_inventory as ocean_inventory
+
+        self.assertIs(packaged_cli.main, source_cli.main)
+        self.assertIs(public_inventory, canonical_inventory)
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = Path(tmp)
+            (queue / "source.txt").write_text("inventory", encoding="utf-8")
+            canonical = canonical_inventory(queue)
+            canonical.pop("captured_at")
+            for adapter in (bach_inventory, ocean_inventory):
+                report = adapter(queue)
+                report.pop("captured_at")
+                self.assertEqual(report, canonical)
+
     def test_list_is_deterministic_and_excludes_solved_bodies(self):
         cli = _load_cli()
         with tempfile.TemporaryDirectory() as tmp:

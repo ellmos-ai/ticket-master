@@ -8,6 +8,8 @@ All notable changes to ticket-master are documented here.
 
 - Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.
 - Add the local workflow adapter for complete semantic consolidation, active remainder preservation, reversible native archive moves and separate independent acceptance.
+- Traverse queue entries through held no-follow handles, report queue alias conflicts cleanly, and include historical `_logs` files as ancillary evidence.
+- Package one shared inventory CLI for source and wheel installs, resolve installed prompts, and expose the inventory library through a public module entry point.
 
 
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
