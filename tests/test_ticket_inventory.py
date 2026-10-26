@@ -97,6 +97,42 @@ def test_complete_source_coverage_and_exact_byte_sections(tmp_path):
     }
 
 
+def test_unknown_type_excluded_directories_close_each_open_handle(tmp_path, monkeypatch):
+    directories = {".git", ".pytest_cache", "__pycache__", "SOLVED", "DONE", "_archive"}
+    for name in directories:
+        (tmp_path / name).mkdir()
+
+    backend_type = _backend_type()
+    original_open_directory = backend_type.open_directory
+    original_close = backend_type.close
+    opened = []
+    closed = []
+
+    def unknown_directory_type(self, _attributes):
+        return None
+
+    def recording_open_directory(self, parent, name):
+        handle = original_open_directory(self, parent, name)
+        if name in directories:
+            opened.append(handle)
+        return handle
+
+    def recording_close(self, handle):
+        closed.append(handle)
+        return original_close(self, handle)
+
+    monkeypatch.setattr(backend_type, "entry_is_directory", unknown_directory_type)
+    monkeypatch.setattr(backend_type, "open_directory", recording_open_directory)
+    monkeypatch.setattr(backend_type, "close", recording_close)
+
+    report = capture_inventory(tmp_path)
+
+    assert {row["path"] for row in report["excluded"]} == directories
+    assert len(opened) == len(directories)
+    assert all(handle in closed for handle in opened)
+    assert report["counts"] == {"sources": 0, "tickets": 0, "errors": 0}
+
+
 def test_default_omits_private_text_and_marks_opaque_sources(tmp_path):
     (tmp_path / 'note.txt').write_text('private-body', encoding='utf-8')
     (tmp_path / 'attachment.bin').write_bytes(b'\xff\x00')

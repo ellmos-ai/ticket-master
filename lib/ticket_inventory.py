@@ -668,16 +668,16 @@ def capture_inventory(queue: Path | str, *, include_content: bool = False) -> di
                         error(relative, getattr(exc, "code", "directory-unreadable"))
                         continue
                     if child is not None:
-                        if name in CACHE_DIRS or (not parent_parts and name in EVIDENCE_DIRS):
-                            result["excluded"].append({
-                                "path": relative,
-                                "reason": "operational-cache" if name in CACHE_DIRS else "targeted-evidence-only",
-                            })
-                        else:
-                            try:
+                        try:
+                            if name in CACHE_DIRS or (not parent_parts and name in EVIDENCE_DIRS):
+                                result["excluded"].append({
+                                    "path": relative,
+                                    "reason": "operational-cache" if name in CACHE_DIRS else "targeted-evidence-only",
+                                })
+                            else:
                                 visit(child, (*parent_parts, name))
-                            finally:
-                                backend.close(child)
+                        finally:
+                            backend.close(child)
                         continue
 
                 try:

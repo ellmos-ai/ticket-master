@@ -10,6 +10,7 @@ All notable changes to ticket-master are documented here.
 - Add the local workflow adapter for complete semantic consolidation, active remainder preservation, reversible native archive moves and separate independent acceptance.
 - Traverse queue entries through held no-follow handles, report queue alias conflicts cleanly, and include historical `_logs` files as ancillary evidence.
 - Package one shared inventory CLI for source and wheel installs, resolve installed prompts, and expose the inventory library through a public module entry point.
+- Close POSIX directory probes when fallback classification excludes cache and root evidence directories.
 
 
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
