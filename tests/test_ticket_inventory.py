@@ -392,8 +392,6 @@ def test_posix_ancestor_symlink_exchange_before_queue_open_is_rejected(tmp_path,
 
 
 def test_directory_membership_change_is_reported(tmp_path, monkeypatch):
-    from lib import ticket_inventory
-
     (tmp_path / 'first.txt').write_text('keep', encoding='utf-8')
     backend_type = _backend_type()
     original = backend_type.list_entries
