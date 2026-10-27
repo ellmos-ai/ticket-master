@@ -189,7 +189,10 @@
             "required": [
               "source",
               "observed_at",
-              "scope"
+              "scope",
+              "id",
+              "status",
+              "task"
             ],
             "properties": {
               "source": {
@@ -203,6 +206,42 @@
               "scope": {
                 "type": "string",
                 "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "status": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "task": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "requested_model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "actual_model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
               }
             }
           }

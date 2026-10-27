@@ -94,6 +94,9 @@ def validate(data):
     for agent in metrics["agents"]:
         for field in ("id", "status", "task"):
             _text(agent.get(field), field)
+        for field in ("requested_model", "actual_model"):
+            if agent.get(field) is not None and not isinstance(agent[field], str):
+                raise ResultsError(f"{field} muss Text oder null sein")
     delivery = data.get("delivery", {})
     if delivery and (delivery.get("mode") not in {"on_demand", "active_chat", "chat_start"}
                      or delivery.get("surface") != "local_gui"):

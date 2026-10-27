@@ -121,6 +121,41 @@ def test_schema_example_matches_runtime():
     validate(example)
 
 
+def test_agent_schema_and_runtime_reject_same_invalid_records():
+    import jsonschema
+    from ticket_master_runtime.results.model import validate
+    root = Path(__file__).resolve().parents[1]
+    schema = json.loads((root / "contracts/session-results/session.schema.json").read_text(encoding="utf-8"))
+    example = json.loads((root / "contracts/session-results/example.json").read_text(encoding="utf-8"))
+    validator = jsonschema.Draft202012Validator(schema)
+    assert example["metrics"]["agents"]
+    assert validator.is_valid(example)
+    validate(example)
+    for field in ("id", "status", "task"):
+        for invalid in (None, 7, "", " \t\n", "name\x00tail"):
+            broken = copy.deepcopy(example)
+            broken["metrics"]["agents"][0][field] = invalid
+            assert not validator.is_valid(broken), (field, invalid)
+            with pytest.raises(ResultsError):
+                validate(broken)
+        missing = copy.deepcopy(example)
+        del missing["metrics"]["agents"][0][field]
+        assert not validator.is_valid(missing)
+        with pytest.raises(ResultsError):
+            validate(missing)
+    for field in ("requested_model", "actual_model"):
+        for valid in (None, "configured-model"):
+            accepted = copy.deepcopy(example)
+            accepted["metrics"]["agents"][0][field] = valid
+            assert validator.is_valid(accepted)
+            validate(accepted)
+        broken = copy.deepcopy(example)
+        broken["metrics"]["agents"][0][field] = 7
+        assert not validator.is_valid(broken)
+        with pytest.raises(ResultsError):
+            validate(broken)
+
+
 def test_cli_utf8_under_windows_legacy_stream(tmp_path, session):
     import os
     import subprocess
@@ -168,10 +203,20 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session):
     path = tmp_path / "session.json"
     sha = write(path, session)
     root = tk.Tk()
+    previous_clipboard = None
     try:
+        try:
+            previous_clipboard = root.clipboard_get()
+        except tk.TclError:
+            pass
         window = ResultsWindow(root, path)
+        root.title("TEST · Ergebnisanzeige")
         root.update()
         assert window.evidence()["viewable"]
+        # Native visibility is proved above. Run the remaining programmatic
+        # interactions hidden so desktop input cannot change this test's filter.
+        root.withdraw()
+        assert window.topic == "Alle"
         window.copy_question("one")
         assert '"event_id": "one"' in root.clipboard_get()
         window.query.set("nicht vorhanden")
@@ -187,8 +232,25 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session):
         window.refresh()
         assert window.data["revision"] == 2
         assert window.session_view
+        assert window.topic == "Alle"
         window.session_view = False
         window.render()
         assert "2 von 2" in window.status.get()
+        window.topics.selection_clear(0, "end")
+        window.topics.selection_set(1)
+        window.choose_topic()
+        assert window.topic == "Forschung" and "1 von 2" in window.status.get()
+        current, current_sha = read(path)
+        current["revision"] = 3
+        write(path, current, 2, current_sha)
+        window.refresh()
+        root.update()
+        assert window.topic == "Forschung" and "1 von 2" in window.status.get()
     finally:
+        if previous_clipboard is not None:
+            root.clipboard_clear()
+            root.clipboard_append(previous_clipboard)
+            root.update()
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
         root.destroy()

@@ -23,6 +23,17 @@
   "metrics": {
     "skills": [],
     "tokens": [],
-    "agents": []
+    "agents": [
+      {
+        "id": "example-analysis-worker",
+        "status": "aktiv",
+        "task": "Die Beispielanalyse prüfen",
+        "requested_model": "configured-model",
+        "actual_model": null,
+        "source": "example-source",
+        "observed_at": "2026-10-27T12:00:00+00:00",
+        "scope": "Beispielsitzung; beobachtete Teilmenge"
+      }
+    ]
   }
 }
