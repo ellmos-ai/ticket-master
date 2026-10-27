@@ -48,6 +48,10 @@ def test_subject_uses_real_message_store_and_never_forges_t_ticket(tmp_path):
     assert first["origin_ref"] == "fixture:automation"
     assert "ticket_id" not in first and "content_text" not in first
     assert validate_message_route_intent(first) == first
+    for field in ("surface", "delivery_mode"):
+        for invalid in ([], {}):
+            with pytest.raises(MessageLineError, match="invalid message surface or delivery mode"):
+                validate_message_route_intent({**first, field: invalid})
     schema = json.loads((ROOT / "contracts" / "messages" / "v1" /
                          "ellmos.ticket.message-route-intent.v1.schema.json").read_text(encoding="utf-8"))
     jsonschema.Draft202012Validator(schema).validate(first)

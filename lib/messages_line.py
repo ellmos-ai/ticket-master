@@ -191,7 +191,8 @@ def validate_messages_config(value: Mapping[str, Any]) -> dict[str, Any]:
         raise MessageLineError("message content logging must remain disabled")
     if value["audio_logging"] is not False:
         raise MessageLineError("audio logging must remain disabled")
-    if value["transport_contract_ref"] not in {ROUTE_INTENT_SCHEMA, MESSAGE_ROUTE_SCHEMA}:
+    contract_ref = value["transport_contract_ref"]
+    if not isinstance(contract_ref, str) or contract_ref not in {ROUTE_INTENT_SCHEMA, MESSAGE_ROUTE_SCHEMA}:
         raise MessageLineError("Messages-Line transport contract is unsupported")
 
     modes = value["delivery_modes"]

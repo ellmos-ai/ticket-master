@@ -53,7 +53,9 @@ def validate_message_route_intent(value: Mapping[str, Any]) -> dict[str, Any]:
         if (not isinstance(ref, str) or not _SAFE_REF_RE.fullmatch(ref)
                 or ref.startswith("/") or re.match(r"^[A-Za-z]:/", ref)):
             raise MessageLineError(f"invalid {field}")
-    if value["surface"] not in SURFACES or value["delivery_mode"] not in DELIVERY_MODES:
+    if (not isinstance(value["surface"], str) or value["surface"] not in SURFACES
+            or not isinstance(value["delivery_mode"], str)
+            or value["delivery_mode"] not in DELIVERY_MODES):
         raise MessageLineError("invalid message surface or delivery mode")
     if value["payload_ref"] != f"messages-line:{value['message_id']}":
         raise MessageLineError("payload reference does not bind its MessageID")

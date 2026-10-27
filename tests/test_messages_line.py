@@ -1,6 +1,8 @@
 import hashlib
 import json
 import random
+import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,6 +61,24 @@ def config(**changes):
     }
     value.update(changes)
     return value
+
+
+@pytest.mark.parametrize("bad_contract", [[], {}])
+def test_invalid_transport_contract_type_has_controlled_validator_and_cli_error(tmp_path, bad_contract):
+    settings = config(transport_contract_ref=bad_contract)
+    with pytest.raises(MessageLineError, match="transport contract is unsupported"):
+        validate_messages_config(settings)
+
+    config_path = tmp_path / "invalid-messages-config.json"
+    config_path.write_text(json.dumps(settings), encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "bin" / "ticket_master.py"),
+         "--messages-line", "config", "--messages-config", str(config_path)],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 2
+    assert "transport contract is unsupported" in result.stderr
+    assert "Traceback" not in result.stderr
 
 
 def receipt(
