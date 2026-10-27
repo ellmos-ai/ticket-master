@@ -106,6 +106,7 @@ include = ["lib*", "bin*", "ticket_master_runtime*"]
 ]
 "share/ticket-master/docs" = [
     "docs/TRITHON_PHASE0_CONTRACTS.de.md",
+    "docs/SESSION_MESSAGES.de.md",
 ]
 
 [tool.ruff]

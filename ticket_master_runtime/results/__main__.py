@@ -4,7 +4,27 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from .model import read, write, append, update_session_data, ResultsError
+from .model import read, write, append, update_session_data, update_message_settings, ResultsError
+
+
+def backend_arguments(parser):
+    parser.add_argument("--messages-core-dir", type=Path, help="Explizit freigegebene lokale Owner-Paketkopie")
+    parser.add_argument("--messages-core-manifest-sha256", help="Gepinnter SHA-256 des MANIFEST.json")
+    parser.add_argument("--messages-dir", type=Path, help="Bestehender kanonischer lokaler MessageStore")
+    parser.add_argument("--messages-config", type=Path, help="Bestehende Messages-Line-Ownerkonfiguration")
+    parser.add_argument("--messages-target", help="Registriertes local_gui-Ziel")
+    parser.add_argument("--messages-recipient", help="Expliziter kanonischer Empfänger")
+    parser.add_argument("--messages-actor", help="Lokaler Nutzer-/Akteurverweis für Quittungen")
+
+
+def make_backend(args, required=False):
+    values = [getattr(args, "messages_" + name) for name in ("core_dir", "core_manifest_sha256", "dir", "config", "target", "recipient", "actor")]
+    if not any(values) and not required:
+        return None
+    if not all(values):
+        raise ResultsError("Messages-Line braucht alle sieben expliziten --messages-Optionen")
+    from .messages import ApprovedMessages
+    return ApprovedMessages(*values)
 
 
 def main(argv=None):
@@ -15,6 +35,20 @@ def main(argv=None):
             stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="Lokales Sitzungs-Ergebnisprotokoll")
     sub = parser.add_subparsers(dest="command", required=True)
+    observe = sub.add_parser("observe", help="Alle tatsächlich wahrgenommenen externen Meldungen kanonisch erfassen")
+    observe.add_argument("file", type=Path)
+    source = observe.add_mutually_exclusive_group(required=True)
+    source.add_argument("--input", type=Path, help="Beobachtung mit source/external_id/title/text/observed_at")
+    source.add_argument("--message-id", help="Bereits vorhandene kanonische Message-ID zuordnen")
+    source.add_argument("--event-id", help="Vorhandene ungebundene Sessionmeldung unter ihrer stabilen Event-ID zuordnen")
+    observe.add_argument("--revision", type=int, required=True)
+    observe.add_argument("--sha256", required=True)
+    backend_arguments(observe)
+    settings = sub.add_parser("message-settings", help="manual/on_open im selben Sessionfile per CAS konfigurieren")
+    settings.add_argument("file", type=Path)
+    settings.add_argument("--read-mode", choices=["manual", "on_open"], required=True)
+    settings.add_argument("--revision", type=int, required=True)
+    settings.add_argument("--sha256", required=True)
     metadata = sub.add_parser("session-data", help="Sessionmetriken schmal lesen oder per CAS aktualisieren")
     metadata.add_argument("file", type=Path)
     metadata.add_argument("--input", type=Path, help="Patch der Metrikgruppen; Listen werden vollständig ersetzt")
@@ -28,6 +62,7 @@ def main(argv=None):
         p.add_argument("file", type=Path)
         if name == "open":
             p.add_argument("--evidence", type=Path)
+            backend_arguments(p)
     for name in ("create", "replace", "append"):
         p = sub.add_parser(name)
         p.add_argument("file", type=Path)
@@ -37,7 +72,14 @@ def main(argv=None):
             p.add_argument("--sha256", required=True)
     args = parser.parse_args(argv)
     try:
-        if args.command == "session-data":
+        if args.command == "observe":
+            from .messages import ingest
+            notice = json.loads(args.input.read_text(encoding="utf-8")) if args.input else None
+            print(json.dumps(ingest(args.file, make_backend(args, required=True), args.revision, args.sha256,
+                                   notice=notice, message_id=args.message_id, event_id=args.event_id), ensure_ascii=False))
+        elif args.command == "message-settings":
+            print(json.dumps({"sha256": update_message_settings(args.file, args.read_mode, args.revision, args.sha256)}))
+        elif args.command == "session-data":
             if args.input:
                 if args.revision is None or args.sha256 is None:
                     raise ResultsError("Sessiondaten-Update braucht --revision und --sha256")
@@ -54,7 +96,7 @@ def main(argv=None):
             return subprocess.call([sys.executable, str(script.resolve()), "open", str(args.file.absolute())])
         elif args.command == "open":
             from .gui import launch
-            launch(args.file, args.evidence)
+            launch(args.file, args.evidence, make_backend(args))
         elif args.command in {"read", "validate"}:
             data, sha = read(args.file)
             print(json.dumps({"session_id": data["session_id"], "revision": data["revision"], "sha256": sha, **({"data": data} if args.command == "read" else {})}, ensure_ascii=False, indent=2))
@@ -66,7 +108,7 @@ def main(argv=None):
                 sha = write(args.file, value, getattr(args, "revision", None), getattr(args, "sha256", None))
             print(json.dumps({"sha256": sha}))
         return 0
-    except (ResultsError, OSError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError) as exc:
         parser.exit(2, f"Fehler: {exc}\n")
 
 

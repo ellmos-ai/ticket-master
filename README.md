@@ -10,6 +10,11 @@ analysis, document links and source-bound session metrics stay local. See the
 Native vector icons and three tonal action families distinguish right-aligned
 question copying, full result text, and documents. Unsupported executable types
 offer explicit path copying and are never launched from JSON.
+The notification view records all actually perceived external messages through
+the existing, explicitly pinned Messages-Line owner. Manual read receipts,
+optional policy-gated read-on-open, unread/unknown counts and HTTPS artifacts
+are described in the [local owner integration](docs/SESSION_MESSAGES.de.md).
+No remote services are polled or approved by opening a message.
 
 A cross-platform, multi-provider **workflow / operating mode** for an AI coding agent.
 

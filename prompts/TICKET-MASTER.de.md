@@ -16,6 +16,13 @@ Eine Sitzung besitzt genau eine versionierte JSON-Datei; vollständige Analysen,
 Artefaktlinks und belegte Sessionmetriken bleiben lokal. Producer-Updates laufen
 revisions-/hashgebunden über dieselbe CLI. Anzeige ist keine Ticketabnahme und
 kein eigener Receipt-Schreibweg; Zustellung bleibt beim Messages-Line-Vertrag.
+Alle im Agentenfluss tatsächlich wahrgenommenen externen Nachrichten und
+Systemmeldungen über `session-results`/`observe` erfassen, nicht nur Ergebnisse.
+Vorhandene M-/TH-/R-IDs erhalten; Quelle/externe ID werden beim vorhandenen
+Messages-Line-Owner idempotent zugeordnet. Lokale Owneranbindung siehe
+`docs/SESSION_MESSAGES.de.md`; keine fremden Dienste auf Verdacht abfragen.
+Manuelles Lesen ist Standard, optionales Lesen beim Volltextöffnen braucht
+beide Owner-Policygates. Lesen ist niemals eine Freigabe oder Sendung.
 Ein optionaler installierter `decision-draw`-Skill besitzt seinen eigenen
 dateibasierten Viewer; echte Entscheidungsbuchung bleibt bei
 `decision-briefing` Phase 4. Fehlt der Skill, nichts automatisch installieren.

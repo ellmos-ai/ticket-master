@@ -1,8 +1,8 @@
 #!/bin/sh
-# Usage: session-results.sh /absolute/session.json
+# Usage: session-results.sh /absolute/session.json [explicit owner options]
 set -eu
-if [ "$#" -ne 1 ]; then
+if [ "$#" -lt 1 ]; then
     echo 'Usage: session-results.sh /absolute/session.json' >&2
     exit 2
 fi
-exec ticket-master-results open "$1"
+exec ticket-master-results open "$@"

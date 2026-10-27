@@ -26,6 +26,12 @@ Display is neither ticket acceptance nor a receipt authority. Message delivery r
 with Messages-Line. An optionally installed `decision-draw` skill may provide its own
 file-based viewer; canonical decisions still flow through `decision-briefing` Phase 4.
 Do not install a missing optional skill automatically.
+Capture every actually perceived external message or system notification through
+`session-results observe`, not only completion cards. Preserve canonical M/TH/R
+identifiers; source/external-ID ingestion uses the existing Messages-Line owner.
+See `docs/SESSION_MESSAGES.de.md` for the explicit local owner binding. Do not
+poll unrelated services. Manual read is the default; fulltext-open receipts need
+both owner policy gates. Reading never grants publication, sending or task approval.
 
 The TICKET-MASTER is a long-lived **ROUTER**. Its context serves **all**
 future tickets in the session — it is the most expensive context slot and

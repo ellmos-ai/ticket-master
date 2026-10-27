@@ -101,7 +101,15 @@
               "properties": {
                 "path": {
                   "type": "string",
-                  "minLength": 1
+                  "minLength": 1,
+                  "anyOf": [
+                    {
+                      "pattern": "^(?:[A-Za-z]:[\\\\/]|/)"
+                    },
+                    {
+                      "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::443)?(?:[/?#][^\\s\\u0000-\\u0020\\u007f\\\\]*)?$"
+                    }
+                  ]
                 },
                 "label": {
                   "type": "string",
@@ -110,11 +118,99 @@
                 "mime": {
                   "type": "string",
                   "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{64}$"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "path": {
+                        "pattern": "^https:"
+                      }
+                    }
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "sha256"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "notification": {
+            "type": "object",
+            "required": [
+              "external_id",
+              "observed_at",
+              "thread_id",
+              "message_sha256"
+            ],
+            "properties": {
+              "external_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "thread_id": {
+                "type": "string",
+                "pattern": "^TH-[0-9]{8}-[1-9][0-9]{8}$"
+              },
+              "message_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "notification"
+              ]
+            },
+            "then": {
+              "required": [
+                "message_id",
+                "receipt_id"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "message",
+                    "system"
+                  ]
+                },
+                "message_id": {
+                  "pattern": "^M-[0-9]{8}-[1-9][0-9]{8}$"
+                },
+                "receipt_id": {
+                  "pattern": "^R-[0-9]{8}-[1-9][0-9]{8}$"
                 }
               }
             }
           }
-        }
+        ]
       }
     },
     "metrics": {
@@ -245,6 +341,19 @@
               }
             }
           }
+        }
+      }
+    },
+    "message_settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read_mode": {
+          "enum": [
+            "manual",
+            "on_open"
+          ],
+          "default": "manual"
         }
       }
     }

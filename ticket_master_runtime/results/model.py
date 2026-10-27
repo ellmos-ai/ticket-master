@@ -6,10 +6,13 @@ import hashlib
 import json
 import mimetypes
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from urllib.parse import urlsplit
+import webbrowser
 from datetime import datetime, timezone
 
 SCHEMA = "ellmos.ticket.session-results.v1"
@@ -49,6 +52,7 @@ def validate(data):
     if not isinstance(data.get("events"), list) or not isinstance(data.get("metrics"), dict):
         raise ResultsError("events/metrics fehlen")
     ids = set()
+    message_ids = set()
     for event in data["events"]:
         if not isinstance(event, dict):
             raise ResultsError("Meldung muss ein Objekt sein")
@@ -69,6 +73,28 @@ def validate(data):
         for ref in ("ticket_id", "message_id", "receipt_id", "log_id"):
             if ref in event:
                 _text(event[ref], ref)
+        if "notification" in event:
+            note = event["notification"]
+            if event["kind"] not in {"message", "system"} or not isinstance(note, dict):
+                raise ResultsError("Ungültige Meldungsbeobachtung")
+            for key in ("external_id", "observed_at"):
+                _text(note.get(key), key)
+            try:
+                if datetime.fromisoformat(note["observed_at"]).tzinfo is None:
+                    raise ValueError()
+            except ValueError as exc:
+                raise ResultsError("Beobachtungszeit braucht Zeitzone") from exc
+            for field, pattern, value in (
+                ("message_id", r"M-[0-9]{8}-[1-9][0-9]{8}", event.get("message_id")),
+                ("receipt_id", r"R-[0-9]{8}-[1-9][0-9]{8}", event.get("receipt_id")),
+                ("thread_id", r"TH-[0-9]{8}-[1-9][0-9]{8}", note.get("thread_id")),
+                ("message_sha256", r"[0-9a-f]{64}", note.get("message_sha256")),
+            ):
+                if not isinstance(value, str) or not re.fullmatch(pattern, value):
+                    raise ResultsError(f"Ungültige kanonische Meldungsbindung: {field}")
+            if event["message_id"] in message_ids:
+                raise ResultsError("Kanonische Message-ID doppelt in derselben Session")
+            message_ids.add(event["message_id"])
         if not isinstance(event.get("artifacts", []), list):
             raise ResultsError("artifacts muss eine Liste sein")
         for artifact in event.get("artifacts", []):
@@ -77,7 +103,13 @@ def validate(data):
             _text(artifact.get("path"), "artifact.path")
             _text(artifact.get("label"), "artifact.label")
             _text(artifact.get("mime"), "artifact.mime")
-            if not Path(artifact["path"]).is_absolute():
+            if "sha256" in artifact and (not isinstance(artifact["sha256"], str) or not re.fullmatch(r"[0-9a-fA-F]{64}", artifact["sha256"])):
+                raise ResultsError("Ungültiger Artefakt-SHA-256")
+            if artifact["path"].lower().startswith("https:"):
+                validate_https_url(artifact["path"])
+                if artifact.get("sha256"):
+                    raise ResultsError("URL-Inhalte werden nicht abgerufen oder per Dateihash bestätigt")
+            elif not Path(artifact["path"]).is_absolute():
                 raise ResultsError("Artefaktpfade müssen absolut sein")
     metrics = data["metrics"]
     for key in ("skills", "tokens", "agents"):
@@ -101,6 +133,9 @@ def validate(data):
     if delivery and (delivery.get("mode") not in {"on_demand", "active_chat", "chat_start"}
                      or delivery.get("surface") != "local_gui"):
         raise ResultsError("Ungültige Messages-Line-Zustellkonfiguration")
+    settings = data.get("message_settings", {})
+    if not isinstance(settings, dict) or set(settings) - {"read_mode"} or settings.get("read_mode", "manual") not in {"manual", "on_open"}:
+        raise ResultsError("Ungültige Meldungs-Leseeinstellung")
     return data
 
 
@@ -180,6 +215,14 @@ def update_session_data(path, patch, revision, sha256):
     return write(path, data, revision, sha256)
 
 
+def update_message_settings(path, mode, revision, sha256):
+    data, _ = read(path)
+    data = copy.deepcopy(data)
+    data["message_settings"] = {"read_mode": mode}
+    data["revision"], data["updated_at"] = revision + 1, now()
+    return write(path, data, revision, sha256)
+
+
 def select_events(data, topic="Alle", query="", order="Älteste zuerst"):
     words = query.casefold().split()
     events = [e for e in data["events"] if (topic == "Alle" or topic in e["tags"])
@@ -222,6 +265,13 @@ def question_prompt(data, event_id, path):
 
 def open_artifact(artifact):
     """Open only passive local documents, never commands/arguments from JSON."""
+    if artifact["path"].lower().startswith("https:"):
+        url = validate_https_url(artifact["path"])
+        if artifact.get("sha256"):
+            raise ResultsError("URL-Dateihash wird nicht bestätigt")
+        if not webbrowser.open(url, new=2):
+            raise ResultsError("Kein Browser für diesen HTTPS-Link verfügbar")
+        return
     path = Path(artifact["path"])
     if (not path.is_absolute() or str(path).startswith(("\\\\", "//")) or not path.is_file()
             or path.is_symlink() or path.suffix.lower() not in SAFE_SUFFIXES):
@@ -235,3 +285,19 @@ def open_artifact(artifact):
         os.startfile(str(resolved))
     else:
         subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open", str(resolved)])
+
+
+def validate_https_url(value):
+    """An explicit user-click URL, without credentials, controls or other schemes."""
+    if not isinstance(value, str) or not value.startswith("https://") or any(ord(c) <= 32 or ord(c) == 127 for c in value) or "\\" in value:
+        raise ResultsError("Unsicherer HTTPS-Link")
+    try:
+        parts = urlsplit(value)
+        host = parts.hostname
+        if parts.scheme != "https" or not host or parts.username is not None or parts.password is not None or parts.port not in {None, 443}:
+            raise ValueError()
+        if len(host) > 253 or any(not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?", label) for label in host.split(".")):
+            raise ValueError()
+    except ValueError as exc:
+        raise ResultsError("Nur gültige HTTPS-Links ohne Anmeldedaten und mit Standardport sind erlaubt") from exc
+    return value

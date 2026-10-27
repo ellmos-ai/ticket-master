@@ -21,7 +21,21 @@ def draw_icon(canvas, kind, foreground, scale=1.0):
     def line(points, **kwargs):
         return canvas.create_line(*[p * scale for p in points], fill=foreground, width=1.6 * scale,
                                   capstyle="round", joinstyle="round", **kwargs)
-    if kind == "CHAT":
+    if kind == "MAIL":
+        line((3, 6, 25, 6, 25, 23, 3, 23, 3, 6))
+        line((3, 6, 14, 15, 25, 6))
+        line((3, 23, 10, 16))
+        line((25, 23, 18, 16))
+    elif kind == "SETTINGS":
+        import math
+        points = []
+        for i in range(32):
+            radius = 11 if i % 4 in {0, 1} else 8
+            angle = i * math.pi / 16
+            points.extend((14 + radius * math.cos(angle), 14 + radius * math.sin(angle)))
+        line((*points, *points[:2]))
+        canvas.create_oval(10 * scale, 10 * scale, 18 * scale, 18 * scale, outline=foreground, width=1.6 * scale)
+    elif kind == "CHAT":
         line((4, 4, 24, 4, 24, 19, 14, 19, 8, 24, 8, 19, 4, 19, 4, 4))
         line((8, 9, 20, 9))
         line((8, 13, 17, 13))
