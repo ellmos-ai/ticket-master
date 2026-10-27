@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:messages-line-config:v1",
+  "title": "Ticket-Master Messages-Line Configuration v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "updated_at",
+    "enabled",
+    "delivery_modes",
+    "targets",
+    "gui_open_counts_as_delivery",
+    "message_content_logging",
+    "audio_logging",
+    "transport_contract_ref"
+  ],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.messages-line-config.v1"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "enabled": {"type": "boolean"},
+    "delivery_modes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["chat_start", "on_demand", "active_chat"],
+      "properties": {
+        "chat_start": {"type": "boolean"},
+        "on_demand": {"type": "boolean"},
+        "active_chat": {"type": "boolean"}
+      }
+    },
+    "targets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/target"},
+      "uniqueItems": true
+    },
+    "gui_open_counts_as_delivery": {"type": "boolean"},
+    "message_content_logging": {"const": false},
+    "audio_logging": {"const": false},
+    "transport_contract_ref": {"const": "ellmos.ticket.route-intent.v1"}
+  },
+  "$defs": {
+    "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ref", "surface"],
+      "properties": {
+        "target_ref": {"$ref": "#/$defs/ref"},
+        "surface": {
+          "enum": ["ticket_master", "local_gui", "server_gui", "registered_server"]
+        }
+      }
+    }
+  }
+}

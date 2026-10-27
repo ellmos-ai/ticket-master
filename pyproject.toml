@@ -100,8 +100,16 @@ include = ["lib*", "bin*", "ticket_master_runtime*"]
 "share/ticket-master/contracts/trithon/v1/fixtures" = [
     "contracts/trithon/v1/fixtures/*.json",
 ]
+"share/ticket-master/contracts/messages/v1" = [
+    "contracts/messages/v1/*.json",
+]
+"share/ticket-master/config" = [
+    "config/messages-line.example.json",
+    "config/log-registry.example.json",
+]
 "share/ticket-master/docs" = [
     "docs/TRITHON_PHASE0_CONTRACTS.de.md",
+    "docs/MESSAGES_LINE.de.md",
 ]
 
 [tool.ruff]

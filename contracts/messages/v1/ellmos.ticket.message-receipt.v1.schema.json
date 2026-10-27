@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:message-receipt:v1",
+  "title": "Ticket-Master Message Receipt v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "receipt_id",
+    "observation_id",
+    "message_id",
+    "recipient_ref",
+    "target_ref",
+    "surface",
+    "channel_ref",
+    "event",
+    "observed_at",
+    "gui_open_counts_as_delivery",
+    "actor_ref",
+    "evidence_ref"
+  ],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.message-receipt.v1"},
+    "receipt_id": {"type": "string", "pattern": "^R-[0-9]{8}-[1-9][0-9]{8}$"},
+    "observation_id": {"type": "string", "pattern": "^O-[0-9a-f]{64}$"},
+    "message_id": {"type": "string", "pattern": "^M-[0-9]{8}-[1-9][0-9]{8}$"},
+    "recipient_ref": {"$ref": "#/$defs/ref"},
+    "target_ref": {"$ref": "#/$defs/ref"},
+    "surface": {
+      "enum": ["ticket_master", "local_gui", "server_gui", "registered_server"]
+    },
+    "channel_ref": {"$ref": "#/$defs/ref"},
+    "event": {
+      "enum": [
+        "prepared",
+        "offered",
+        "transported",
+        "fetched",
+        "listed",
+        "previewed",
+        "gui_opened",
+        "explicit_ack",
+        "on_demand_ack",
+        "active_chat_ack"
+      ]
+    },
+    "observed_at": {"type": "string", "format": "date-time"},
+    "gui_open_counts_as_delivery": {"type": "boolean"},
+    "actor_ref": {"$ref": "#/$defs/ref"},
+    "evidence_ref": {"$ref": "#/$defs/ref"}
+  },
+  "$defs": {
+    "ref": {"type": "string", "minLength": 1, "maxLength": 256}
+  }
+}

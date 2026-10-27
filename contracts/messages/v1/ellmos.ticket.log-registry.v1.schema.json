@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:log-registry:v1",
+  "title": "Ticket-Master Log Source Registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "sources"],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.log-registry.v1"},
+    "sources": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/source"},
+      "uniqueItems": true
+    }
+  },
+  "$defs": {
+    "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_ref",
+        "system_ref",
+        "owner_ref",
+        "window",
+        "observed_at",
+        "access_policy_ref",
+        "redaction_policy_ref",
+        "provenance_ref",
+        "retention_ref",
+        "materialization"
+      ],
+      "properties": {
+        "source_ref": {"$ref": "#/$defs/ref"},
+        "system_ref": {"$ref": "#/$defs/ref"},
+        "owner_ref": {"$ref": "#/$defs/ref"},
+        "window": {"enum": ["24h", "monthly", "other"]},
+        "observed_at": {"type": "string", "format": "date-time"},
+        "access_policy_ref": {"$ref": "#/$defs/ref"},
+        "redaction_policy_ref": {"$ref": "#/$defs/ref"},
+        "provenance_ref": {"$ref": "#/$defs/ref"},
+        "retention_ref": {"$ref": "#/$defs/ref"},
+        "materialization": {"const": "reference_only"}
+      }
+    }
+  }
+}

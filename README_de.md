@@ -18,7 +18,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-666%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-808%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -96,6 +96,7 @@ Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlang
 | **Formloser Intake & Formalisierung** | Automatische Erfassung formloser Notizen in `INBOX/` mit zeichengetreuer Aufbewahrung im `ORIGINALTEXT`-Block und sicherer Archivierung. |
 | **Auditor-Brücke & Sparmodus-Gate** | Nahtlose Schnittstelle zu `ellmos-ai/system-auditor`; wandelt Prüfbefunde fehlersicher unter Beachtung aktiver Token-Sparstufen in Entwurfstickets um. |
 | **Trithon-Shadow-Projektion (Phase 1)** | Erstellt eine lokale, pointer-only SQLite-Projektion mit atomaren Rebuilds, idempotenten Imports, Crash-Recovery und einem No-op-Mock-Executor; Ticketdateien und Produktionslaufzeit bleiben unverändert. |
+| **Messages-Line-Vertragskern** | Ergänzt abrufbare Text-Message-Tickets mit stabiler Nachrichten-/Thread-/ReceiptID, ein persistentes Quittungs-Ledger je Nachricht und ein reines Quellenregister; es werden keine Nachrichten versendet und keine Transportqueue angelegt. |
 | **0 externe Laufzeit-Abhängigkeiten** | Der Kern läuft vollständig auf der reinen Python-Standardbibliothek (`dependencies = []`); maximale Portabilität und Langlebigkeit. |
 | **Unprivilegierte Ausführung** | Läuft standardmäßig im Benutzermodus (`RunAsInvoker`) ohne Administratorrechte, Root-Zugriff oder UAC-Prompts. |
 
@@ -586,6 +587,14 @@ Muschelgrund-Projektion liegen unter `contracts/trithon/v1/`. Sie definieren
 noch keine Laufzeit. Feldabbildung, Autoritätsgrenzen, Datenschutz-Allowlist und
 Gefahrenmodell stehen in
 [`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
+
+Der lokale Messages-Line-Kern speichert abrufbare Text-Message-Tickets,
+Threads und ein persistentes Quittungs-Ledger je Nachricht. Die
+Routing-Konfiguration ist standardmäßig deaktiviert; das
+Protokollquellenregister enthält nur Provenienzreferenzen. Nachrichtentexte
+werden nicht protokolliert, Audio nicht gespeichert und Transportzustellung
+nicht implementiert. Vertrag und offene GUI-/Server-Integrationen stehen in
+[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md).
 
 
 ### Companion-Muster

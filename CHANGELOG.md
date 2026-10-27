@@ -4,6 +4,13 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Messages-Line contract foundation
+
+- Add retrievable text Message-Ticket records with stable ticket-style MessageIDs, ThreadIDs and one canonical ReceiptID per message; reuse `ticket_writer.draw_id()` and exclusive file creation.
+- Add closed schemas and validators for delivery receipts, disabled-by-default routing modes, GUI-open acknowledgement policy, and provenance-only 24-hour/monthly log sources.
+- Add a persistent, idempotent message-acknowledgement ledger that binds channel observations to the same per-message ReceiptID across restart and replay; no transport queue or retry loop is added.
+- Keep `.SYNC` transport and system-gap-master reconciliation as the cross-system boundary; document GUI/server adapters as pending.
+
 ### Ticketinventur / ticket inventory
 
 - Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.

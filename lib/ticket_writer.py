@@ -482,6 +482,25 @@ def draw_number(used: set[int], rng=None) -> int:
         f"({len(used)} numbers already taken for this date)")
 
 
+def draw_id(prefix: str, datestr: str, used: set[int], rng=None) -> str:
+    """Mint a dated ID through the canonical ticket ID-number contract.
+
+    Message-Line namespaces reuse the same nine-digit random source as normal
+    tickets while retaining their own prefix. The caller still has to create
+    the destination exclusively and add a collided number to ``used`` before
+    drawing again.
+    """
+    if not isinstance(prefix, str) or not re.fullmatch(r"[A-Z][A-Z0-9]*", prefix):
+        raise ValueError("ID prefix must use uppercase ASCII letters and digits")
+    if not isinstance(datestr, str) or not re.fullmatch(r"[0-9]{8}", datestr):
+        raise ValueError("ID date must use YYYYMMDD")
+    try:
+        date.fromisoformat(f"{datestr[:4]}-{datestr[4:6]}-{datestr[6:8]}")
+    except ValueError as exc:
+        raise ValueError("ID date must be a real calendar date") from exc
+    return f"{prefix}-{datestr}-{draw_number(used, rng)}"
+
+
 def create(title: str, body: str, project: str | None = None, priority: str = "mittel",
            pipeline: str = "<offen>", tickets_dir: Path | None = None,
            today: str | None = None, rng=None, session: str | None = None,
@@ -503,8 +522,8 @@ def create(title: str, body: str, project: str | None = None, priority: str = "m
     datestr = date_iso.replace("-", "")
     used = used_numbers(base, datestr)
     while True:
-        number = draw_number(used, rng)
-        ticket_id = f"T-{datestr}-{number}"
+        ticket_id = draw_id("T", datestr, used, rng)
+        number = int(ticket_id.rsplit("-", 1)[1])
         target = inbox / f"{ticket_id}.txt"
         content = _TICKET_TEMPLATE.format(
             ticket_id=ticket_id, title=title.strip() or "<ohne Titel>",

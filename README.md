@@ -17,7 +17,7 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-666%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-808%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
@@ -93,6 +93,7 @@ The system is designed with a strict local-first philosophy: all queues, tickets
 | **Informal Intake & Formalization** | Automatically ingests raw text files dropped into `INBOX/`, formalizing them with byte-identical `ORIGINALTEXT` preservation and safe archiving. |
 | **Auditor Bridge & Sparmodus Gate** | Seamlessly interfaces with `ellmos-ai/system-auditor`, converting audit findings to draft tickets while respecting token-budget sparmodus states. |
 | **Trithon Shadow Projection (Phase 1)** | Builds a local, pointer-only SQLite projection with atomic rebuilds, idempotent imports, crash recovery, and a no-op mock executor; it never changes ticket files or starts a production runtime. |
+| **Messages-Line Contract Foundation** | Adds text message tickets with stable message/thread/receipt IDs, a persistent per-message acknowledgement ledger, and pointer-only log-source registration; it does not send messages or create a transport queue. |
 | **Zero External Runtime Dependencies** | Core functionality runs entirely on the pure Python standard library (`dependencies = []`), ensuring maximum portability and stability. |
 | **Unprivileged User Execution** | Runs entirely in user space (`RunAsInvoker`) without requiring root, administrative elevation, or UAC prompts. |
 
@@ -586,6 +587,13 @@ agents-heart dispatch, outcome proposal and curated Muschelgrund projection are
 under `contracts/trithon/v1/`. They define no runtime. The field mapping,
 authority boundaries, privacy allowlist and threat model are documented in
 [`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
+
+The local Messages-Line core defines retrievable text message tickets and
+threads, one persistent acknowledgement ledger per message, disabled-by-default
+routing configuration, and a provenance-only log registry. It does not log
+message text or audio and does not implement transport delivery. See
+[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md) for the contract and the
+remaining GUI/server integration gates.
 
 
 ### Companion Pattern
