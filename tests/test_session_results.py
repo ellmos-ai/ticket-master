@@ -217,8 +217,11 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session):
         # interactions hidden so desktop input cannot change this test's filter.
         root.withdraw()
         assert window.topic == "Alle"
-        window.copy_question("one")
-        assert '"event_id": "one"' in root.clipboard_get()
+        # Preserve unknown/nontext clipboard formats: exercise the OS clipboard
+        # only when its prior text can actually be restored.
+        if previous_clipboard is not None:
+            window.copy_question("one")
+            assert '"event_id": "one"' in root.clipboard_get()
         window.query.set("nicht vorhanden")
         assert "0 von 1" in window.status.get()
         window.query.set("")
