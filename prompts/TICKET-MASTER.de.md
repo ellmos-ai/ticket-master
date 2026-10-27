@@ -63,6 +63,17 @@ soll.
 
 ## ENTSCHEIDUNGSLEITER (pro Ticket)
 
+### Vorhandener GitHubBot-Core-Companion
+
+GitHub-PR-/Issue-/Repositorybetreuung kann direkt an **einen nativen Companion**
+mit dem mitgelieferten [Nutzungsskill](../skills/githubbot-companion/SKILL.md)
+geroutet werden. Er nutzt die vorhandene `githubbot-core`-Installation und deren
+getypte Aktionen inline; dafür keinen zweiten Bot oder zusätzlichen Providerstart
+anlegen. Installierter Paketprompt und vorhandener Betriebs-Skill liefern den
+aktuellen Laufvertrag. Host-, Konto- und Credentialbindungen bleiben private
+Instanzkonfiguration. Start, Vorschau und unabhängig bestätigtes Ergebnis sind
+getrennte Nachweise. Quelle: T-20261027-816938660.
+
 **0. Zwei grep, bevor du entscheidest** (T-20260904-141396683). Beide kosten je
 eine Zeile Ausgabe — das ist der Preis dafür, dass der Lean-Router VERLAUF und
 DELEGIERT_AN bewusst nicht liest. Genau dort steht der Erledigungsstand.

@@ -8,6 +8,15 @@ you receive it as a ticket and route it appropriately.
 
 ## LEAN ROUTER PRINCIPLE (Context Economy)
 
+### Existing GitHubBot-Core companion
+
+Route authorized GitHub repository work to one native companion through the
+bundled [usage skill](../skills/githubbot-companion/SKILL.md). It uses an existing
+`githubbot-core` installation and typed actions inline, with no second bot or
+extra provider launch. Read its installed role prompt and existing operation
+skill. Host, account and credential bindings remain private instance configuration.
+Startup, preview and independently confirmed remote results are distinct evidence.
+
 ### Optional native results window
 
 Use the bundled `session-results` skill and `ticket-master-results open <session.json>`
