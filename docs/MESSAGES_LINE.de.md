@@ -65,9 +65,9 @@ gesperrt. Nur `acknowledge()` darf eine bewusste manuelle `explicit_ack`
 erfassen, auch wenn die Automatik ausgeschaltet ist; dadurch wird keine Route
 reaktiviert. `.SYNC` bleibt
 Transportfläche und system-gap-master bleibt zuständig für die
-systemübergreifende Reconciliation. Der Adapter, der die Message-ReceiptID an
-diesen vorhandenen Cross-System-Vertrag bindet, ist noch offene
-Integrationsarbeit.
+systemübergreifende Reconciliation. Ein eigener versionierter
+Message-Handoff verbindet jetzt MessageID und ReceiptID mit dieser Grenze;
+ein produktiver Empfänger- und Ack-Provenienzanschluss fehlt noch.
 
 ## Konfiguration und Protokollregister
 
@@ -83,8 +83,10 @@ Message-Ticket-Datei gespeichert, aber
 Vorhandene Registry-Referenzen können mit einer Oberfläche
 (`ticket_master`, `local_gui`, `server_gui` oder `registered_server`)
 konfiguriert werden. Das Feld erfindet weder Systemrollen noch Endpunkte.
-`transport_contract_ref` zeigt auf das bestehende
-`ellmos.ticket.route-intent.v1`.
+`transport_contract_ref` zeigt im ausgeschalteten Beispiel auf das bestehende
+`ellmos.ticket.route-intent.v1`. Für den gesonderten Nachrichtenpfad muss die
+aktuelle Konfiguration ausdrücklich `ellmos.ticket.message-route-intent.v1`
+wählen. Dieser Wert erzeugt keine Arbeits-Tickets und aktiviert keinen Versand.
 
 Die Inhalts- und Audio-Protokollierung ist fest ausgeschaltet; der Validator
 lehnt ein Einschalten ab. `config/log-registry.example.json` ist ein leeres
@@ -131,9 +133,17 @@ Thread-Gruppierung, abrufbaren Nachrichtentext, Live-Konfigurations-Gates an
 den lokalen Zustell-Lese- und Quittungseinstiegen, ein persistentes lokales
 Receipt-Ledger, Quittungsprojektion und geschlossene JSON-Verträge. Es sendet
 keine Nachricht und fragt weder eine GUI noch BACH/Ocean ab. Für einen
-produktiven Anschluss müssen Integrationen den Message-Ticket-Ziel-Snapshot an
-den bestehenden `route_intent`-/`.SYNC`-Transport binden und überall dieselbe
-ReceiptID verwenden. GUI-Clients müssen Öffnen und explizite Bestätigung
+produktiven Anschluss müssen Sender und Empfänger den vollständigen
+Message-Ticket-Payload aus einem ausdrücklich autorisierten Store auflösen.
+`build_message_route_intent()` erzeugt nach aktuellem Zustell-Gate eine
+inhaltfreie Metadatenhülle mit MessageID, ReceiptID, Ursprung, Ziel und
+Payload-Digest. `system-gap-master.ticket_route_adapter.submit_message_handoff()`
+prüft beide Payload-Instanzen vor dem vorhandenen Transport-Callback und
+schreibt nach Prüfung eines echten lokalen Transportartefakts höchstens
+`transported` in das kanonische Message-Receipt-Ledger. Eine andere
+Transportbestätigung oder ein Dateihash ist **kein Ack**. Die unveränderte
+Ticket-Route `ellmos.ticket.route-intent.v1` bleibt allein für T-Tickets.
+GUI-Clients müssen Öffnen und explizite Bestätigung
 getrennt quittieren. BACH/Ocean-Zuordnung, Serveranzeige, Authentifizierung,
 Live-Logs und geräteübergreifende Laufzeitabnahme bleiben separate
 Folgearbeiten. Ein Import historischer Receipts benötigt eine geprüfte

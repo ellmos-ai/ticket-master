@@ -37,7 +37,7 @@
     "gui_open_counts_as_delivery": {"type": "boolean"},
     "message_content_logging": {"const": false},
     "audio_logging": {"const": false},
-    "transport_contract_ref": {"const": "ellmos.ticket.route-intent.v1"}
+    "transport_contract_ref": {"enum": ["ellmos.ticket.route-intent.v1", "ellmos.ticket.message-route-intent.v1"]}
   },
   "$defs": {
     "ref": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!/)(?![A-Za-z]:/)[^\\u0000-\\u0020\\u007F\\\\]{1,256}$"},

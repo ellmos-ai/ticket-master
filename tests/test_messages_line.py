@@ -386,7 +386,7 @@ def test_unverified_historical_receipt_import_is_rejected_after_config_disable(t
     )
     disabled = config(enabled=False, updated_at="2026-10-27T12:02:00Z")
 
-    with pytest.raises(MessageLineError, match="current config"):
+    with pytest.raises(MessageLineError, match="external acknowledgement import"):
         line.record_receipt(historical, current_config=disabled)
     assert line.delivery_state(message["message_id"]) == "prepared"
 

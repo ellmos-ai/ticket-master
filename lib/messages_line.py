@@ -30,6 +30,7 @@ MESSAGE_RECEIPT_LEDGER_SCHEMA = "ellmos.ticket.message-receipt-ledger.v1"
 MESSAGE_THREAD_LEDGER_SCHEMA = "ellmos.ticket.message-thread-ledger.v1"
 MESSAGES_CONFIG_SCHEMA = "ellmos.ticket.messages-line-config.v1"
 LOG_REGISTRY_SCHEMA = "ellmos.ticket.log-registry.v1"
+MESSAGE_ROUTE_SCHEMA = "ellmos.ticket.message-route-intent.v1"
 
 DELIVERY_MODES = frozenset({"chat_start", "on_demand", "active_chat"})
 DELIVERY_EVENTS = frozenset(
@@ -190,8 +191,8 @@ def validate_messages_config(value: Mapping[str, Any]) -> dict[str, Any]:
         raise MessageLineError("message content logging must remain disabled")
     if value["audio_logging"] is not False:
         raise MessageLineError("audio logging must remain disabled")
-    if value["transport_contract_ref"] != ROUTE_INTENT_SCHEMA:
-        raise MessageLineError("Messages-Line must reference the existing route_intent contract")
+    if value["transport_contract_ref"] not in {ROUTE_INTENT_SCHEMA, MESSAGE_ROUTE_SCHEMA}:
+        raise MessageLineError("Messages-Line transport contract is unsupported")
 
     modes = value["delivery_modes"]
     if not isinstance(modes, Mapping):
@@ -228,7 +229,7 @@ def validate_messages_config(value: Mapping[str, Any]) -> dict[str, Any]:
         "updated_at": value["updated_at"],
         "message_content_logging": False,
         "audio_logging": False,
-        "transport_contract_ref": ROUTE_INTENT_SCHEMA,
+        "transport_contract_ref": value["transport_contract_ref"],
     }
 
 
@@ -748,9 +749,9 @@ class MessagesLine:
     ) -> dict[str, Any]:
         """Persist a new externally produced observation under the current config gate."""
         receipt = validate_message_receipt(value)
-        if receipt["event"] == "explicit_ack":
+        if receipt["event"] in ACK_EVENTS or receipt["event"] == "gui_opened":
             raise MessageLineError(
-                "external explicit-ack import is inactive; use the local manual acknowledge API"
+                "external acknowledgement import is inactive without verified provenance"
             )
         return self._store_receipt(receipt, current_config=current_config)
 
