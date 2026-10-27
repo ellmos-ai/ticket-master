@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from ticket_master_runtime.results.model import (
-    SCHEMA, ResultsError, append, artifact_badge, open_artifact, question_prompt, read, select_events, update_session_data, write,
+    SCHEMA, ResultsError, append, artifact_badge, artifact_kind, open_artifact, question_prompt, read, select_events, update_session_data, write,
 )
 
 
@@ -14,6 +14,18 @@ def session():
     return {"schema": SCHEMA, "session_id": "example-session", "host": "example-host", "revision": 1,
             "updated_at": "2026-10-27T12:00:00+00:00", "events": [event("one", "Forschung", "Ärztliche Prüfung")],
             "metrics": {"skills": [], "tokens": [], "agents": []}}
+
+
+@pytest.fixture(scope="module")
+def native_tk_app():
+    """Use one Tcl/Tk interpreter; each smoke owns a disposable Toplevel."""
+    import tkinter as tk
+    app = tk.Tk()
+    app.withdraw()
+    yield app
+    for timer in app.tk.call("after", "info"):
+        app.after_cancel(timer)
+    app.destroy()
 
 
 def event(eid, topic, title):
@@ -111,6 +123,66 @@ def test_unknown_tokens_not_zero(tmp_path, session):
         write(tmp_path / "invalid.json", session)
 
 
+def test_action_palette_contrast_and_requested_file_icons():
+    from ticket_master_runtime.results.icons import PALETTES, contrast_ratio
+    assert len({p["background"] for p in PALETTES.values()}) == 3
+    for palette in PALETTES.values():
+        assert contrast_ratio(palette["foreground"], palette["background"]) >= 4.5
+        assert contrast_ratio(palette["foreground"], palette["hover"]) >= 4.5
+    for path, expected in (("a.md", "MD"), ("a.PDF", "PDF"), ("a.html", "HTML"),
+                           ("https://example.invalid/document", "URL"), ("a.url", "URL"),
+                           ("a.doc", "WORD"), ("a.docx", "WORD"), ("a.txt", "TXT"),
+                           ("a.py", "PY"), ("a.unknown", "FILE")):
+        assert artifact_kind({"path": path}) == expected
+
+
+@pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in native design smoke")
+def test_native_action_design_and_python_path_only(tmp_path, session, monkeypatch, native_tk_app):
+    import tkinter as tk
+    from ticket_master_runtime.results.gui import ActionTile, ResultsWindow
+    from ticket_master_runtime.results.icons import PALETTES
+    py = tmp_path / "inspection.py"
+    py.write_text("raise RuntimeError('must never execute')", encoding="utf-8")
+    session["events"][0]["artifacts"] = [{"path": str(py), "label": "Python-Quelle", "mime": "text/x-python"}]
+    path = tmp_path / "session.json"
+    write(path, session)
+    root = tk.Toplevel(native_tk_app)
+    copied = []
+    monkeypatch.setattr(root, "clipboard_clear", lambda: None)
+    monkeypatch.setattr(root, "clipboard_append", copied.append)
+    try:
+        window = ResultsWindow(root, path)
+        root.title("TEST · Aktionsdesign")
+        root.update()
+        assert window.evidence()["viewable"]
+        root.withdraw()
+        def collect(parent):
+            found = []
+            for child in parent.winfo_children():
+                if isinstance(child, ActionTile):
+                    found.append(child)
+                else:
+                    found.extend(collect(child))
+            return found
+        tiles = collect(window.feed)
+        chat = next(t for t in tiles if t.button.cget("text") == "Nachfrage / Auftrag kopieren")
+        assert abs((chat.winfo_x() + chat.winfo_width()) - chat.master.winfo_width()) <= 2
+        assert chat.palette == PALETTES["chat"] and "nichts automatisch gesendet" in chat.tooltip_text
+        assert any(t.palette == PALETTES["details"] for t in tiles)
+        source = next(t for t in tiles if "PY ·" in t.button.cget("text"))
+        assert source.palette == PALETTES["file"] and "Pfad kopieren" in source.button.cget("text")
+        assert all(t.icon.find_all() for t in tiles)
+        source.button.invoke()
+        assert copied == [str(py)] and "keine Datei ausgeführt" in window.status.get()
+        root.geometry("620x700+0+0")
+        root.update()
+        assert all(t.winfo_reqwidth() <= window.canvas.winfo_width() - 20 for t in collect(window.feed))
+    finally:
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
+        root.destroy()
+
+
 def test_schema_example_matches_runtime():
     root = Path(__file__).resolve().parents[1]
     import jsonschema
@@ -197,12 +269,12 @@ def test_question_prompt_contains_only_stable_reference(tmp_path, session):
 
 
 @pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in native desktop smoke")
-def test_native_ui_filters_details_and_refresh(tmp_path, session):
+def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app):
     import tkinter as tk
     from ticket_master_runtime.results.gui import ResultsWindow
     path = tmp_path / "session.json"
     sha = write(path, session)
-    root = tk.Tk()
+    root = tk.Toplevel(native_tk_app)
     previous_clipboard = None
     try:
         try:

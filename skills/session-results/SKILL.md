@@ -44,6 +44,12 @@ sie in die Konsole ein und ergänzt „Meine Frage / Anweisung“. Keine Vollber
 Artefaktinhalte, automatische Zustellung oder Modellaufrufe werden kopiert oder
 ausgeführt. Nach späteren Sessionupdates die stabile Ergebnis-ID auflösen.
 
+Die rechtsbündige Nachfragekachel ist blau, Volltext violett und alle Dateilinks
+sind türkis. Einheitliche native Vektorsymbole, Beschriftungen und Tooltips
+ergänzen die Farben; Icons werden für MD/PDF/HTML/URL/WORD/TXT/PY und weitere
+Formate im Paketcode gezeichnet. Nicht zum sicheren Öffnen freigegebene Typen
+(insbesondere PY) bieten ausdrücklich „Pfad kopieren“, ohne Code auszuführen.
+
 `metrics.skills/tokens/agents` enthalten ausschließlich tatsächlich gemeldete Nutzung. Jede Beobachtung braucht `source`, `observed_at` und `scope`. Fehlende Tokens bleiben `null` und werden als unbekannt angezeigt. Goal-Zähler sind keine verifizierten Provider-/Billable-Tokens. Angeforderte und tatsächlich belegte Modelle getrennt führen; fehlendes tatsächliches Modell bleibt `null`. Beobachtete Subagenten, aktuelle Aktivität und unbekannte Lifetime-Gesamtzahl ausdrücklich unterscheiden.
 
 Das Fenster liest dieselbe Datei regelmäßig neu. Thema, Suche, geöffnete Details und äußere Scrollposition bleiben bei einem gültigen Revisionswechsel erhalten. Zurückgehende Revisionen oder andere Sitzungs-IDs werden abgelehnt. Es ist eine Anzeigeprojektion, keine Ticketqueue und keine Receipt-Registry. Öffnen bucht weder SOLVED/accepted noch eine Nachrichtenquittung. Optionales `delivery` verwendet die bestehenden Messages-Line-Modi `on_demand/active_chat/chat_start`, `surface=local_gui` und `ellmos.ticket.message-route-intent.v1` als Referenz. Den konfigurierten Messages-Line-Owner für echte Zustellung/Beobachtungsbuchung verwenden; der Viewer emittiert selbst keine Receipts.

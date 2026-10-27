@@ -7,6 +7,9 @@ the standalone, file-based Tk window. One JSON file belongs to one console sessi
 analysis, document links and source-bound session metrics stay local. See the
 [usage skill](skills/session-results/SKILL.md) for producer/CAS commands and the
 [schema and example](contracts/session-results/). No BACH/Ocean or server is required.
+Native vector icons and three tonal action families distinguish right-aligned
+question copying, full result text, and documents. Unsupported executable types
+offer explicit path copying and are never launched from JSON.
 
 A cross-platform, multi-provider **workflow / operating mode** for an AI coding agent.
 

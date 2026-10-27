@@ -189,14 +189,22 @@ def select_events(data, topic="Alle", query="", order="Älteste zuerst"):
     return sorted(events, key=lambda e: (datetime.fromisoformat(e["created_at"]), e["id"]), reverse=order == "Neueste zuerst")
 
 
-def artifact_badge(artifact):
+def artifact_kind(artifact):
+    if artifact["path"].lower().startswith(("https://", "http://")):
+        return "URL"
     suffix = Path(artifact["path"]).suffix.lower()
     mime = artifact.get("mime") or mimetypes.guess_type(artifact["path"])[0] or "application/octet-stream"
-    if suffix == ".pdf":
-        return "▣ PDF"
+    known = {".pdf": "PDF", ".md": "MD", ".html": "HTML", ".htm": "HTML", ".url": "URL",
+             ".doc": "WORD", ".docx": "WORD", ".txt": "TXT", ".py": "PY", ".json": "JSON", ".csv": "CSV"}
+    if suffix in known:
+        return known[suffix]
     if mime.startswith("image/"):
-        return "▧ BILD"
-    return {".md": "≡ MD", ".html": "◈ HTML", ".htm": "◈ HTML", ".json": "{ } JSON", ".csv": "▦ CSV"}.get(suffix, "≡ DATEI")
+        return "IMAGE"
+    return "FILE"
+
+
+def artifact_badge(artifact):
+    return {"IMAGE": "BILD", "FILE": "DATEI"}.get(artifact_kind(artifact), artifact_kind(artifact))
 
 
 def question_prompt(data, event_id, path):
