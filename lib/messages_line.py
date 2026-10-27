@@ -51,9 +51,9 @@ SURFACES = frozenset({"ticket_master", "local_gui", "server_gui", "registered_se
 LOG_WINDOWS = frozenset({"24h", "monthly", "other"})
 MAX_MESSAGE_TEXT_CHARS = 1_048_576
 
-_MESSAGE_ID_RE = re.compile(rf"^M-[0-9]{{8}}-[0-9]{{{ID_DIGITS}}}$")
-_THREAD_ID_RE = re.compile(rf"^TH-[0-9]{{8}}-[0-9]{{{ID_DIGITS}}}$")
-_RECEIPT_ID_RE = re.compile(rf"^R-[0-9]{{8}}-[0-9]{{{ID_DIGITS}}}$")
+_MESSAGE_ID_RE = re.compile(rf"^M-[0-9]{{8}}-[1-9][0-9]{{{ID_DIGITS - 1}}}$")
+_THREAD_ID_RE = re.compile(rf"^TH-[0-9]{{8}}-[1-9][0-9]{{{ID_DIGITS - 1}}}$")
+_RECEIPT_ID_RE = re.compile(rf"^R-[0-9]{{8}}-[1-9][0-9]{{{ID_DIGITS - 1}}}$")
 _OBSERVATION_ID_RE = re.compile(r"^O-[0-9a-f]{64}$")
 _SAFE_REF_RE = re.compile(r"^[^\x00-\x20\x7f]{1,256}$")
 _MESSAGE_FIELDS = frozenset(
@@ -410,8 +410,8 @@ class MessagesLine:
         created_at: str,
         rng: Any,
     ) -> str:
-        self._threads_root.mkdir(parents=True, exist_ok=True)
         if thread_id is None:
+            self._threads_root.mkdir(parents=True, exist_ok=True)
             used: set[int] = set()
             for entry in self._threads_root.iterdir():
                 if (
@@ -436,16 +436,8 @@ class MessagesLine:
             raise MessageLineError("no free ThreadID after 100 random draws")
 
         path = self._thread_path(thread_id)
-        if path.exists():
-            self._read_thread_ledger(thread_id)
-            return thread_id
-        ledger = {
-            "schema": MESSAGE_THREAD_LEDGER_SCHEMA,
-            "thread_id": thread_id,
-            "created_at": created_at,
-        }
-        if self._write_exclusive(path, ledger):
-            return thread_id
+        if not path.is_file():
+            raise MessageLineError("thread_id must reference an existing canonical thread ledger")
         self._read_thread_ledger(thread_id)
         return thread_id
 
@@ -1123,4 +1115,3 @@ def validate_log_registry(value: Mapping[str, Any]) -> dict[str, Any]:
             raise MessageLineError("log registry must remain pointer-only")
         canonical_sources.append(dict(source))
     return {"schema": LOG_REGISTRY_SCHEMA, "sources": canonical_sources}
-

@@ -43,7 +43,7 @@
     }
   },
   "$defs": {
-    "ref": {"type": "string", "minLength": 1, "maxLength": 256},
+    "ref": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!/)(?![A-Za-z]:/)[^\\u0000-\\u0020\\u007F\\\\]{1,256}$"},
     "target": {
       "type": "object",
       "additionalProperties": false,

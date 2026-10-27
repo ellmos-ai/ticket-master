@@ -594,7 +594,10 @@ Routing-Konfiguration ist standardmäßig deaktiviert; das
 Protokollquellenregister enthält nur Provenienzreferenzen. Nachrichtentexte
 werden nicht protokolliert, Audio nicht gespeichert und Transportzustellung
 nicht implementiert. Vertrag und offene GUI-/Server-Integrationen stehen in
-[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md).
+[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md). Der vorhandene
+`ticket-master`-CLI-Dispatcher bietet lokale Aktionen für `create`, `list`,
+`read`, manuelles `ack`, `config` und `registry` über `--messages-line`.
+Er versendet nichts und quittiert nicht automatisch.
 
 
 ### Companion-Muster

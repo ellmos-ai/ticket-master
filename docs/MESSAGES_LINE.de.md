@@ -95,6 +95,35 @@ werden nicht kopiert. Eigenständige Policy-, Plans- oder Decisions-Register
 werden nicht erzeugt, weil sie bereits einer anderen kanonischen Quelle
 gehören.
 
+## Lokale CLI
+
+Der vorhandene `ticket-master`-Dispatcher macht den lokalen Kern über
+`--messages-line {create,list,read,ack,config,registry}` zugänglich. Für
+`create`, `list`, `read` und `ack` muss mit `--messages-dir` ein lokaler
+Speicherpfad ausdrücklich gewählt werden. `--messages-config` und
+`--log-registry` lesen jeweils eine JSON-Datei; ohne Pfad wird das paketierte
+Beispiel verwendet. Konfiguration und Register werden vor der Ausgabe mit
+denselben Python-Validatoren wie die Bibliotheks-API geprüft.
+
+In den folgenden Beispielen ist `M-YYYYMMDD-#########` ein Platzhalter für
+eine zuvor von `create` ausgegebene MessageID. Beim manuellen Ack müssen Ziel
+und Oberfläche zum gespeicherten Ziel-Snapshot der Nachricht passen.
+
+```text
+ticket-master --messages-line config
+ticket-master --messages-line registry --log-registry ./log-registry.json
+ticket-master --messages-line create --messages-dir ./private/messages --origin-ref automation:build --recipient-ref principal:self --content-text "Künstliche Beispielnachricht" --delivery-mode on_demand --messages-config ./messages-line.json
+ticket-master --messages-line list --messages-dir ./private/messages --json
+ticket-master --messages-line read --messages-dir ./private/messages --message-id "M-YYYYMMDD-#########"
+ticket-master --messages-line ack --messages-dir ./private/messages --message-id "M-YYYYMMDD-#########" --target-ref gui:local --surface local_gui --channel-ref client:local --actor-ref principal:self --evidence-ref ui:explicit-action
+```
+
+`create` speichert nur ein Message-Ticket. `list` und `read` sind administrative
+Lesezugriffe und quittieren nichts. Nur der ausdrücklich aufgerufene `ack`-
+Befehl ruft `MessagesLine.acknowledge()` für eine manuelle Nutzerbestätigung
+auf. Der CLI-Zugang sendet keine Nachricht, startet keine Transportqueue und
+lädt keine Logs. `registry` validiert und zeigt nur Quellenreferenzen an.
+
 ## Integrations- und Abnahmegrenzen
 
 Dieses Repository liefert ID-Vergabe über `ticket_writer.draw_id()`,

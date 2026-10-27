@@ -69,6 +69,8 @@ Canonical repository: https://github.com/ellmos-ai/ticket-master
   messages, log message/audio content, or create a transport queue. `.SYNC`
   remains transport and system-gap-master remains cross-system reconciler. See
   `docs/MESSAGES_LINE.de.md`; GUI and server runtime integrations remain open.
+  The existing CLI exposes local create/list/read/manual-ack/config/registry
+  actions through `--messages-line`; it never sends or automatically acknowledges.
 - `contracts/messages/v1/` contains closed message-ticket, receipt, config and
   log-registry schemas. `config/messages-line.example.json` is disabled with no
   targets; `config/log-registry.example.json` contains no live sources.

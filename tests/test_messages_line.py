@@ -430,6 +430,39 @@ def test_messages_get_stable_ids_and_thread_grouping_preserve_message_text(tmp_p
     ]
 
 
+def test_unknown_supplied_thread_id_is_rejected_but_existing_thread_can_be_reused(tmp_path):
+    line, first = make_message(tmp_path)
+    existing_thread = first["thread_id"]
+    assert line._read_thread_ledger(existing_thread)["thread_id"] == existing_thread
+
+    second = line.create(
+        config=config(),
+        origin_ref="fixture:system:automation",
+        recipient_ref=first["recipient_ref"],
+        content_text="Another message in the existing thread.",
+        delivery_mode="active_chat",
+        thread_id=existing_thread,
+        created_at=datetime(2026, 10, 27, 12, 2, tzinfo=timezone.utc),
+        rng=random.Random(18),
+    )
+    assert second["thread_id"] == existing_thread
+    assert len(line.by_thread(existing_thread)) == 2
+
+    unknown = "TH-20261027-111111111"
+    with pytest.raises(MessageLineError, match="existing canonical thread ledger"):
+        line.create(
+            config=config(),
+            origin_ref="fixture:system:automation",
+            recipient_ref=first["recipient_ref"],
+            content_text="Untrusted thread fixture.",
+            delivery_mode="on_demand",
+            thread_id=unknown,
+            created_at=datetime(2026, 10, 27, 12, 3, tzinfo=timezone.utc),
+        )
+    assert not line._thread_path(unknown).exists()
+    assert len(line.list_messages()) == 2
+
+
 def test_message_create_uses_exclusive_ids_and_recovers_from_a_local_collision(tmp_path, monkeypatch):
     line, first = make_message(tmp_path)
     candidates = iter(
@@ -480,6 +513,131 @@ def test_message_ticket_is_closed_and_rejects_host_paths_and_body_fields(tmp_pat
         validate_message_ticket({**message, "content_text": ""})
     with pytest.raises(MessageLineError, match="real calendar date"):
         validate_message_ticket({**message, "message_id": "M-20261340-123456789"})
+
+
+@pytest.mark.parametrize(
+    "field,prefix,schema_name",
+    [
+        ("message_id", "M", "ellmos.ticket.message-ticket.v1.schema.json"),
+        ("receipt_id", "R", "ellmos.ticket.message-ticket.v1.schema.json"),
+        ("thread_id", "TH", "ellmos.ticket.message-ticket.v1.schema.json"),
+    ],
+)
+def test_message_ticket_id_range_matches_ticket_writer_and_json_schema(tmp_path, field, prefix, schema_name):
+    _line, message = make_message(tmp_path)
+    invalid_id = f"{prefix}-20261027-000000001"
+    invalid = {**message, field: invalid_id}
+
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(schema(schema_name), invalid)
+    with pytest.raises(MessageLineError, match=field):
+        validate_message_ticket(invalid)
+
+
+@pytest.mark.parametrize(
+    "bad_ref",
+    [
+        r"C:\private\data",
+        "C:/private/data",
+        "/private/data",
+        "fixture:contains space",
+        "fixture:contains\ttab",
+    ],
+)
+def test_reference_schemas_and_runtime_validators_reject_the_same_values(tmp_path, bad_ref):
+    _line, message = make_message(tmp_path)
+    message_schema = schema("ellmos.ticket.message-ticket.v1.schema.json")
+
+    invalid_message = {**message, "origin_ref": bad_ref}
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(message_schema, invalid_message)
+    with pytest.raises(MessageLineError, match="origin_ref"):
+        validate_message_ticket(invalid_message)
+
+    config_schema = schema("ellmos.ticket.messages-line-config.v1.schema.json")
+    invalid_config = config(
+        targets=[{"target_ref": bad_ref, "surface": "local_gui"}],
+    )
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(config_schema, invalid_config)
+    with pytest.raises(MessageLineError, match="target_ref"):
+        validate_messages_config(invalid_config)
+
+    receipt_value = receipt(message, "transported")
+    receipt_schema = schema("ellmos.ticket.message-receipt.v1.schema.json")
+    invalid_receipt = {**receipt_value, "target_ref": bad_ref}
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(receipt_schema, invalid_receipt)
+    with pytest.raises(MessageLineError, match="target_ref"):
+        validate_message_receipt(invalid_receipt)
+
+    registry = {
+        "schema": LOG_REGISTRY_SCHEMA,
+        "sources": [
+            {
+                "source_ref": bad_ref,
+                "system_ref": "fixture:system",
+                "owner_ref": "fixture:owner",
+                "window": "24h",
+                "observed_at": "2026-10-27T12:00:00Z",
+                "access_policy_ref": "fixture:access-policy",
+                "redaction_policy_ref": "fixture:redaction-policy",
+                "provenance_ref": "fixture:provenance",
+                "retention_ref": "fixture:retention",
+                "materialization": "reference_only",
+            }
+        ],
+    }
+    registry_schema = schema("ellmos.ticket.log-registry.v1.schema.json")
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(registry_schema, registry)
+    with pytest.raises(MessageLineError, match="source_ref"):
+        validate_log_registry(registry)
+
+
+def test_all_id_schemas_reject_leading_zero_numbers(tmp_path):
+    line, message = make_message(tmp_path)
+    message_schema = schema("ellmos.ticket.message-ticket.v1.schema.json")
+    for field, prefix in (("message_id", "M"), ("receipt_id", "R"), ("thread_id", "TH")):
+        invalid = {**message, field: f"{prefix}-20261027-000000001"}
+        with pytest.raises(jsonschema.ValidationError):
+            assert_schema_valid(message_schema, invalid)
+        with pytest.raises(MessageLineError, match=field):
+            validate_message_ticket(invalid)
+
+    receipt_value = receipt(message, "transported")
+    receipt_schema = schema("ellmos.ticket.message-receipt.v1.schema.json")
+    for field, prefix in (("message_id", "M"), ("receipt_id", "R")):
+        invalid = {**receipt_value, field: f"{prefix}-20261027-000000001"}
+        with pytest.raises(jsonschema.ValidationError):
+            assert_schema_valid(receipt_schema, invalid)
+        with pytest.raises(MessageLineError, match=field):
+            validate_message_receipt(invalid)
+
+    receipt_ledger = json.loads(
+        (tmp_path / "messages" / "_receipts" / message["receipt_id"] / "ledger.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    receipt_ledger_schema = schema("ellmos.ticket.message-receipt-ledger.v1.schema.json")
+    for field, prefix in (("message_id", "M"), ("receipt_id", "R")):
+        invalid = {**receipt_ledger, field: f"{prefix}-20261027-000000001"}
+        with pytest.raises(jsonschema.ValidationError):
+            assert_schema_valid(receipt_ledger_schema, invalid)
+
+    thread_ledger = json.loads(
+        (tmp_path / "messages" / "_threads" / f"{message['thread_id']}.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    invalid_thread = "TH-20261027-000000001"
+    with pytest.raises(jsonschema.ValidationError):
+        assert_schema_valid(
+            schema("ellmos.ticket.message-thread-ledger.v1.schema.json"),
+            {**thread_ledger, "thread_id": invalid_thread},
+        )
+    with pytest.raises(MessageLineError, match="thread_id"):
+        line._thread_path(invalid_thread)
 
 
 @pytest.mark.parametrize(
@@ -667,4 +825,3 @@ def test_log_registry_is_pointer_only_and_supports_24h_and_monthly_sources():
         validate_log_registry(
             {**registry, "sources": [{**registry["sources"][0], "materialization": "copy"}]}
         )
-

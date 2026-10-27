@@ -593,7 +593,10 @@ threads, one persistent acknowledgement ledger per message, disabled-by-default
 routing configuration, and a provenance-only log registry. It does not log
 message text or audio and does not implement transport delivery. See
 [`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md) for the contract and the
-remaining GUI/server integration gates.
+remaining GUI/server integration gates. The existing `ticket-master` CLI
+exposes local `create`, `list`, `read`, manual `ack`, `config`, and `registry`
+operations through `--messages-line`; it never sends or automatically
+acknowledges a message.
 
 
 ### Companion Pattern
