@@ -9,7 +9,7 @@ import jsonschema
 import pytest
 
 from lib.message_route_contract import build_message_route_intent, validate_message_route_intent
-from lib.messages_line import MessageLineError, MessagesLine
+from lib.messages_line import MessageLineError, MessagesLine, _make_observation_id
 from lib.unicorn_intake import IntakeValidationError, validate_route_intent
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -86,5 +86,21 @@ def test_unverified_external_ack_import_remains_closed(tmp_path):
         channel_ref="fixture:channel", actor_ref="fixture:actor", evidence_ref="fixture:evidence",
         event="on_demand_ack", current_config=_config(),
     )
-    with pytest.raises(MessageLineError, match="external acknowledgement import"):
-        line.record_receipt(ack, current_config=_config())
+    assert line.record_receipt(ack, current_config=_config(enabled=False)) == ack
+    forged_base = {key: value for key, value in ack.items() if key != "observation_id"}
+    forged_base["channel_ref"] = "fixture:external"
+    forged = {**forged_base, "observation_id": _make_observation_id(forged_base)}
+    with pytest.raises(MessageLineError, match="external receipt import"):
+        line.record_receipt(forged, current_config=_config())
+
+    transported_base = {
+        **forged_base,
+        "channel_ref": "fixture:unverified-transport",
+        "event": "transported",
+    }
+    unverified_transport = {
+        **transported_base,
+        "observation_id": _make_observation_id(transported_base),
+    }
+    with pytest.raises(MessageLineError, match="external receipt import"):
+        line.record_receipt(unverified_transport, current_config=_config())

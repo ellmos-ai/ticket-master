@@ -747,12 +747,11 @@ class MessagesLine:
         *,
         current_config: Mapping[str, Any],
     ) -> dict[str, Any]:
-        """Persist a new externally produced observation under the current config gate."""
+        """Read back an identical stored receipt; new external imports need a verifier."""
         receipt = validate_message_receipt(value)
-        if receipt["event"] in ACK_EVENTS or receipt["event"] == "gui_opened":
-            raise MessageLineError(
-                "external acknowledgement import is inactive without verified provenance"
-            )
+        path = self._receipt_dir(receipt["receipt_id"]) / "observations" / f"{receipt['observation_id']}.json"
+        if not path.is_file():
+            raise MessageLineError("external receipt import is inactive without verified provenance")
         return self._store_receipt(receipt, current_config=current_config)
 
     def _store_receipt(
