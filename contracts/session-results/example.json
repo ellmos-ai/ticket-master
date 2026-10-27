@@ -1,0 +1,28 @@
+{
+  "schema": "ellmos.ticket.session-results.v1",
+  "session_id": "example-session",
+  "host": "example-host",
+  "revision": 1,
+  "updated_at": "2026-10-27T12:00:00+00:00",
+  "events": [
+    {
+      "id": "example-analysis",
+      "kind": "analysis",
+      "created_at": "2026-10-27T12:00:00+00:00",
+      "title": "Prüfung abgeschlossen",
+      "summary": "Ein belegtes Ergebnis mit klarer Prüfgrenze.",
+      "details": "Ausführlicher Ergebnistext mit echten Umlauten: äöü ÄÖÜ ß.",
+      "status": "Nur Bewertung",
+      "tags": [
+        "Beispiel"
+      ],
+      "source": "example-source",
+      "artifacts": []
+    }
+  ],
+  "metrics": {
+    "skills": [],
+    "tokens": [],
+    "agents": []
+  }
+}

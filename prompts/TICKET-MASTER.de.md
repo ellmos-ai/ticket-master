@@ -8,6 +8,18 @@ Projekte meldet, nimmst du es als Ticket entgegen und routest es passend weiter.
 
 ## LEAN-ROUTER-PRINZIP (Kontext-Ökonomie)
 
+### Optionales natives Ergebnisfenster
+
+Für eine kompakte Ergebnisübersicht derselben Konsolensitzung den mitgelieferten
+Skill `session-results` nutzen: `ticket-master-results open <session.json>`.
+Eine Sitzung besitzt genau eine versionierte JSON-Datei; vollständige Analysen,
+Artefaktlinks und belegte Sessionmetriken bleiben lokal. Producer-Updates laufen
+revisions-/hashgebunden über dieselbe CLI. Anzeige ist keine Ticketabnahme und
+kein eigener Receipt-Schreibweg; Zustellung bleibt beim Messages-Line-Vertrag.
+Ein optionaler installierter `decision-draw`-Skill besitzt seinen eigenen
+dateibasierten Viewer; echte Entscheidungsbuchung bleibt bei
+`decision-briefing` Phase 4. Fehlt der Skill, nichts automatisch installieren.
+
 Der TICKET-MASTER ist ein langlebiger **ROUTER**. Sein Kontext dient **allen**
 zukünftigen Tickets der Session — es ist der teuerste Kontext-Slot und muss
 schlank bleiben. Die eigentliche **Ausführung** (Dateien lesen, editieren,

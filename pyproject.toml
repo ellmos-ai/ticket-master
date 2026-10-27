@@ -52,6 +52,7 @@ dependencies = []
 
 [project.scripts]
 ticket-master = "ticket_master_runtime.cli:main"
+ticket-master-results = "ticket_master_runtime.results.__main__:main"
 
 [project.optional-dependencies]
 routing-v2 = ["clutch-router>=0.5,<0.6"]
@@ -91,6 +92,8 @@ include = ["lib*", "bin*", "ticket_master_runtime*"]
 [tool.setuptools.data-files]
 "share/ticket-master" = ["ellmos-module.v2.json"]
 "share/ticket-master/skills/ticket-inventory" = ["skills/ticket-inventory/SKILL.md"]
+"share/ticket-master/skills/session-results" = ["skills/session-results/SKILL.md"]
+"share/ticket-master/contracts/session-results" = ["contracts/session-results/*.json"]
 "share/ticket-master/prompts" = ["prompts/TICKET-MASTER.de.md", "prompts/TICKET-MASTER.en.md"]
 "share/ticket-master/starters/windows" = ["starters/windows/*.bat"]
 "share/ticket-master/starters/posix" = ["starters/posix/*.sh"]

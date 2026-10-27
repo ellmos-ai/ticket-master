@@ -2,6 +2,12 @@
 
 # ticket-master
 
+Native session results: `ticket-master-results open /absolute/session.json` opens
+the standalone, file-based Tk window. One JSON file belongs to one console session;
+analysis, document links and source-bound session metrics stay local. See the
+[usage skill](skills/session-results/SKILL.md) for producer/CAS commands and the
+[schema and example](contracts/session-results/). No BACH/Ocean or server is required.
+
 A cross-platform, multi-provider **workflow / operating mode** for an AI coding agent.
 
 ticket-master is a workflow/operating mode for an AI coding agent, not a tool that

@@ -8,6 +8,16 @@ you receive it as a ticket and route it appropriately.
 
 ## LEAN ROUTER PRINCIPLE (Context Economy)
 
+### Optional native results window
+
+Use the bundled `session-results` skill and `ticket-master-results open <session.json>`
+for the current console session's local analysis/results feed and source-bound metrics.
+One session owns one versioned file; producer updates require its revision and hash.
+Display is neither ticket acceptance nor a receipt authority. Message delivery remains
+with Messages-Line. An optionally installed `decision-draw` skill may provide its own
+file-based viewer; canonical decisions still flow through `decision-briefing` Phase 4.
+Do not install a missing optional skill automatically.
+
 The TICKET-MASTER is a long-lived **ROUTER**. Its context serves **all**
 future tickets in the session — it is the most expensive context slot and
 must stay lean. Actual **execution** (reading files, editing, verifying) is

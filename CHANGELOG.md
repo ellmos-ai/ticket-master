@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Native session result window
+
+- Add a standalone Tk/ttk session feed, topic/search filters, expandable full results, passive local document links and source-bound skill/token/subagent observations.
+- Add one-file versioned JSON projections, cooperative hash/revision-bound atomic producer commands, public schema/example, a usage skill and packaged platform starters. Display never changes ticket acceptance or owns message receipts.
+
 ### Ticketinventur / ticket inventory
 
 - Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.
