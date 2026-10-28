@@ -75,3 +75,58 @@ Der Brief unten links zeigt offene und unbekannte Lesestände getrennt. „Meldu
 Das Zahnrad speichert `message_settings.read_mode` per CAS in derselben Datei. `on_open` bedeutet ausdrücklich das Öffnen des vollständigen Meldungstexts, nicht Fensterstart, Listenansicht oder Refresh. Zusätzlich müssen aktuelle Ownerconfig **und** ursprüngliche Nachrichtenpolicy `gui_opened` erlauben. Der Viewer nutzt dafür niemals einen fingierten manuellen Ack. Lesen ist keine Publikationsfreigabe, Sendung oder Ticketabnahme. Ohne Owner/kanonische Bindung bleibt Quittieren gesperrt; solche Altbeobachtungen müssen über `observe` beim bestehenden Owner zugeordnet werden. Fehlender Remote-GUI-Ack/Provenienzresolver wird dadurch nicht ersetzt.
 
 Prüfen: `ticket-master-results validate` ist headless. Der opt-in native Smoke läuft mit `TM_NATIVE_UI_TEST=1 python -m pytest tests/test_session_results.py`. Ownerintegration zusätzlich mit `TM_MESSAGES_CORE_TEST_DIR` und `TM_MESSAGES_CORE_TEST_SHA256` gegen eine freigegebene Kopie; sämtliche Testmeldungen/Quittungen bleiben in Temp-Stores. `open --evidence <lokale-datei.json>` protokolliert native Fensterflags, Geometrie und unter Windows Prozess-/aktive Konsolensitzung; das belegt technische Sichtbarkeit, keine menschliche Wahrnehmung.
+
+
+## Kompakte Karten, Aktualisierung und Archiv
+
+Neue Karten starten kompakt mit Titel, Art, Zeit und Thema. „Überblick öffnen“
+zeigt Zusammenfassung, Quelle, Status und Dateien. „Voller Ergebnistext“ öffnet
+anschließend den gesamten Bericht. Dieser Button und „Nachfrage / Auftrag
+kopieren“ stehen nebeneinander auf gleicher Höhe. Die Sessiondatenkachel ist rot;
+ihr schwarzes Datenbanksymbol liegt als generierte transparente PNG im Paket.
+
+Die Anzeige gleicht Karten anhand ihrer stabilen Event-ID ab. Unveränderte
+Widgets, Volltextauswahl, Eingabefokus, Suchtext, aufgeklappte Stufen und der
+sichtbare Scrollanker bleiben bei Producerupdates erhalten. Neue oder geänderte
+Inhalte ersetzen keine fremden Sitzungsdaten.
+
+„Als gelesen markieren“ archiviert Ergebnisse lokal in derselben Sessiondatei
+unter `result_reads[event_id] = {read_at, event_sha256}`. Dafür gilt derselbe
+CAS-Vertrag wie für Producerupdates. Der Hash bindet sämtliche Eventinhalte;
+ändert ein Producer den Inhalt derselben ID, wird sie wieder ungelesen angezeigt.
+CAS-Konflikte werden angezeigt und nicht automatisch überschrieben. Beim
+vollständigen `replace` auch vorhandene `result_reads` erhalten. Der Laufzeitvalidator
+verlangt vorhandene Ergebnis-IDs; Message-/System-IDs sind dort ausgeschlossen.
+Lesen ist keine Taskabnahme, keine Entscheidung und keine Inhaltslöschung.
+
+Standardansicht ist „Ungelesen“. „Archiv“ zeigt Gelesenes, „Alle“ beide Gruppen.
+Die Themenliste enthält nur Themen der gewählten Archivansicht. Meldungen dürfen
+erst nach kanonischem Owner-ACK/Readback aus „Ungelesen“ verschwinden; unbekannte,
+fehlerhafte und ungebundene Meldungen bleiben sichtbar. Es gibt keine zusätzliche
+Message-Readregistry. Der vorhandene Meldungsfilter kann unquittierte Meldungen
+weiter gezielt anzeigen. Manuelles Lesen bleibt Standard; die beiden `on_open`-
+Policygates bleiben unverändert.
+
+Für einen expliziten Ergebnis-Leseaufruf steht `result-read` mit `--event-id`,
+`--event-sha256`, frischer `--revision` und `--sha256` zur Verfügung. Den Eventhash
+liefert `ticket_master_runtime.results.model.event_digest(event)`; er ist SHA-256
+über UTF-8-JSON mit sortierten Schlüsseln, `ensure_ascii=False` und Separatoren
+`,:` ohne zusätzliche Leerzeichen. Die GUI erledigt dies beim Nutzerklick.
+
+## Optionale eigene Lockanzeige
+
+Siehe [Lock-Master-Vertrag](../../docs/SESSION_LOCK_VIEW.de.md). Ein Betreiber kann
+mit `open --locks-profile /trusted/profile.json --locks-profile-sha256 <hash>`
+ein separat geprüftes privates Profil übergeben. Die Sessiondatei bestimmt weder
+Codepfade noch Eigentümerschaft. Ohne Profil: Status unbekannt, keine Suche,
+Installation oder Starterausführung. Angezeigte Pfade sind eine belegte Teilmenge,
+keine Gesamtzahl. Nur bestehender Lock-Master-`fence_status` entscheidet held/lost.
+Ein Statusread und der explizite Knopf „Lockstatus gezielt prüfen“ lesen nur diese
+Pfade und Belege; kein Root-/Descendantscan läuft beim Feedrefresh.
+
+Der optionale Oberflächenknopf öffnet auf bewussten Nutzerklick ausschließlich
+die bereits vorhandene gepinnte lokale Lock-Master-Weboberfläche. Er startet
+keinen Scanner, Daemon oder Webserver und führt insbesondere `START.bat` nicht aus.
+Fehlt dieser separat betriebene Dienst, wird er durch die Ergebnisanzeige nicht
+installiert oder gestartet. Die eigene Ergebnisanzeige selbst bleibt eine native
+Standalone-Anwendung und benötigt diese optionale Weboberfläche nicht.

@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from .model import read, write, append, update_session_data, update_message_settings, ResultsError
+from .model import read, write, append, update_session_data, update_message_settings, mark_result_read, ResultsError
 
 
 def backend_arguments(parser):
@@ -49,6 +49,12 @@ def main(argv=None):
     settings.add_argument("--read-mode", choices=["manual", "on_open"], required=True)
     settings.add_argument("--revision", type=int, required=True)
     settings.add_argument("--sha256", required=True)
+    archive = sub.add_parser("result-read", help="Ergebnis in dieser Session per CAS als gelesen archivieren; keine Taskabnahme")
+    archive.add_argument("file", type=Path)
+    archive.add_argument("--event-id", required=True)
+    archive.add_argument("--event-sha256", required=True)
+    archive.add_argument("--revision", type=int, required=True)
+    archive.add_argument("--sha256", required=True)
     metadata = sub.add_parser("session-data", help="Sessionmetriken schmal lesen oder per CAS aktualisieren")
     metadata.add_argument("file", type=Path)
     metadata.add_argument("--input", type=Path, help="Patch der Metrikgruppen; Listen werden vollständig ersetzt")
@@ -62,6 +68,8 @@ def main(argv=None):
         p.add_argument("file", type=Path)
         if name == "open":
             p.add_argument("--evidence", type=Path)
+            p.add_argument("--locks-profile", type=Path, help="Optionales privates Operatorprofil mit belegten eigenen Lockpfaden")
+            p.add_argument("--locks-profile-sha256", help="Explizit freigegebener SHA-256 des Lockprofils")
             backend_arguments(p)
     for name in ("create", "replace", "append"):
         p = sub.add_parser(name)
@@ -79,6 +87,8 @@ def main(argv=None):
                                    notice=notice, message_id=args.message_id, event_id=args.event_id), ensure_ascii=False))
         elif args.command == "message-settings":
             print(json.dumps({"sha256": update_message_settings(args.file, args.read_mode, args.revision, args.sha256)}))
+        elif args.command == "result-read":
+            print(json.dumps({"sha256": mark_result_read(args.file, args.event_id, args.revision, args.sha256, args.event_sha256)}))
         elif args.command == "session-data":
             if args.input:
                 if args.revision is None or args.sha256 is None:
@@ -96,7 +106,11 @@ def main(argv=None):
             return subprocess.call([sys.executable, str(script.resolve()), "open", str(args.file.absolute())])
         elif args.command == "open":
             from .gui import launch
-            launch(args.file, args.evidence, make_backend(args))
+            if bool(args.locks_profile) != bool(args.locks_profile_sha256):
+                raise ResultsError("Lockansicht benötigt Profil und gepinnten Profilhash")
+            from .locks import LockView
+            locks = LockView(args.locks_profile, args.locks_profile_sha256) if args.locks_profile else None
+            launch(args.file, args.evidence, make_backend(args), locks)
         elif args.command in {"read", "validate"}:
             data, sha = read(args.file)
             print(json.dumps({"session_id": data["session_id"], "revision": data["revision"], "sha256": sha, **({"data": data} if args.command == "read" else {})}, ensure_ascii=False, indent=2))

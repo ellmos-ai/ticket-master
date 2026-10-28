@@ -1,9 +1,10 @@
-"""Consistent native vector symbols and tonal action palettes; no image assets."""
+"""Consistent native symbols, packaged generated database asset and tonal palettes."""
 
 PALETTES = {
     "chat": {"background": "#e8f0ff", "hover": "#dbe7fb", "foreground": "#174b85", "border": "#b5cbe7"},
     "details": {"background": "#f1eafb", "hover": "#e7dbf5", "foreground": "#593587", "border": "#cfbce7"},
     "file": {"background": "#e3f3ef", "hover": "#d3eae3", "foreground": "#145c53", "border": "#acd3c8"},
+    "session": {"background": "#c12d3d", "hover": "#a92332", "foreground": "#ffffff", "border": "#8f1d2b"},
 }
 
 
@@ -21,7 +22,14 @@ def draw_icon(canvas, kind, foreground, scale=1.0):
     def line(points, **kwargs):
         return canvas.create_line(*[p * scale for p in points], fill=foreground, width=1.6 * scale,
                                   capstyle="round", joinstyle="round", **kwargs)
-    if kind == "MAIL":
+    if kind == "DATABASE":
+        import tkinter as tk
+        from pathlib import Path
+        source = tk.PhotoImage(master=canvas, file=str(Path(__file__).with_name("assets") / "database-generated.png"))
+        factor = max(1, round(source.width() / (28 * scale)))
+        canvas.database_image = source.subsample(factor, factor)
+        canvas.create_image(14 * scale, 14 * scale, image=canvas.database_image)
+    elif kind == "MAIL":
         line((3, 6, 25, 6, 25, 23, 3, 23, 3, 6))
         line((3, 6, 14, 15, 25, 6))
         line((3, 23, 10, 16))

@@ -356,6 +356,28 @@
           "default": "manual"
         }
       }
+    },
+    "result_reads": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "read_at",
+          "event_sha256"
+        ],
+        "properties": {
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "description": "Local result reads keyed by stable event ID; runtime additionally rejects unknown IDs and message/system events. Content changes reopen a result."
     }
   }
 }

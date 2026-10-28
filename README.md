@@ -10,6 +10,14 @@ analysis, document links and source-bound session metrics stay local. See the
 Native vector icons and three tonal action families distinguish right-aligned
 question copying, full result text, and documents. Unsupported executable types
 offer explicit path copying and are never launched from JSON.
+Stable event cards preserve focus, text selection and scroll position during
+refresh. Cards start compact; full text and the right-aligned question button
+share one row. Results can be read and archived in the same CAS-protected session
+file; the archive filter restores them without deleting content or accepting tasks.
+Session data has a red button with a packaged generated black database icon.
+An [optional, pinned Lock-Master view](docs/SESSION_LOCK_VIEW.de.md) reads only
+individually evidenced own grants and can link to an existing local dashboard;
+it never starts scanners or services.
 The notification view records all actually perceived external messages through
 the existing, explicitly pinned Messages-Line owner. Manual read receipts,
 optional policy-gated read-on-open, unread/unknown counts and HTTPS artifacts

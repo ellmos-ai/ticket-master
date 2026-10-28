@@ -6,6 +6,10 @@ All notable changes to ticket-master are documented here.
 
 ### Native session result window
 
+- Preserve event widget identity, focus, fulltext selection and scroll anchors across refresh; start with compact overview/fulltext stages and place fulltext and question actions in one equal-height row.
+- Add content-bound, CAS-protected result reads and unread/archive/all filters with matching topics; canonical message receipts remain the only message read authority.
+- Add a red session-data action with a packaged generated black database image and an optional pinned, evidence-bound existing Lock-Master adapter without scanning, installation or service startup.
+
 - Add a standalone Tk/ttk session feed, topic/search filters, expandable full results, passive local document links and source-bound skill/token/subagent observations.
 - Add one-file versioned JSON projections, cooperative hash/revision-bound atomic producer commands, public schema/example, a usage skill and packaged platform starters. Display never changes ticket acceptance or owns message receipts.
 - Add a notification view with canonical Messages-Line read receipts, explicit hash-pinned optional owner installation, idempotent observed-message ingestion, manual/default and policy-gated fulltext-open modes, unread/unknown counts, and user-click HTTPS links. No parallel receipt registry or remote transport is introduced.

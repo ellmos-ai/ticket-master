@@ -89,6 +89,9 @@ norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".hypothesis", ".turbo
 [tool.setuptools.packages.find]
 include = ["lib*", "bin*", "ticket_master_runtime*"]
 
+[tool.setuptools.package-data]
+"ticket_master_runtime.results" = ["assets/*.png", "assets/*.md"]
+
 [tool.setuptools.data-files]
 "share/ticket-master" = ["ellmos-module.v2.json"]
 "share/ticket-master/skills/ticket-inventory" = ["skills/ticket-inventory/SKILL.md"]
@@ -107,6 +110,7 @@ include = ["lib*", "bin*", "ticket_master_runtime*"]
 "share/ticket-master/docs" = [
     "docs/TRITHON_PHASE0_CONTRACTS.de.md",
     "docs/SESSION_MESSAGES.de.md",
+    "docs/SESSION_LOCK_VIEW.de.md",
 ]
 
 [tool.ruff]

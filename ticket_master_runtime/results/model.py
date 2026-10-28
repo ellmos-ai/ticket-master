@@ -136,6 +136,20 @@ def validate(data):
     settings = data.get("message_settings", {})
     if not isinstance(settings, dict) or set(settings) - {"read_mode"} or settings.get("read_mode", "manual") not in {"manual", "on_open"}:
         raise ResultsError("Ungültige Meldungs-Leseeinstellung")
+    marks = data.get("result_reads", {})
+    if not isinstance(marks, dict):
+        raise ResultsError("result_reads muss ein Objekt sein")
+    results = {e["id"] for e in data["events"] if e["kind"] not in {"message", "system"}}
+    for eid, mark in marks.items():
+        if eid not in results or not isinstance(mark, dict) or set(mark) != {"read_at", "event_sha256"}:
+            raise ResultsError("Ungültiger Ergebnis-Lesebezug")
+        if not isinstance(mark["event_sha256"], str) or not re.fullmatch(r"[0-9a-f]{64}", mark["event_sha256"]):
+            raise ResultsError("Ungültiger Ergebnis-Lesehash")
+        try:
+            if not isinstance(mark["read_at"], str) or datetime.fromisoformat(mark["read_at"]).tzinfo is None:
+                raise ValueError()
+        except ValueError as exc:
+            raise ResultsError("Ergebnis-Lesezeit braucht Zeitzone") from exc
     return data
 
 
@@ -221,6 +235,37 @@ def update_message_settings(path, mode, revision, sha256):
     data["message_settings"] = {"read_mode": mode}
     data["revision"], data["updated_at"] = revision + 1, now()
     return write(path, data, revision, sha256)
+
+
+def event_digest(event):
+    """Bind a local result read to all displayed content, independent of key order."""
+    return digest(json.dumps(event, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
+
+
+def is_read(data, event, message_states=None):
+    if event["kind"] in {"message", "system"}:
+        return (message_states or {}).get(event["id"], {}).get("state") == "delivered"
+    return data.get("result_reads", {}).get(event["id"], {}).get("event_sha256") == event_digest(event)
+
+
+def mark_result_read(path, event_id, revision, sha256, expected_event_sha256):
+    """Explicit user action only; local result archive, never a message/task ACK."""
+    data, _ = read(path)
+    data = copy.deepcopy(data)
+    event = next((e for e in data["events"] if e["id"] == event_id), None)
+    if event is None or event["kind"] in {"message", "system"}:
+        raise ResultsError("Meldungen benötigen die kanonische Ownerquittung")
+    if event_digest(event) != expected_event_sha256:
+        raise ResultsError("Ergebnisinhalt verändert; zuerst aktualisieren")
+    data.setdefault("result_reads", {})[event_id] = {"read_at": now(), "event_sha256": expected_event_sha256}
+    data["revision"], data["updated_at"] = revision + 1, now()
+    return write(path, data, revision, sha256)
+
+
+def visible_events(data, message_states=None, archive="Ungelesen"):
+    if archive not in {"Ungelesen", "Archiv", "Alle"}:
+        raise ResultsError("Unbekannter Archivfilter")
+    return [e for e in data["events"] if archive == "Alle" or is_read(data, e, message_states) == (archive == "Archiv")]
 
 
 def select_events(data, topic="Alle", query="", order="Älteste zuerst"):

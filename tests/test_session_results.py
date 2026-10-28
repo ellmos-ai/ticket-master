@@ -125,7 +125,7 @@ def test_unknown_tokens_not_zero(tmp_path, session):
 
 def test_action_palette_contrast_and_requested_file_icons():
     from ticket_master_runtime.results.icons import PALETTES, contrast_ratio
-    assert len({p["background"] for p in PALETTES.values()}) == 3
+    assert len({p["background"] for p in PALETTES.values()}) == 4
     for palette in PALETTES.values():
         assert contrast_ratio(palette["foreground"], palette["background"]) >= 4.5
         assert contrast_ratio(palette["foreground"], palette["hover"]) >= 4.5
@@ -156,6 +156,7 @@ def test_native_action_design_and_python_path_only(tmp_path, session, monkeypatc
         root.update()
         assert window.evidence()["viewable"]
         root.withdraw()
+        window.cards["one"].toggle_overview()
         def collect(parent):
             found = []
             for child in parent.winfo_children():
@@ -818,6 +819,7 @@ def test_native_real_owner_mapping_tamper_refresh_and_ack(tmp_path, session, mes
         window.refresh()
         settle()
         assert window.message_states[message["id"]]["state"] == "unknown"
+        assert window.cards[message["id"]].winfo_manager() == "pack"
         window.read_notice(message["id"])
         settle()
         assert errors and window.message_states[message["id"]]["state"] == "unknown"
@@ -833,6 +835,194 @@ def test_native_real_owner_mapping_tamper_refresh_and_ack(tmp_path, session, mes
         settle()
         assert window.message_states[message["id"]]["state"] == "delivered"
         assert backend.status(binding_for(message))["state"] == "delivered"
+        assert not window.cards[message["id"]].winfo_manager()
+        window.archive.set("Archiv")
+        assert window.cards[message["id"]].winfo_manager() == "pack"
+        assert "result_reads" not in read(path)[0]  # no local message-read truth
+    finally:
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
+        root.destroy()
+
+
+def test_result_read_content_binding_cas_archive_and_no_message_ack(tmp_path, session):
+    from ticket_master_runtime.results.model import event_digest, is_read, mark_result_read, visible_events, validate
+    from ticket_master_runtime.results.messages import event_from_message
+    import jsonschema
+    path = tmp_path / "session.json"
+    notice = event_from_message(canonical_message())
+    session["events"].append(notice)
+    sha = write(path, session)
+    stamp = event_digest(session["events"][0])
+    mark_result_read(path, "one", 1, sha, stamp)
+    current, current_sha = read(path)
+    assert is_read(current, current["events"][0])
+    assert [e["id"] for e in visible_events(current)] == [notice["id"]]
+    assert [e["id"] for e in visible_events(current, archive="Archiv")] == ["one"]
+    assert len(visible_events(current, archive="Alle")) == 2
+    assert len(visible_events(current, {notice["id"]: {"state": "unknown"}})) == 1
+    assert visible_events(current, {notice["id"]: {"state": "delivered"}}) == []
+    assert current["metrics"] == session["metrics"] and current["events"] == session["events"]
+    schema = json.loads((Path(__file__).resolve().parents[1] / "contracts/session-results/session.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(current)
+    for eid in (notice["id"], "missing"):
+        with pytest.raises(ResultsError):
+            mark_result_read(path, eid, 2, current_sha, stamp)
+    with pytest.raises(ResultsError):
+        mark_result_read(path, "one", 1, sha, stamp)
+    assert read(path)[1] == current_sha
+    current["revision"] = 3
+    current["events"][0]["details"] += " · neue Erkenntnis"
+    write(path, current, 2, current_sha)
+    changed, changed_sha = read(path)
+    assert not is_read(changed, changed["events"][0])
+    with pytest.raises(ResultsError):
+        mark_result_read(path, "one", 3, changed_sha, stamp)
+    malformed = copy.deepcopy(changed)
+    malformed["result_reads"][notice["id"]] = malformed["result_reads"]["one"]
+    with pytest.raises(ResultsError):
+        validate(malformed)
+    malformed = copy.deepcopy(changed)
+    malformed["result_reads"]["one"]["read_at"] = "2026-10-28"
+    with pytest.raises(ResultsError):
+        validate(malformed)
+
+
+def test_lock_profile_pins_provenance_fence_and_gui_without_scan(tmp_path, monkeypatch):
+    from ticket_master_runtime.results.locks import LockView
+    from ticket_master_runtime.results.model import digest
+    import ticket_master_runtime.results.locks as adapter
+    # A dependency-free copy of the installed canonical parser, not a fake
+    # positive fence implementation. All mutable objects remain in tmp_path.
+    source = Path.home() / "OneDrive/_scripts/lock_utils.py"
+    if not source.is_file():
+        pytest.skip("Installed Lock-Master optional")
+    owner = tmp_path / "lock_utils.py"
+    owner.write_bytes(source.read_bytes())
+    lock = tmp_path / "LOCK.test.txt"
+    lock.write_text("owner: test-owner\ncreated: 2026-10-28T00:00:00Z\nexpires_after: 876000h\nfence: 123\n", encoding="utf-8")
+    proof = tmp_path / "author-proof.json"
+    claim = {"session_id": "example-session", "agent": "example-agent", "owner": "test-owner", "fence": 123, "path": str(lock)}
+    proof.write_text(json.dumps({**claim, "source_reference": "Synthetic author receipt, test only"}), encoding="utf-8")
+    gui_source = tmp_path / "web_server.py"
+    gui_source.write_text("# reviewed existing local dashboard entry", encoding="utf-8")
+    profile = {"schema": "ellmos.ticket.lock-view-profile.v1", "session_id": "example-session",
+               "owner_module": str(owner), "owner_module_sha256": digest(owner.read_bytes()),
+               "claims": [{**{k: v for k, v in claim.items() if k != "session_id"}, "proof_path": str(proof), "proof_sha256": digest(proof.read_bytes())}],
+               "gui": {"kind": "existing_local_dashboard", "url": "http://127.0.0.1:8095/", "source_path": str(gui_source), "source_sha256": digest(gui_source.read_bytes())}}
+    path = tmp_path / "profile.json"
+    def reader():
+        path.write_text(json.dumps(profile), encoding="utf-8")
+        return LockView(path, digest(path.read_bytes()))
+    view = reader()
+    calls = []
+    monkeypatch.setattr(adapter.webbrowser, "open", lambda *a, **k: calls.append((a,k)) or True)
+    assert view.snapshot("example-session")[0]["status"] == "held"
+    assert not calls  # neither scan nor browser/daemon on refresh
+    view.open_gui()
+    assert calls == [(("http://127.0.0.1:8095/",), {"new": 2})]
+    with pytest.raises(ResultsError):
+        view.snapshot("another-session")
+    lock.write_text(lock.read_text().replace("fence: 123", "fence: 124"), encoding="utf-8")
+    assert view.snapshot("example-session")[0]["status"] == "lost"
+    lock.write_text(lock.read_text().replace("test-owner", "foreign-owner"), encoding="utf-8")
+    assert view.snapshot("example-session")[0]["status"] == "unknown"
+    profile["claims"][0]["agent"] = "other-agent"
+    with pytest.raises(ResultsError):
+        reader().snapshot("example-session")
+    profile["claims"][0]["agent"] = "example-agent"
+    profile["gui"]["url"] = "http://evil.invalid/"
+    with pytest.raises(ResultsError):
+        reader().open_gui()
+    profile["gui"] = None
+    view = reader()
+    owner.write_text("raise RuntimeError('must not execute')", encoding="utf-8")
+    with pytest.raises(ResultsError):
+        view.snapshot("example-session")
+
+
+@pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Own native state and archive regression")
+def test_native_incremental_identity_scroll_focus_text_selection_and_archive(tmp_path, session, native_tk_app, monkeypatch):
+    import tkinter as tk
+    from ticket_master_runtime.results.gui import ResultsWindow
+    from ticket_master_runtime.results.model import event_digest
+    session["events"] += [event(str(i), "Weitere", f"Ergebnis {i}") for i in range(12)]
+    session["events"][0]["details"] = "\n".join(f"Zeile {i} · Überprüfung" for i in range(100))
+    path = tmp_path / "session.json"
+    write(path, session)
+    root = tk.Toplevel(native_tk_app)
+    try:
+        w = ResultsWindow(root, path)
+        root.title("TEST · Inkrementelle Ergebnisanzeige")
+        root.update()
+        assert w.evidence()["viewable"]
+        assert not w.expanded and not w.cards["one"].overview.winfo_manager()
+        card = w.cards["one"]
+        assert card.details_button.master is card.question_button.master
+        assert card.details_button.winfo_y() == card.question_button.winfo_y()
+        assert card.details_button.winfo_height() == card.question_button.winfo_height()
+        assert card.details_button.button.winfo_height() == card.question_button.button.winfo_height()
+        assert card.details_button.button.winfo_rooty() == card.question_button.button.winfo_rooty()
+        assert card.question_button.winfo_x() > card.details_button.winfo_x()
+        assert w.session_nav.palette["background"] == "#c12d3d"
+        assert card.window.session_nav.icon.database_image.width() >= 20
+        w.toggle("one")
+        card.toggle_overview()
+        root.update()
+        card.text.yview_moveto(.4)
+        card.text.tag_add("sel", "40.0", "40.5")
+        card.text.mark_set("insert", "40.2")
+        card.text.focus_force()
+        w.canvas.yview_moveto(.05)
+        root.update()
+        old_y, text_y, focus = w.canvas.canvasy(0), card.text.yview(), root.focus_get()
+        current, sha = read(path)
+        append(path, event("appended", "Neu", "Späteres Ergebnis"), current["revision"], sha)
+        w.refresh()
+        root.update()
+        assert w.cards["one"] is card
+        assert root.focus_get() is focus
+        assert card.text.tag_ranges("sel") and str(card.text.index("insert")) == "40.2"
+        assert card.text.yview() == text_y
+        assert abs(w.canvas.canvasy(0) - old_y) <= 3
+        assert card.overview_open and "one" in w.expanded
+        w.search.insert(0, "Ergebnis")
+        root.update()
+        assert w.query.get() == "Ergebnis"
+        w.query.set("")
+        w.search.focus_force()
+        w.search.insert(0, "Ärztliche")
+        w.search.selection_range(0, 3)
+        w.search.icursor(3)
+        root.update()
+        search = w.search
+        current, sha = read(path)
+        update_session_data(path, {"agent_coverage": "Beobachtete Teilmenge"}, current["revision"], sha)
+        w.refresh()
+        root.update()
+        assert w.search is search and root.focus_get() is search
+        assert w.query.get() == "Ärztliche" and search.selection_present() and search.index("insert") == 3
+        w.query.set("")
+        # A producer race cannot hide the currently displayed result.
+        current, sha = read(path)
+        append(path, event("concurrent", "Neu", "CAS-Konkurrenz"), current["revision"], sha)
+        w.read_event("one")
+        assert "Nicht als gelesen" in w.status.get()
+        assert "one" not in read(path)[0].get("result_reads", {})
+        w.refresh()
+        w.read_event("one")
+        root.update()
+        assert not card.winfo_manager()
+        assert "Forschung" not in w.topics.get(0,"end")
+        assert read(path)[0]["result_reads"]["one"]["event_sha256"] == event_digest(session["events"][0])
+        w.archive.set("Archiv")
+        root.update()
+        assert w.cards["one"] is card and card.winfo_manager()
+        assert "Forschung" in w.topics.get(0,"end")
+        assert card.overview_open and "one" in w.expanded
+        w.show_session()
+        root.update()
+        assert w.lock_gui_button.instate(["disabled"])
     finally:
         for timer in root.tk.call("after", "info"):
             root.after_cancel(timer)

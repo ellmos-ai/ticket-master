@@ -10,7 +10,8 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 from .icons import PALETTES, draw_icon
-from .model import SAFE_SUFFIXES, read, select_events, artifact_badge, artifact_kind, open_artifact, question_prompt, now, update_message_settings
+from .model import (SAFE_SUFFIXES, read, select_events, artifact_badge, artifact_kind, open_artifact,
+                    question_prompt, now, update_message_settings, mark_result_read, event_digest, is_read, visible_events)
 from .messages import binding_for, message_counts
 
 LABELS = {"analysis": "ANALYSE", "message": "NACHRICHT", "system": "SYSTEM", "ticket_result": "ERGEBNIS", "decision": "ENTSCHEIDUNG"}
@@ -35,7 +36,7 @@ class ActionTile(tk.Frame):
                                 highlightthickness=1, highlightbackground=palette["background"],
                                 highlightcolor=palette["foreground"], font=("Segoe UI", 10, "bold"),
                                 cursor="hand2", padx=4, pady=4, takefocus=True)
-        self.button.pack(side="left")
+        self.button.pack(side="left", fill="both", expand=True)
         for widget in (self, self.icon, self.button):
             widget.bind("<Enter>", self.enter, add="+")
             widget.bind("<Leave>", self.leave, add="+")
@@ -83,11 +84,120 @@ class ActionTile(tk.Frame):
             self.tooltip_window = None
 
     def fit(self, width):
-        self.button.configure(wraplength=max(140, width - self.icon.winfo_reqwidth() - 30))
+        wrap = max(48, width - self.icon.winfo_reqwidth() - 30)
+        if int(self.button.cget("wraplength")) != wrap:
+            self.button.configure(wraplength=wrap)
+
+
+class EventCard(ttk.Frame):
+    """One stable widget subtree per event ID; refresh changes values, not identity."""
+    def __init__(self, window, event):
+        super().__init__(window.feed, style="Card.TFrame", padding=14)
+        self.window, self.event = window, event
+        self.overview_open, self.artifact_key, self.text_value = False, None, None
+        self.meta = window.label(self, "", color="#597089")
+        self.title_label = window.label(self, "", True)
+        self.actions = ttk.Frame(self, style="Card.TFrame")
+        self.actions.pack(fill="x", pady=(7, 2))
+        self.actions.columnconfigure((0, 1), weight=1, uniform="actions")
+        self.details_button = ActionTile(self.actions, "Ergebnistext", "DETAILS", "details",
+                                        lambda: window.toggle(self.event["id"]), "Vollständigen Ergebnistext aufklappen oder schließen.")
+        self.details_button.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        self.question_button = ActionTile(self.actions, "Nachfrage / Auftrag kopieren", "CHAT", "chat",
+                                         lambda: window.copy_question(self.event["id"]), "Bezug kopieren und in der Konsole ergänzen. Es wird nichts automatisch gesendet.")
+        self.question_button.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
+        secondary = ttk.Frame(self, style="Card.TFrame")
+        secondary.pack(fill="x", pady=(7, 0))
+        self.overview_button = ttk.Button(secondary, text="Überblick öffnen", command=self.toggle_overview)
+        self.overview_button.pack(side="left")
+        self.read_button = ttk.Button(secondary, text="Als gelesen markieren", command=lambda: window.read_event(self.event["id"]))
+        self.read_button.pack(side="right")
+        self.read_label = window.label(self, "", color="#597089")
+        self.overview = ttk.Frame(self, style="Card.TFrame")
+        self.summary = window.label(self.overview, "")
+        self.result_status = window.label(self.overview, "", color="#215b91")
+        self.next_step = window.label(self.overview, "")
+        self.source = window.label(self.overview, "", color="#597089")
+        self.notice = window.label(self.overview, "", color="#597089")
+        self.artifacts = ttk.Frame(self.overview, style="Card.TFrame")
+        self.artifacts.pack(fill="x")
+        self.panel = ttk.Frame(self)
+        self.text = tk.Text(self.panel, wrap="word", height=18, font=("Segoe UI", 11), relief="flat",
+                            background="#f7f9fc", foreground="#18304a", padx=10, pady=8)
+        bar = ttk.Scrollbar(self.panel, command=self.text.yview)
+        bar.pack(side="right", fill="y")
+        self.text.pack(fill="both", expand=True)
+        self.text.configure(yscrollcommand=bar.set)
+        self.update_event(event)
+
+    def toggle_overview(self):
+        self.overview_open = not self.overview_open
+        self.window.render()
+
+    def update_event(self, event):
+        self.event = event
+        w, eid = self.window, event["id"]
+        self.meta.configure(text=f"{LABELS[event['kind']]} · {event['created_at']} · {' / '.join(event['tags'])}")
+        self.title_label.configure(text=event["title"])
+        self.summary.configure(text=event["summary"])
+        self.result_status.configure(text=event["status"])
+        self.next_step.configure(text="Nächster Schritt: " + event["next_step"] if event.get("next_step") else "")
+        refs = [event[k] for k in ("ticket_id", "message_id", "receipt_id", "log_id") if event.get(k)]
+        self.source.configure(text="Quelle: " + event["source"] + (" · " + " · ".join(refs) if refs else ""))
+        state = w.message_states.get(eid, {})
+        notice = event["kind"] in {"message", "system"}
+        read_state = is_read(w.data, event, w.message_states)
+        if notice:
+            caption = "Kanonisch quittiert / zugestellt" if read_state else "Lesestatus unbekannt" if state.get("state") in {None, "unknown"} else "Unquittiert (kanonischer Owner)"
+            self.read_label.configure(text=caption + " · Lesen ist keine Freigabe")
+            can_read = bool(w.backend and binding_for(event) and state.get("can_ack") and state.get("state") not in {None, "unknown", "delivered"} and eid not in w.message_busy)
+            note = event.get("notification", {})
+            info = f"Externe ID: {note.get('external_id', 'unbekannt')} · Thread: {note.get('thread_id', 'unbekannt')}\nWahrgenommen: {note.get('observed_at', 'unbekannt')}"
+            info += "\nOwnerstatus geprüft: " + state.get("observed_at", "unbekannt")
+            if not can_read and not read_state:
+                info += "\nQuittieren gesperrt bis Ownerstatus, Inhaltsbindung und Empfängerziel bestätigt sind."
+            self.notice.configure(text=info)
+        else:
+            can_read = not read_state
+            self.read_label.configure(text="Gelesenes Ergebnis · keine Taskabnahme" if read_state else "")
+            self.notice.configure(text="")
+        self.read_button.configure(text="Quittung wird geprüft …" if eid in w.message_busy else "Gelesen" if read_state else "Als gelesen markieren")
+        self.read_button.state(["!disabled"] if can_read else ["disabled"])
+        self.overview_button.configure(text="Überblick schließen" if self.overview_open else "Überblick öffnen")
+        if self.overview_open and not self.overview.winfo_manager():
+            self.overview.pack(fill="x", pady=(8, 0), before=self.panel if self.panel.winfo_manager() else None)
+        elif not self.overview_open and self.overview.winfo_manager():
+            self.overview.pack_forget()
+        expanded = eid in w.expanded
+        self.details_button.button.configure(text="Ergebnistext schließen" if expanded else "Voller Ergebnistext")
+        self.details_button.button.configure(state="normal" if event.get("details") else "disabled")
+        if event.get("details", "") != self.text_value:
+            position = self.text.yview()[0]
+            self.text.configure(state="normal")
+            self.text.delete("1.0", "end")
+            self.text.insert("1.0", event.get("details", ""))
+            self.text.configure(state="disabled")
+            self.text.yview_moveto(position)
+            self.text_value = event.get("details", "")
+        if expanded and not self.panel.winfo_manager():
+            self.panel.pack(fill="both", expand=True, pady=(8, 0))
+        elif not expanded and self.panel.winfo_manager():
+            self.panel.pack_forget()
+        key = json.dumps(event.get("artifacts", []), sort_keys=True)
+        if key != self.artifact_key:
+            for child in self.artifacts.winfo_children():
+                child.destroy()
+            for artifact in event.get("artifacts", []):
+                passive = artifact["path"].startswith("https://") or Path(artifact["path"]).suffix.lower() in SAFE_SUFFIXES
+                caption = f"{artifact_badge(artifact)} · {artifact['label']}" + ("" if passive else " · Pfad kopieren")
+                ActionTile(self.artifacts, caption, artifact_kind(artifact), "file",
+                           lambda a=artifact, p=passive: w.open(a) if p else w.copy_path(a),
+                           "Dokument auf bewussten Klick öffnen." if passive else "Nur Dateipfad kopieren; keine Codeausführung.").pack(anchor="w", pady=3)
+            self.artifact_key = key
 
 
 class ResultsWindow:
-    def __init__(self, root, path, backend=None):
+    def __init__(self, root, path, backend=None, lock_view=None):
         self.root, self.path = root, Path(path).absolute()
         self.data, self.sha = read(self.path)
         self.session_id = self.data["session_id"]
@@ -97,6 +207,9 @@ class ResultsWindow:
         self.message_jobs, self.message_busy, self.message_status_busy = queue.Queue(), set(), False
         self.message_generations = {}
         self.open_attempts = set()
+        self.cards, self.metrics_cards, self.metrics_key = {}, [], None
+        self.lock_view = lock_view
+        self.archive = tk.StringVar(root, value="Ungelesen")
         self.query, self.order = tk.StringVar(), tk.StringVar(value="Älteste zuerst")
         root.title("TICKET-MASTER · Ergebnisse und Meldungen")
         root.configure(bg="#eef2f7")
@@ -120,7 +233,10 @@ class ResultsWindow:
         self.topics = tk.Listbox(self.sidebar, relief="flat", borderwidth=0, font=("Segoe UI", 11), bg="#e5ecf4", selectbackground="#215b91", exportselection=False)
         self.topics.pack(fill="both", expand=True)
         self.topics.bind("<<ListboxSelect>>", self.choose_topic)
-        ttk.Button(self.sidebar, text="◉ Sessiondaten", command=self.show_session).pack(fill="x", pady=(14, 6))
+        self.session_nav = ActionTile(self.sidebar, "Sessiondaten", "DATABASE", "session", self.show_session,
+                                      "Gemeldete Sessiondaten und nachgewiesene eigene Locks anzeigen.")
+        self.session_nav.pack(fill="x", pady=(14, 6))
+        self.session_nav.button.configure(wraplength=110)
         self.message_nav = ActionTile(self.sidebar, "Meldungen", "MAIL", "chat", self.show_messages,
                                      "Wahrgenommene Nachrichten und Systemmeldungen. Lesen ist keine Freigabe und sendet nichts.")
         self.message_nav.pack(fill="x", pady=(6, 3))
@@ -137,10 +253,16 @@ class ResultsWindow:
         toolbar = ttk.Frame(main)
         toolbar.pack(fill="x", pady=(0, 10))
         ttk.Label(toolbar, text="Suche").pack(side="left", padx=(0, 6))
-        ttk.Entry(toolbar, textvariable=self.query).pack(side="left", fill="x", expand=True)
+        self.search = ttk.Entry(toolbar, textvariable=self.query)
+        self.search.pack(side="left", fill="x", expand=True)
         ttk.Combobox(toolbar, textvariable=self.order, values=["Älteste zuerst", "Neueste zuerst", "Thema"], state="readonly", width=17).pack(side="left", padx=(8, 0))
         self.query.trace_add("write", lambda *_: self.render())
         self.order.trace_add("write", lambda *_: self.render())
+        archive_toolbar = ttk.Frame(main)
+        archive_toolbar.pack(fill="x", pady=(0, 8))
+        ttk.Label(archive_toolbar, text="Ansicht").pack(side="left", padx=(0, 6))
+        ttk.Combobox(archive_toolbar, textvariable=self.archive, values=["Ungelesen", "Archiv", "Alle"], state="readonly", width=12).pack(side="left")
+        self.archive.trace_add("write", lambda *_: self.render(False))
         self.notice_toolbar = ttk.Frame(main)
         ttk.Checkbutton(self.notice_toolbar, text="Nur unquittierte Meldungen (einschließlich unbekannt)", variable=self.only_unread,
                         command=lambda: self.render(False)).pack(anchor="w")
@@ -156,6 +278,8 @@ class ResultsWindow:
         self.canvas.bind_all("<MouseWheel>", self.wheel)
         self.status = tk.StringVar()
         ttk.Label(main, textvariable=self.status, wraplength=600).pack(anchor="w", pady=(8, 0))
+        self.empty_card = ttk.Frame(self.feed, style="Card.TFrame", padding=14)
+        self.label(self.empty_card, "Keine Ergebnisse für diesen Filter.")
         self.populate_topics()
         self.render()
         root.after(1200, self.refresh)
@@ -171,7 +295,11 @@ class ResultsWindow:
         def visit(parent):
             for child in parent.winfo_children():
                 if isinstance(child, ActionTile):
-                    child.fit(max(200, self.canvas.winfo_width() - 40))
+                    child.fit(max(120, child.winfo_width() or self.canvas.winfo_width() - 40))
+                elif isinstance(child, ttk.Label):
+                    wrap = max(160, self.canvas.winfo_width() - 56)
+                    if int(child.cget("wraplength") or 0) != wrap:
+                        child.configure(wraplength=wrap)
                 else:
                     visit(child)
         visit(self.feed)
@@ -181,7 +309,9 @@ class ResultsWindow:
         self.fit_tiles()
 
     def populate_topics(self):
-        values = ["Alle"] + sorted({tag for event in self.data["events"] for tag in event["tags"]})
+        values = ["Alle"] + sorted({tag for event in visible_events(self.data, self.message_states, self.archive.get()) for tag in event["tags"]})
+        if tuple(values) == self.topics.get(0, "end"):
+            return
         self.topics.delete(0, "end")
         for value in values:
             self.topics.insert("end", value)
@@ -317,83 +447,95 @@ class ResultsWindow:
             self.open_attempts.add(event_id)
             self.read_notice(event_id, automatic=True)
 
+    def read_event(self, event_id):
+        event = next(e for e in self.data["events"] if e["id"] == event_id)
+        if event["kind"] in {"message", "system"}:
+            self.read_notice(event_id)
+            return
+        try:
+            mark_result_read(self.path, event_id, self.data["revision"], self.sha, event_digest(event))
+            self.data, self.sha = read(self.path, self.session_id)
+            self.render()
+        except (ValueError, OSError) as exc:
+            self.status.set(f"Nicht als gelesen gespeichert: {exc}. Zuerst aktualisieren.")
+
     def render(self, preserve=True):
-        position = self.canvas.yview()[0] if preserve else 0
-        for child in self.feed.winfo_children():
-            child.destroy()
+        # Keep a pixel anchor, not merely a fraction: appending below the viewport
+        # must not move the visible card when the total feed height changes.
+        position = self.canvas.canvasy(0) if preserve else 0
+        visible = [c for c in self.cards.values() if c.winfo_manager()]
+        anchor = next((c for c in sorted(visible, key=lambda c: c.winfo_y())
+                       if c.winfo_y() + c.winfo_height() > position), None)
+        anchor_id = anchor.event["id"] if anchor is not None and preserve else None
+        offset = position - anchor.winfo_y() if anchor_id else 0
+        self.populate_topics()
         opened, unknown = message_counts(self.data["events"], self.message_states)
         self.message_nav.button.configure(text=f"Meldungen\n{opened} offen · {unknown} unbekannt")
         if self.messages_view:
             self.notice_toolbar.pack(before=self.canvas, fill="x", pady=(0, 6))
         else:
             self.notice_toolbar.pack_forget()
+        ids = {e["id"] for e in self.data["events"]}
+        for eid in set(self.cards) - ids:
+            self.cards.pop(eid).destroy()
+            self.expanded.discard(eid)
         if self.session_view:
-            self.render_metrics()
+            for card in self.cards.values():
+                card.pack_forget()
+            self.empty_card.pack_forget()
+            key = json.dumps(self.data["metrics"], sort_keys=True)
+            if key != self.metrics_key:
+                for card in self.metrics_cards:
+                    card.destroy()
+                self.metrics_cards = []
+                self.render_metrics()
+                self.metrics_cards = [c for c in self.feed.winfo_children()
+                                      if c not in self.cards.values() and c is not self.empty_card]
+                self.metrics_key = key
+            else:
+                for card in self.metrics_cards:
+                    card.pack(fill="x", pady=(0, 10), padx=(0, 5))
         else:
-            events = select_events(self.data, self.topic, self.query.get(), self.order.get())
+            for card in self.metrics_cards:
+                card.pack_forget()
+            candidates = visible_events(self.data, self.message_states, self.archive.get())
+            filtered = dict(self.data, events=candidates)
+            events = select_events(filtered, "Alle" if self.messages_view else self.topic, self.query.get(), self.order.get())
             if self.messages_view:
-                events = select_events(self.data, "Alle", self.query.get(), self.order.get())
                 events = [e for e in events if e["kind"] in {"message", "system"}
-                          and (not self.only_unread.get() or self.message_states.get(e["id"], {}).get("state") != "delivered")]
-            if not events:
-                self.label(self.card(), "Keine Ergebnisse für diesen Filter.")
+                          and (not self.only_unread.get() or not is_read(self.data, e, self.message_states))]
+            visible_ids = {e["id"] for e in events}
+            for eid, card in self.cards.items():
+                if eid not in visible_ids:
+                    card.pack_forget()
+            previous = None
             for event in events:
-                card = self.card()
-                self.label(card, f"{LABELS[event['kind']]} · {event['created_at']} · {' / '.join(event['tags'])}", color="#597089")
-                self.label(card, event["title"], True)
-                self.label(card, event["summary"])
-                self.label(card, event["status"], color="#215b91")
-                if event.get("next_step"):
-                    self.label(card, "Nächster Schritt: " + event["next_step"])
-                references = [event[k] for k in ("ticket_id", "message_id", "receipt_id", "log_id") if event.get(k)]
-                self.label(card, "Quelle: " + event["source"] + (" · " + " · ".join(references) if references else ""), color="#597089")
-                if event["kind"] in {"message", "system"}:
-                    state = self.message_states.get(event["id"], {})
-                    caption = "Kanonisch quittiert / zugestellt" if state.get("state") == "delivered" else "Unquittiert (kanonischer Owner)" if state.get("state") not in {None, "unknown"} else "Lesestatus unbekannt"
-                    self.label(card, caption + " · Lesen ist keine Freigabe", color="#215b91")
-                    if state.get("observed_at"):
-                        self.label(card, "Ownerstatus geprüft: " + state["observed_at"], color="#597089")
-                    if event.get("notification"):
-                        note = event["notification"]
-                        self.label(card, f"Externe ID: {note['external_id']} · Thread: {note['thread_id']}\nWahrgenommen: {note['observed_at']}", color="#597089")
-                    can_read = self.backend and binding_for(event) and state.get("can_ack") and state.get("state") not in {None, "unknown", "delivered"} and event["id"] not in self.message_busy
-                    button = ttk.Button(card, text="Als gelesen markieren" if event["id"] not in self.message_busy else "Quittung wird geprüft …", command=lambda eid=event["id"]: self.read_notice(eid))
-                    button.pack(anchor="w", pady=(3, 5))
-                    if not can_read:
-                        button.state(["disabled"])
-                    if not self.backend or not binding_for(event):
-                        self.label(card, "Ohne konfigurierte Messages-Line und kanonische ID kann diese Anzeige keine Quittung buchen.", color="#597089")
-                    elif state.get("state") in {None, "unknown"}:
-                        self.label(card, "Ownerstatus oder Inhaltsbindung noch nicht bestätigt; Quittieren gesperrt.", color="#597089")
-                    elif state.get("can_ack") is False:
-                        self.label(card, "Dieses lokale Anzeigeziel gehört nicht zu den ursprünglichen Nachrichtenzielen.", color="#597089")
-                for artifact in event.get("artifacts", []):
-                    kind = artifact_kind(artifact)
-                    passive = artifact["path"].startswith("https://") or Path(artifact["path"]).suffix.lower() in SAFE_SUFFIXES
-                    caption = f"{artifact_badge(artifact)} · {artifact['label']}" + ("" if passive else " · Pfad kopieren")
-                    hint = "HTTPS-Link auf ausdrücklichen Klick im Browser öffnen." if artifact["path"].startswith("https://") else "Lokales Dokument mit der zugeordneten Anwendung öffnen." if passive else "Dateipfad kopieren. Diese Anzeige führt Dateien dieses Typs nicht aus."
-                    ActionTile(card, caption, kind, "file", lambda a=artifact, p=passive: self.open(a) if p else self.copy_path(a), hint).pack(anchor="w", pady=3)
-                actions = ttk.Frame(card, style="Card.TFrame")
-                actions.pack(fill="x", pady=(7, 2))
-                ActionTile(actions, "Nachfrage / Auftrag kopieren", "CHAT", "chat", lambda eid=event["id"]: self.copy_question(eid),
-                           "Ergebnisbezug kopieren, in die Konsole einfügen und Frage oder Anweisung ergänzen. Es wird nichts automatisch gesendet.").pack(side="right")
-                if event.get("details"):
-                    ActionTile(card, "Ergebnistext schließen" if event["id"] in self.expanded else "Vollständigen Ergebnistext lesen", "DETAILS", "details", lambda eid=event["id"]: self.toggle(eid),
-                               "Den vollständigen Ergebnistext in dieser Karte aufklappen oder schließen.").pack(anchor="w", pady=(5, 2))
-                    if event["id"] in self.expanded:
-                        panel = ttk.Frame(card)
-                        panel.pack(fill="both", expand=True, pady=(6, 0))
-                        text = tk.Text(panel, wrap="word", height=18, font=("Segoe UI", 11), relief="flat", background="#f7f9fc", foreground="#18304a", padx=10, pady=8)
-                        bar = ttk.Scrollbar(panel, command=text.yview)
-                        bar.pack(side="right", fill="y")
-                        text.pack(fill="both", expand=True)
-                        text.configure(yscrollcommand=bar.set)
-                        text.insert("1.0", event["details"])
-                        text.configure(state="disabled")
-            self.status.set(f"{len(events)} von {len(self.data['events'])} Meldungen · Revision {self.data['revision']} · automatische Aktualisierung")
+                eid = event["id"]
+                if eid not in self.cards:
+                    self.cards[eid] = EventCard(self, event)
+                card = self.cards[eid]
+                card.update_event(event)
+                options = {"after": previous} if previous is not None else {}
+                # Avoid unmap/remap of unchanged visible cards (focus, selection,
+                # embedded Text scroll and widget identities remain intact).
+                if previous is None:
+                    packed = [c for c in self.feed.pack_slaves() if isinstance(c, EventCard)]
+                    if packed and packed[0] is not card:
+                        options["before"] = packed[0]
+                card.pack(fill="x", pady=(0, 10), padx=(0, 5), **options)
+                previous = card
+            if events:
+                self.empty_card.pack_forget()
+            else:
+                self.empty_card.pack(fill="x", pady=(0, 10))
+            self.status.set(f"{len(events)} von {len(self.data['events'])} Meldungen · {self.archive.get()} · Revision {self.data['revision']} · automatische Aktualisierung")
         self.root.update_idletasks()
         self.fit_tiles()
-        self.canvas.yview_moveto(position)
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        if anchor_id in self.cards and self.cards[anchor_id].winfo_manager() and not self.session_view:
+            position = self.cards[anchor_id].winfo_y() + offset
+        total = max(1, self.feed.winfo_height())
+        self.canvas.yview_moveto(max(0, position) / total)
 
     def render_metrics(self):
         metrics = self.data["metrics"]
@@ -414,7 +556,41 @@ class ResultsWindow:
         self.label(card, metrics.get("agent_coverage", "Beobachtete Teilmenge; Gesamtzahl unbekannt"))
         for item in metrics["agents"]:
             self.label(card, f"{item['id']} · {item['status']}\nAufgabe: {item['task']}\nModellvorgabe: {item.get('requested_model') or 'unbekannt'} · tatsächlich: {item.get('actual_model') or 'unbekannt'}\n{item['source']} · {item['observed_at']} · {item['scope']}")
+        card = self.card()
+        self.label(card, "Eigene Locks · optionaler Lock-Master", True)
+        self.lock_rows = ttk.Frame(card, style="Card.TFrame")
+        self.lock_rows.pack(fill="x")
+        ttk.Button(card, text="Lockstatus gezielt prüfen", command=self.render_locks).pack(anchor="w", pady=4)
+        self.lock_gui_button = ttk.Button(card, text="Vorhandene Lock-Master-Oberfläche öffnen", command=self.open_lock_gui)
+        self.lock_gui_button.pack(anchor="w", pady=4)
+        self.render_locks()
         self.status.set(f"Session {self.session_id} · {self.path}")
+
+    def render_locks(self):
+        for child in self.lock_rows.winfo_children():
+            child.destroy()
+        if self.lock_view is None:
+            self.label(self.lock_rows, "Unbekannt · kein vertrauenswürdiges Lock-Master-Profil konfiguriert. Keine Suche, Installation oder Sperraktion.")
+            self.lock_gui_button.state(["disabled"])
+            return
+        try:
+            rows = self.lock_view.snapshot(self.session_id)
+            for row in rows:
+                self.label(self.lock_rows, f"{row['status']} · {row['owner']} · {row['agent']}\nFence {row['fence']} · geprüft {row['observed_at']}\n{row['path']}\nBeleg: {row['proof']}")
+            if not rows:
+                self.label(self.lock_rows, "Keine belegten eigenen Locks im konfigurierten Ausschnitt; Gesamtzahl unbekannt.")
+            self.label(self.lock_rows, "Nur explizit belegte Pfade · kein Vollscan, keine zweite Lockregistry.")
+            self.lock_gui_button.state(["!disabled"] if self.lock_view.has_gui else ["disabled"])
+        except (ValueError, OSError) as exc:
+            self.label(self.lock_rows, f"Lockstatus unbekannt · {exc}")
+            self.lock_gui_button.state(["disabled"])
+
+    def open_lock_gui(self):
+        if self.lock_view is not None:
+            try:
+                self.lock_view.open_gui()
+            except (ValueError, OSError) as exc:
+                messagebox.showerror("Lock-Master nicht geöffnet", str(exc), parent=self.root)
 
     def open(self, artifact):
         try:
@@ -473,11 +649,10 @@ class ResultsWindow:
         return result
 
 
-def launch(path, evidence_path=None, backend=None):
+def launch(path, evidence_path=None, backend=None, lock_view=None):
     root = tk.Tk()
-    window = ResultsWindow(root, path, backend)
-    # The report requested by this session is immediately readable.
-    window.expanded.update(e["id"] for e in window.data["events"] if e.get("featured"))
+    window = ResultsWindow(root, path, backend, lock_view)
+    # Start compact, including featured events; full text opens on user action.
     window.render(False)
     if evidence_path:
         def report():
