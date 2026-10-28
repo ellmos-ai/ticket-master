@@ -269,18 +269,17 @@ def test_question_prompt_contains_only_stable_reference(tmp_path, session):
 
 
 @pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in native desktop smoke")
-def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app):
+def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app, monkeypatch):
     import tkinter as tk
     from ticket_master_runtime.results.gui import ResultsWindow
     path = tmp_path / "session.json"
     sha = write(path, session)
     root = tk.Toplevel(native_tk_app)
-    previous_clipboard = None
+    clipboard = []
+    monkeypatch.setattr(root, "clipboard_clear", clipboard.clear)
+    monkeypatch.setattr(root, "clipboard_append", clipboard.append)
+    monkeypatch.setattr(root, "clipboard_get", lambda: clipboard[-1])
     try:
-        try:
-            previous_clipboard = root.clipboard_get()
-        except tk.TclError:
-            pass
         window = ResultsWindow(root, path)
         root.title("TEST · Ergebnisanzeige")
         root.update()
@@ -289,11 +288,10 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app)
         # interactions hidden so desktop input cannot change this test's filter.
         root.withdraw()
         assert window.topic == "Alle"
-        # Preserve unknown/nontext clipboard formats: exercise the OS clipboard
-        # only when its prior text can actually be restored.
-        if previous_clipboard is not None:
-            window.copy_question("one")
-            assert '"event_id": "one"' in root.clipboard_get()
+        # This adapter exercises the payload without reading or changing any
+        # OS clipboard format, including a previously empty clipboard.
+        window.copy_question("one")
+        assert '"event_id": "one"' in root.clipboard_get()
         window.query.set("nicht vorhanden")
         assert "0 von 1" in window.status.get()
         window.query.set("")
@@ -322,10 +320,6 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app)
         root.update()
         assert window.topic == "Forschung" and "1 von 2" in window.status.get()
     finally:
-        if previous_clipboard is not None:
-            root.clipboard_clear()
-            root.clipboard_append(previous_clipboard)
-            root.update()
         for timer in root.tk.call("after", "info"):
             root.after_cancel(timer)
         root.destroy()
@@ -556,6 +550,121 @@ def test_real_owner_bytecode_injection_tamper_and_ingestion_lock_fail_closed(tmp
         backend.acknowledge(binding)
 
 
+@pytest.mark.parametrize("field,value", [
+    ("external_id", "external:forged-999"),
+    ("thread_id", "TH-20261027-999999999"),
+    ("observed_at", "2026-10-28T12:00:00+00:00"),
+])
+def test_real_owner_rejects_forged_display_mapping_before_status_or_ack(messages_owner_backend, field, value):
+    from ticket_master_runtime.results.messages import binding_for, event_from_message
+    backend = messages_owner_backend
+    message = backend.observe(sample_notice())
+    event = event_from_message(message)
+    forged = copy.deepcopy(event)
+    forged["notification"][field] = value
+    # The attacker may recompute every session-derived hash. The comparison
+    # must still come from the canonical owner's stored envelope.
+    forged_binding = binding_for(forged)
+    before = {p.name: p.read_bytes() for p in backend.messages_dir.glob("*.json")}
+    with pytest.raises(ResultsError):
+        backend.status(forged_binding)
+    for action in ("explicit_ack", "gui_opened"):
+        with pytest.raises(ResultsError):
+            backend.acknowledge(forged_binding, action)
+    assert {p.name: p.read_bytes() for p in backend.messages_dir.glob("*.json")} == before
+    assert backend.status(binding_for(event))["state"] == "prepared"
+
+
+def test_real_owner_rejects_forged_display_time_kind_and_tags(messages_owner_backend):
+    from ticket_master_runtime.results.messages import binding_for, event_from_message
+    backend = messages_owner_backend
+    event = event_from_message(backend.observe(sample_notice()))
+    for field, value in (("created_at", "2026-10-28T12:00:00+00:00"), ("kind", "message"), ("tags", ["Fremde Zuordnung"])):
+        with pytest.raises(ResultsError):
+            backend.acknowledge(binding_for({**event, field: value}))
+    assert backend.status(binding_for(event))["observations"] == []
+
+
+def test_real_owner_does_not_trust_prepopulated_hash_namespace(messages_owner_backend, monkeypatch):
+    import sys
+    from types import ModuleType
+    backend = messages_owner_backend
+    name = "_approved_message_owner_" + backend.manifest_sha256
+    package = ModuleType(name)
+    package.__path__ = []
+    fake = ModuleType(name + ".messages_line")
+    fake.validate_messages_config = lambda value: {"substituted": True}
+    fake.MessagesLine = lambda path: "foreign cached owner"
+    monkeypatch.setitem(sys.modules, name, package)
+    monkeypatch.setitem(sys.modules, fake.__name__, fake)
+    owner, line, config = backend._owner()
+    assert owner is not fake and line != "foreign cached owner"
+    assert Path(owner.__file__).resolve() == backend.core_dir / "lib/messages_line.py"
+    assert config.get("schema") == "ellmos.ticket.messages-line-config.v1"
+    assert sys.modules[name] is package and sys.modules[fake.__name__] is fake
+
+
+def test_real_owner_multiple_instances_relative_imports_and_fresh_config(tmp_path, messages_owner_backend):
+    import shutil
+    from ticket_master_runtime.results.messages import ApprovedMessages, binding_for, event_from_message
+    first = messages_owner_backend
+    other_core = tmp_path / "independent-approved-copy"
+    shutil.copytree(first.core_dir, other_core)
+    second = ApprovedMessages(other_core, first.manifest_sha256, first.messages_dir, first.config_path,
+                              first.target, first.recipient, first.actor)
+    a, _, _ = first._owner()
+    b, _, _ = second._owner()
+    assert a is not b
+    assert Path(b.__file__).resolve() == other_core / "lib/messages_line.py"
+    message = first.observe(sample_notice())
+    assert second.observe(sample_notice()) == message
+    binding = binding_for(event_from_message(message))
+    assert second.status(binding)["state"] == "prepared"
+    config = json.loads(first.config_path.read_text(encoding="utf-8"))
+    config["gui_open_counts_as_delivery"] = False
+    first.config_path.write_text(json.dumps(config), encoding="utf-8")
+    with pytest.raises(ValueError):
+        second.acknowledge(binding, "gui_opened")
+    assert first.status(binding)["observations"] == []
+
+
+def test_real_owner_cached_namespace_replacement_is_rejected(messages_owner_backend, monkeypatch):
+    import sys
+    from types import ModuleType
+    backend = messages_owner_backend
+    owner, _, _ = backend._owner()
+    monkeypatch.setitem(sys.modules, owner.__name__, ModuleType(owner.__name__))
+    with pytest.raises(ResultsError):
+        backend._owner()
+
+
+def test_real_owner_private_namespace_collision_is_not_overwritten(messages_owner_backend, monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    backend = messages_owner_backend
+    monkeypatch.setattr("ticket_master_runtime.results.messages.uuid.uuid4", lambda: SimpleNamespace(hex="a" * 32))
+    name = "_approved_message_owner_" + backend.manifest_sha256 + "_" + "a" * 32
+    foreign = ModuleType(name)
+    monkeypatch.setitem(sys.modules, name, foreign)
+    with pytest.raises(ResultsError):
+        backend._owner()
+    assert sys.modules[name] is foreign
+
+
+def test_real_owner_generic_message_projection_uses_stable_owner_time(messages_owner_backend, monkeypatch):
+    from ticket_master_runtime.results.messages import binding_for, event_from_message
+    backend = messages_owner_backend
+    _, line, config = backend._owner()
+    message = line.create(config=config, origin_ref="example:ordinary-message", recipient_ref=backend.recipient,
+                          content_text="Gewöhnliche externe Nachricht · äöü", delivery_mode="on_demand")
+    monkeypatch.setattr("ticket_master_runtime.results.messages.now", lambda: "2026-10-28T12:00:00+00:00")
+    first = event_from_message(message)
+    monkeypatch.setattr("ticket_master_runtime.results.messages.now", lambda: "2026-10-29T12:00:00+00:00")
+    second = event_from_message(message)
+    assert first == second and first["notification"]["observed_at"] == message["created_at"]
+    assert backend.status(binding_for(first))["state"] == "prepared"
+
+
 def test_cli_backend_requires_complete_explicit_configuration():
     from argparse import Namespace
     from ticket_master_runtime.results.__main__ import make_backend
@@ -657,6 +766,73 @@ def test_native_messages_navigation_manual_default_refresh_and_race(tmp_path, se
         write(path, current, 4, sha)
         window.read_notice(message["id"])
         assert len(backend.reads) == 2 and "Meldungsbezug verändert" in window.status.get()
+    finally:
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
+        root.destroy()
+
+
+@pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in native real-owner temp smoke")
+def test_native_real_owner_mapping_tamper_refresh_and_ack(tmp_path, session, messages_owner_backend, native_tk_app, monkeypatch):
+    import time
+    import tkinter as tk
+    from ticket_master_runtime.results.gui import ResultsWindow
+    from ticket_master_runtime.results.messages import binding_for, event_from_message
+    backend = messages_owner_backend
+    message = event_from_message(backend.observe(sample_notice()))
+    session["events"].append(message)
+    path = tmp_path / "native-owner-session.json"
+    write(path, session)
+    root = tk.Toplevel(native_tk_app)
+    errors = []
+    monkeypatch.setattr("ticket_master_runtime.results.gui.messagebox.showerror", lambda *a, **kw: errors.append(a))
+    try:
+        window = ResultsWindow(root, path, backend)
+        root.title("TEST · Kanonische Zuordnung · nur Tempstore")
+        root.update()
+        evidence = window.evidence()
+        assert evidence["viewable"] and evidence["mapped"]
+        if __import__('os').name == "nt":
+            assert evidence["IsWindowVisible"] and evidence["process_session_id"] == evidence["active_console_session_id"]
+        (tmp_path / "native-evidence.json").write_text(json.dumps(evidence, ensure_ascii=False, indent=2), encoding="utf-8")
+        root.withdraw()
+        def settle():
+            for _ in range(100):
+                root.update()
+                window.drain_message_jobs()
+                if not window.message_status_busy and not window.message_busy:
+                    return
+                time.sleep(.01)
+            pytest.fail("Native owner job did not settle")
+        window.show_messages()
+        settle()
+        before = {p.name: p.read_bytes() for p in backend.messages_dir.glob("*.json")}
+        current, sha = read(path)
+        current["events"][-1]["notification"]["external_id"] = "external:forged-native"
+        current["revision"] += 1
+        write(path, current, 1, sha)
+        # A current-file change blocks the stale visible button before owner I/O.
+        window.read_notice(message["id"])
+        assert "Meldungsbezug verändert" in window.status.get()
+        assert not window.message_busy
+        window.refresh()
+        settle()
+        assert window.message_states[message["id"]]["state"] == "unknown"
+        window.read_notice(message["id"])
+        settle()
+        assert errors and window.message_states[message["id"]]["state"] == "unknown"
+        assert {p.name: p.read_bytes() for p in backend.messages_dir.glob("*.json")} == before
+        current, sha = read(path)
+        current["events"][-1] = message
+        current["revision"] += 1
+        write(path, current, 2, sha)
+        window.refresh()
+        settle()
+        assert window.message_states[message["id"]]["state"] == "prepared"
+        window.read_notice(message["id"])
+        settle()
+        assert window.message_states[message["id"]]["state"] == "delivered"
+        assert backend.status(binding_for(message))["state"] == "delivered"
     finally:
         for timer in root.tk.call("after", "info"):
             root.after_cancel(timer)

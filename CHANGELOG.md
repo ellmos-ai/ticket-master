@@ -9,6 +9,7 @@ All notable changes to ticket-master are documented here.
 - Add a standalone Tk/ttk session feed, topic/search filters, expandable full results, passive local document links and source-bound skill/token/subagent observations.
 - Add one-file versioned JSON projections, cooperative hash/revision-bound atomic producer commands, public schema/example, a usage skill and packaged platform starters. Display never changes ticket acceptance or owns message receipts.
 - Add a notification view with canonical Messages-Line read receipts, explicit hash-pinned optional owner installation, idempotent observed-message ingestion, manual/default and policy-gated fulltext-open modes, unread/unknown counts, and user-click HTTPS links. No parallel receipt registry or remote transport is introduced.
+- Bind displayed notification identities, threads and timestamps to the canonical owner envelope before status or acknowledgement. Isolate each approved owner import from preloaded module namespaces and reject replacement of its own cached modules.
 
 ### Ticketinventur / ticket inventory
 

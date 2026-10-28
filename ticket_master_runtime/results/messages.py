@@ -10,6 +10,7 @@ from pathlib import Path
 import re
 import sys
 import threading
+import uuid
 
 from .model import ResultsError, digest, now, read, write
 
@@ -17,6 +18,7 @@ ID_RE = re.compile(r"^M-[0-9]{8}-[1-9][0-9]{8}$")
 RECEIPT_RE = re.compile(r"^R-[0-9]{8}-[1-9][0-9]{8}$")
 THREAD_RE = re.compile(r"^TH-[0-9]{8}-[1-9][0-9]{8}$")
 ENVELOPE_SCHEMA = "ellmos.ticket.observed-notification.v1"
+_OWNER_IMPORT_MUTEX = threading.RLock()
 
 
 def message_digest(message):
@@ -24,7 +26,13 @@ def message_digest(message):
 
 
 def projection_digest(event):
-    return digest(json.dumps({key: event.get(key, "") for key in ("title", "summary", "details", "source")},
+    # This is compared with a NEW projection from line.get(), never with a
+    # second session-derived checksum. Include every canonical display mapping,
+    # including time, external identity and thread. Event-ID, status, artifacts
+    # and ticket annotations remain session-owned (legacy adoption preserves them).
+    fields = ("kind", "created_at", "title", "summary", "details", "source", "tags",
+              "message_id", "receipt_id", "notification")
+    return digest(json.dumps({key: event.get(key, "") for key in fields},
                              sort_keys=True, ensure_ascii=False).encode("utf-8"))
 
 
@@ -63,6 +71,69 @@ class ApprovedMessages:
         self.manifest_sha256 = manifest_sha256
         self.target, self.recipient, self.actor = target, recipient, actor
         self._mutex = threading.Lock()
+        self._loaded_owner = None
+
+    def _import_owner(self, files):
+        """Only reuse objects loaded by THIS adapter, never a hash-name cache.
+
+        A fresh private namespace also separates approved copies at different
+        paths. All its imported modules must originate in manifest-listed files;
+        replacement of a previously loaded module fails closed. Configuration
+        is deliberately read outside this cache on every owner operation.
+        """
+        identity = (self.core_dir.resolve(), self.manifest_sha256)
+        with _OWNER_IMPORT_MUTEX:
+            if self._loaded_owner is not None and self._loaded_owner[0] == identity:
+                _, name, modules, owner = self._loaded_owner
+                current = {key: value for key, value in list(sys.modules.items()) if key == name or key.startswith(name + ".")}
+                if current.keys() != modules.keys() or any(current[key] is not value for key, value in modules.items()):
+                    raise ResultsError("Privater Messages-Core-Namensraum wurde ersetzt")
+                self._check_import_origins(name, modules, files)
+                return owner
+            # Never replace or remove a foreign preloaded module, even if it
+            # uses the old public hash-qualified name.
+            name = "_approved_message_owner_" + self.manifest_sha256 + "_" + uuid.uuid4().hex
+            if any(key == name or key.startswith(name + ".") for key in list(sys.modules)):
+                raise ResultsError("Privater Messages-Core-Namensraum ist bereits belegt")
+            previous_bytecode = sys.dont_write_bytecode
+            loaded = {}
+            module = None
+            try:
+                sys.dont_write_bytecode = True
+                spec = importlib.util.spec_from_file_location(name, self.core_dir / "lib/__init__.py", submodule_search_locations=[str(self.core_dir / "lib")])
+                if spec is None or spec.loader is None:
+                    raise ResultsError("Messages-Core ist nicht importierbar")
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[name] = module
+                spec.loader.exec_module(module)
+                owner = importlib.import_module(name + ".messages_line")
+                loaded = {key: value for key, value in list(sys.modules.items()) if key == name or key.startswith(name + ".")}
+                self._check_import_origins(name, loaded, files)
+            except BaseException:
+                # Remove only the exact new objects from this failed import.
+                for key, value in loaded.items():
+                    if sys.modules.get(key) is value:
+                        del sys.modules[key]
+                if module is not None and sys.modules.get(name) is module:
+                    del sys.modules[name]
+                raise
+            finally:
+                sys.dont_write_bytecode = previous_bytecode
+            self._loaded_owner = identity, name, loaded, owner
+            return owner
+
+    def _check_import_origins(self, name, modules, files):
+        for key, module in modules.items():
+            source = "lib/__init__.py" if key == name else "lib/" + key[len(name) + 1:].replace(".", "/") + ".py"
+            expected = (self.core_dir / source).resolve()
+            spec = getattr(module, "__spec__", None)
+            if (source not in files or spec is None or spec.name != key
+                    or not isinstance(spec.loader, importlib.machinery.SourceFileLoader)
+                    or Path(spec.origin or "").resolve() != expected
+                    or Path(getattr(module, "__file__", "")).resolve() != expected):
+                raise ResultsError("Geladener Messages-Core stammt nicht aus der geprüften Quelle")
+            if key == name and list(getattr(module, "__path__", [])) != [str(self.core_dir / "lib")]:
+                raise ResultsError("Messages-Core-Paketpfad wurde verändert")
 
     def _owner(self):
         manifest_path = self.core_dir / "MANIFEST.json"
@@ -84,20 +155,7 @@ class ApprovedMessages:
         actual = {p.relative_to(self.core_dir).as_posix() for p in (self.core_dir / "lib").rglob("*") if p.is_file()}
         if actual != set(files):
             raise ResultsError("Unmanifestierte Messages-Core-Datei (auch Bytecode wird abgelehnt)")
-        name = "_approved_message_owner_" + self.manifest_sha256
-        previous_bytecode = sys.dont_write_bytecode
-        try:
-            sys.dont_write_bytecode = True
-            if name not in sys.modules:
-                spec = importlib.util.spec_from_file_location(name, self.core_dir / "lib/__init__.py", submodule_search_locations=[str(self.core_dir / "lib")])
-                if spec is None or spec.loader is None:
-                    raise ResultsError("Messages-Core ist nicht importierbar")
-                module = importlib.util.module_from_spec(spec)
-                sys.modules[name] = module
-                spec.loader.exec_module(module)
-            owner = importlib.import_module(name + ".messages_line")
-        finally:
-            sys.dont_write_bytecode = previous_bytecode
+        owner = self._import_owner(files)
         config = owner.validate_messages_config(json.loads(self.config_path.read_text(encoding="utf-8")))
         return owner, owner.MessagesLine(self.messages_dir), config
 
@@ -111,7 +169,7 @@ class ApprovedMessages:
         if message["recipient_ref"] != self.recipient:
             raise ResultsError("Nachricht gehört zu einem anderen Empfänger")
         if projection_digest(event_from_message(message)) != binding["projection_sha256"]:
-            raise ResultsError("Angezeigter Meldungstext stimmt nicht mit dem kanonischen Inhalt überein")
+            raise ResultsError("Angezeigte Meldung oder Zuordnung stimmt nicht mit dem kanonischen Ownerumschlag überein")
         return message
 
     def resolve(self, message_id):
@@ -204,7 +262,7 @@ def event_from_message(message):
     else:
         notice = {"source": message["origin_ref"], "external_id": message["message_id"],
                   "title": "Externe Nachricht · " + message["message_id"], "text": message["content_text"],
-                  "observed_at": now(), "kind": "message", "tags": ["Meldungen"]}
+                  "observed_at": message["created_at"], "kind": "message", "tags": ["Meldungen"]}
     return {"id": "message:" + message["message_id"], "kind": notice.get("kind", "message"),
             "created_at": notice["observed_at"], "title": notice["title"], "summary": notice.get("summary", notice["text"][:240]),
             "details": notice["text"], "source": notice["source"], "status": "Wahrgenommen · Lesen ist keine Freigabe",
