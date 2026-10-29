@@ -19,10 +19,24 @@ def contrast_ratio(foreground, background):
 
 def draw_icon(canvas, kind, foreground, scale=1.0):
     """Draw one visual family in a 28×28 logical pixel box using Tk vectors."""
-    def line(points, **kwargs):
-        return canvas.create_line(*[p * scale for p in points], fill=foreground, width=1.6 * scale,
+    def line(points, stroke=foreground, width=None, **kwargs):
+        return canvas.create_line(*[p * scale for p in points], fill=stroke,
+                                  width=(1.6 * scale if width is None else width),
                                   capstyle="round", joinstyle="round", **kwargs)
-    if kind == "DATABASE":
+    if kind in {"READ", "READ_CHECK"}:
+        # Open book: the same mark is used before and after reading.
+        line((3, 6, 8, 5, 12, 8, 12, 23, 8, 20, 3, 21, 3, 6))
+        line((12, 8, 16, 5, 25, 6, 25, 21, 16, 20, 12, 23, 12, 8))
+        line((5, 10, 9, 10.5))
+        line((5, 14, 9, 15))
+        line((16, 10, 22, 10))
+        line((16, 14, 22, 14.5))
+        if kind == "READ_CHECK":
+            green = "#18864b"
+            canvas.create_oval(16 * scale, 15 * scale, 27 * scale, 26 * scale,
+                               fill="white", outline=green, width=1.6 * scale)
+            line((18.5, 20.5, 21, 23, 25, 18), stroke=green, width=1.8 * scale)
+    elif kind == "DATABASE":
         import tkinter as tk
         from pathlib import Path
         source = tk.PhotoImage(master=canvas, file=str(Path(__file__).with_name("assets") / "database-generated.png"))

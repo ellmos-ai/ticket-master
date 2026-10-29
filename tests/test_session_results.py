@@ -123,6 +123,19 @@ def test_unknown_tokens_not_zero(tmp_path, session):
         write(tmp_path / "invalid.json", session)
 
 
+def test_ui_language_uses_existing_selector_and_defaults_to_german(monkeypatch):
+    from ticket_master_runtime.results.i18n import translate, ui_language
+    monkeypatch.delenv("TM_LANG", raising=False)
+    assert ui_language() == "de"
+    assert translate(None, "read_action") == "Als gelesen markieren"
+    monkeypatch.setenv("TM_LANG", "en")
+    assert ui_language() == "en"
+    assert translate(None, "all_topics") == "All topics"
+    assert ui_language("en-US") == "en"
+    assert ui_language("fr") == "de"
+    assert translate("fr", "read_action") == "Als gelesen markieren"
+
+
 def test_action_palette_contrast_and_requested_file_icons():
     from ticket_master_runtime.results.icons import PALETTES, contrast_ratio
     assert len({p["background"] for p in PALETTES.values()}) == 4
@@ -151,7 +164,7 @@ def test_native_action_design_and_python_path_only(tmp_path, session, monkeypatc
     monkeypatch.setattr(root, "clipboard_clear", lambda: None)
     monkeypatch.setattr(root, "clipboard_append", copied.append)
     try:
-        window = ResultsWindow(root, path)
+        window = ResultsWindow(root, path, language="de")
         root.title("TEST · Aktionsdesign")
         root.update()
         assert window.evidence()["viewable"]
@@ -178,6 +191,55 @@ def test_native_action_design_and_python_path_only(tmp_path, session, monkeypatc
         root.geometry("620x700+0+0")
         root.update()
         assert all(t.winfo_reqwidth() <= window.canvas.winfo_width() - 20 for t in collect(window.feed))
+    finally:
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
+        root.destroy()
+
+
+@pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in English header and read-state smoke")
+def test_native_english_header_and_manual_result_receipt(tmp_path, session, native_tk_app):
+    import tkinter as tk
+    from ticket_master_runtime.results.gui import ResultsWindow
+    path = tmp_path / "session.json"
+    write(path, session)
+    root = tk.Toplevel(native_tk_app)
+    try:
+        window = ResultsWindow(root, path, language="en")
+        root.withdraw()
+        root.update()
+        card = window.cards["one"]
+        assert window.archive.get() == "Unread"
+        assert window.order.get() == "Oldest first"
+        assert window.topics.get(0) == "All topics"
+        assert card.more_button.cget("text") == "More"
+        assert card.more_tooltip.text == "Open overview"
+        assert card.read_button.button.cget("text") == "Mark as read"
+        assert card.read_button.button.accessible_name == "Mark as read"
+        assert card.read_button.tooltip.text == "Mark as read"
+        assert card.read_button.icon_kind == "READ"
+        assert card.read_button.icon.find_all()
+        assert card.more_button.cget("style") == "Link.TButton"
+        assert card.more_button.winfo_rootx() < card.read_button.button.winfo_rootx()
+        assert card.title_label.cget("text") == "Ärztliche Prüfung"
+
+        window.archive.set("All")
+        card.toggle_overview()
+        window.toggle("one")
+        root.update()
+        assert "one" not in read(path)[0].get("result_reads", {})
+        assert card.read_button.icon_kind == "READ"
+
+        window.read_event("one")
+        root.update()
+        current = read(path)[0]
+        assert current["events"][0]["title"] == "Ärztliche Prüfung"
+        assert current["events"][0]["tags"] == ["Forschung"]
+        assert "one" in current["result_reads"]
+        assert window.archive.get() == "All" and card.winfo_manager() == "pack"
+        assert card.read_button.icon_kind == "READ_CHECK"
+        assert card.read_button.button.cget("text") == "Read"
+        assert card.title_label.cget("text") == "Ärztliche Prüfung"
     finally:
         for timer in root.tk.call("after", "info"):
             root.after_cancel(timer)
@@ -281,7 +343,7 @@ def test_native_ui_filters_details_and_refresh(tmp_path, session, native_tk_app,
     monkeypatch.setattr(root, "clipboard_append", clipboard.append)
     monkeypatch.setattr(root, "clipboard_get", lambda: clipboard[-1])
     try:
-        window = ResultsWindow(root, path)
+        window = ResultsWindow(root, path, language="de")
         root.title("TEST · Ergebnisanzeige")
         root.update()
         assert window.evidence()["viewable"]
@@ -699,7 +761,7 @@ def test_native_messages_navigation_manual_default_refresh_and_race(tmp_path, se
     root = tk.Toplevel(native_tk_app)
     monkeypatch.setattr("ticket_master_runtime.results.gui.messagebox.showerror", lambda *a, **kw: pytest.fail(str(a)))
     try:
-        window = ResultsWindow(root, path, backend)
+        window = ResultsWindow(root, path, backend, language="de")
         root.title("TEST · Meldungen")
         root.update()
         assert window.evidence()["viewable"]
@@ -788,7 +850,7 @@ def test_native_real_owner_mapping_tamper_refresh_and_ack(tmp_path, session, mes
     errors = []
     monkeypatch.setattr("ticket_master_runtime.results.gui.messagebox.showerror", lambda *a, **kw: errors.append(a))
     try:
-        window = ResultsWindow(root, path, backend)
+        window = ResultsWindow(root, path, backend, language="de")
         root.title("TEST · Kanonische Zuordnung · nur Tempstore")
         root.update()
         evidence = window.evidence()
@@ -952,7 +1014,7 @@ def test_native_incremental_identity_scroll_focus_text_selection_and_archive(tmp
     write(path, session)
     root = tk.Toplevel(native_tk_app)
     try:
-        w = ResultsWindow(root, path)
+        w = ResultsWindow(root, path, language="de")
         root.title("TEST · Inkrementelle Ergebnisanzeige")
         root.update()
         assert w.evidence()["viewable"]

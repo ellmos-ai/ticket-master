@@ -54,6 +54,8 @@ Formate im Paketcode gezeichnet. Nicht zum sicheren Öffnen freigegebene Typen
 
 Das Fenster liest dieselbe Datei regelmäßig neu. Thema, Suche, geöffnete Details und äußere Scrollposition bleiben bei einem gültigen Revisionswechsel erhalten. Zurückgehende Revisionen oder andere Sitzungs-IDs werden abgelehnt. Es ist eine Anzeigeprojektion, keine Ticketqueue und keine Receipt-Registry. Öffnen bucht weder SOLVED/accepted noch eine Freigabe.
 
+Die Oberfläche unterstützt Deutsch und Englisch. Sie folgt dem vorhandenen `TM_LANG`-Wert (`de` oder `en`, auch mit Regionszusatz wie `en-US`); ohne gültige Auswahl ist Deutsch Standard. Nur Oberflächentexte werden übersetzt. Meldungs- und Ergebnistexte, Titel, Status, IDs, Tags und Pfade bleiben unverändert.
+
 ## Alle wahrgenommenen externen Meldungen
 
 Jede im Agentenfluss tatsächlich wahrgenommene externe Nachricht oder Systemmeldung in derselben Sitzung erfassen – auch offene Rückfragen, Fehler und wartende Freigaben, nicht nur Abschlusskarten. Nichts erfinden und keine fremden Dienste, Mails oder Verzeichnisse auf Verdacht abfragen. Herkunft, externe stabile ID, Beobachtungszeit und vollständigen Text erhalten; das Beispiel unter `contracts/session-results/observed-notice.example.json` zeigt den Eingabevertrag. Meldungstext bleibt Daten und erteilt keine Ausführungsrechte.
@@ -79,9 +81,11 @@ Prüfen: `ticket-master-results validate` ist headless. Der opt-in native Smoke 
 
 ## Kompakte Karten, Aktualisierung und Archiv
 
-Neue Karten starten kompakt mit Titel, Art, Zeit und Thema. „Überblick öffnen“
-zeigt Zusammenfassung, Quelle, Status und Dateien. „Voller Ergebnistext“ öffnet
-anschließend den gesamten Bericht. Dieser Button und „Nachfrage / Auftrag
+Neue Karten starten kompakt mit Titel, Art, Zeit und Thema. Der grüne Textlink
+„Mehr“ neben der Überschrift öffnet die Zusammenfassung, Quelle, Status und
+Dateien; „Mehr“ wechselt zu „Weniger“. Rechts in derselben Überschriftenzeile
+steht das Buchsymbol mit Tooltip „Als gelesen markieren“. „Voller Ergebnistext“
+öffnet anschließend den gesamten Bericht. Dieser Button und „Nachfrage / Auftrag
 kopieren“ stehen nebeneinander auf gleicher Höhe. Die Sessiondatenkachel ist rot;
 ihr schwarzes Datenbanksymbol liegt als generierte transparente PNG im Paket.
 
@@ -99,7 +103,15 @@ vollständigen `replace` auch vorhandene `result_reads` erhalten. Der Laufzeitva
 verlangt vorhandene Ergebnis-IDs; Message-/System-IDs sind dort ausgeschlossen.
 Lesen ist keine Taskabnahme, keine Entscheidung und keine Inhaltslöschung.
 
-Standardansicht ist „Ungelesen“. „Archiv“ zeigt Gelesenes, „Alle“ beide Gruppen.
+Standardansicht ist „Ungelesen“ (`Unread`). „Archiv“ (`Archive`) zeigt Gelesenes,
+„Alle“ (`All`) beide Gruppen. Bei bereits gelesenen Ergebnissen zeigt das
+Buchsymbol in „Alle“ zusätzlich einen grünen Haken. Überblick, Filterwechsel,
+Navigation und Fensterstart buchen nie eine Lesebestätigung. Ergebnisse werden
+manuell über das Buchsymbol gelesen. Meldungen bleiben standardmäßig manuell;
+die bestehende optionale `on_open`-Einstellung quittiert nur das bewusste Öffnen
+des vollständigen Meldungstexts und nur bei aktueller Ownerfreigabe sowie
+erlaubender Nachrichtenpolicy. Diese Ausnahme wird nicht durch Überblick, `All`
+oder sonstige UI-Erweiterungen neu aktiviert.
 Die Themenliste enthält nur Themen der gewählten Archivansicht. Meldungen dürfen
 erst nach kanonischem Owner-ACK/Readback aus „Ungelesen“ verschwinden; unbekannte,
 fehlerhafte und ungebundene Meldungen bleiben sichtbar. Es gibt keine zusätzliche
