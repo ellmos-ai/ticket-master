@@ -25,17 +25,17 @@ def draw_icon(canvas, kind, foreground, scale=1.0):
                                   capstyle="round", joinstyle="round", **kwargs)
     if kind in {"READ", "READ_CHECK"}:
         # Open book: the same mark is used before and after reading.
-        line((3, 6, 8, 5, 12, 8, 12, 23, 8, 20, 3, 21, 3, 6))
-        line((12, 8, 16, 5, 25, 6, 25, 21, 16, 20, 12, 23, 12, 8))
-        line((5, 10, 9, 10.5))
-        line((5, 14, 9, 15))
-        line((16, 10, 22, 10))
-        line((16, 14, 22, 14.5))
+        line((3, 6, 8, 5, 13, 8, 13, 23, 8, 20, 3, 21, 3, 6), width=1.8 * scale)
+        line((13, 8, 18, 5, 25, 6, 25, 21, 18, 20, 13, 23, 13, 8), width=1.8 * scale)
+        line((5.5, 10, 10, 10.5))
+        line((5.5, 14, 10, 14.5))
+        line((16, 10.5, 22, 10))
+        line((16, 14.5, 22, 14))
         if kind == "READ_CHECK":
             green = "#18864b"
-            canvas.create_oval(16 * scale, 15 * scale, 27 * scale, 26 * scale,
-                               fill="white", outline=green, width=1.6 * scale)
-            line((18.5, 20.5, 21, 23, 25, 18), stroke=green, width=1.8 * scale)
+            canvas.create_oval(15 * scale, 14 * scale, 27 * scale, 26 * scale,
+                               fill="white", outline=green, width=1.8 * scale)
+            line((17.5, 20, 20.2, 22.8, 24.8, 17.2), stroke=green, width=2.2 * scale)
     elif kind == "DATABASE":
         import tkinter as tk
         from pathlib import Path
@@ -68,12 +68,17 @@ def draw_icon(canvas, kind, foreground, scale=1.0):
                           style="arc", outline=foreground, width=1.8 * scale)
         line((10, 18, 18, 10))
     else:
-        line((6, 3, 17, 3, 23, 9, 23, 25, 6, 25, 6, 3))
-        line((17, 3, 17, 9, 23, 9))
-        if kind in {"DETAILS", "FILE"}:
-            for y, end in ((13, 19), (17, 19), (21, 16)):
-                line((10, y, end, y))
+        line((5, 2, 17, 2, 23, 8, 23, 26, 5, 26, 5, 2))
+        line((17, 2, 17, 8, 23, 8))
+        if kind in {"DETAILS", "FILE", "TXT"}:
+            for y, end in ((12, 19), (16, 19), (20, 15)):
+                line((9, y, end, y))
+        elif kind == "IMAGE":
+            canvas.create_oval(8.5 * scale, 10 * scale, 12 * scale, 13.5 * scale,
+                               outline=foreground, width=1.4 * scale)
+            line((8, 22, 13, 16, 16, 19.5, 18.5, 17, 20.5, 22, 8, 22))
         else:
-            glyph = {"WORD": "W", "HTML": "<>", "IMAGE": "IMG", "JSON": "{}", "CSV": "CSV"}.get(kind, kind)
-            canvas.create_text(14.5 * scale, 17 * scale, text=glyph, fill=foreground,
-                               font=("Segoe UI", -round(7 * scale), "bold"))
+            line((8.5, 11, 15.5, 11))
+            glyph = {"WORD": "DOC", "HTML": "<>", "JSON": "{ }", "CSV": "CSV"}.get(kind, kind)
+            canvas.create_text(14 * scale, 18.5 * scale, text=glyph, fill=foreground,
+                               font=("Segoe UI", -max(8, round(8 * scale)), "bold"))

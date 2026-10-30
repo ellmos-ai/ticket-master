@@ -4,7 +4,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from .model import read, write, append, update_session_data, update_message_settings, mark_result_read, ResultsError
+from .model import read, write, append, add_comment, update_session_data, update_message_settings, mark_result_read, ResultsError
 
 
 def backend_arguments(parser):
@@ -55,6 +55,14 @@ def main(argv=None):
     archive.add_argument("--event-sha256", required=True)
     archive.add_argument("--revision", type=int, required=True)
     archive.add_argument("--sha256", required=True)
+    comment_cmd = sub.add_parser("comment", help="Kommentar, Nachfrage oder Modellantwort per CAS zu einem Ergebnis hinzufügen")
+    comment_cmd.add_argument("file", type=Path)
+    comment_cmd.add_argument("--event-id", required=True)
+    comment_cmd.add_argument("--author", default="model", help="Autor des Kommentars (z. B. user oder model)")
+    comment_cmd.add_argument("--text", required=True, help="Kommentartext")
+    comment_cmd.add_argument("--comment-id", help="Optionale stabile Kommentar-ID")
+    comment_cmd.add_argument("--revision", type=int, required=True)
+    comment_cmd.add_argument("--sha256", required=True)
     metadata = sub.add_parser("session-data", help="Sessionmetriken schmal lesen oder per CAS aktualisieren")
     metadata.add_argument("file", type=Path)
     metadata.add_argument("--input", type=Path, help="Patch der Metrikgruppen; Listen werden vollständig ersetzt")
@@ -89,6 +97,9 @@ def main(argv=None):
             print(json.dumps({"sha256": update_message_settings(args.file, args.read_mode, args.revision, args.sha256)}))
         elif args.command == "result-read":
             print(json.dumps({"sha256": mark_result_read(args.file, args.event_id, args.revision, args.sha256, args.event_sha256)}))
+        elif args.command == "comment":
+            print(json.dumps({"sha256": add_comment(args.file, args.event_id, args.author, args.text,
+                                                    args.revision, args.sha256, comment_id=args.comment_id)}))
         elif args.command == "session-data":
             if args.input:
                 if args.revision is None or args.sha256 is None:

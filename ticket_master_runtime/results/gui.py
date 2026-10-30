@@ -1,4 +1,4 @@
-"""Native Tk session results viewer, deliberately read-only."""
+"""Native Tk session results viewer with inline overview, comments, and read state."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,8 @@ from tkinter import ttk, messagebox
 from .icons import PALETTES, draw_icon
 from .i18n import translate, ui_language
 from .model import (SAFE_SUFFIXES, read, select_events, artifact_badge, artifact_kind, open_artifact,
-                    question_prompt, now, update_message_settings, mark_result_read, event_digest, is_read, visible_events)
+                    question_prompt, now, update_message_settings, mark_result_read, add_comment,
+                    event_digest, is_read, visible_events)
 from .messages import binding_for, message_counts
 
 LABEL_KEYS = {"analysis": "kind_analysis", "message": "kind_message", "system": "kind_system",
@@ -20,7 +21,7 @@ LABEL_KEYS = {"analysis": "kind_analysis", "message": "kind_message", "system": 
 
 
 class Tooltip:
-    """Small hover/focus tooltip shared by the new compact header controls."""
+    """Small hover/focus tooltip shared by the compact header controls."""
     def __init__(self, widget, text):
         self.widget, self.text = widget, text
         self.tooltip_window, self.tooltip_timer = None, None
@@ -74,17 +75,20 @@ class Tooltip:
 
 
 class ReadIconButton:
-    """Compact, keyboard-focusable read action with a localized accessible name."""
+    """Compact, keyboard-focusable read action with a localized accessible name and unclipped pixel geometry."""
     def __init__(self, parent, command):
-        self.button = tk.Button(parent, text="", command=command, relief="flat", borderwidth=0,
-                                bg="white", fg="white", activebackground="white", activeforeground="white",
-                                disabledforeground="white", highlightthickness=1, highlightbackground="white",
-                                highlightcolor="#18864b", font=("Segoe UI", 1), width=3, height=2,
+        self.container = tk.Frame(parent, width=32, height=28, bg="white", highlightthickness=0)
+        self.container.pack_propagate(False)
+        self.container.pack(side="right", anchor="ne", padx=(8, 0))
+        self.button = tk.Button(self.container, text="", command=command, relief="flat", borderwidth=0,
+                                bg="white", fg="white", activebackground="#eef7f2", activeforeground="#eef7f2",
+                                disabledforeground="white", highlightthickness=1, highlightbackground="#d5e6dc",
+                                highlightcolor="#18864b", font=("Segoe UI", 1),
                                 wraplength=1, padx=0, pady=0, cursor="hand2", takefocus=True)
-        self.button.pack(side="right", padx=(8, 0))
+        self.button.pack(fill="both", expand=True)
         # The button's text remains its localized accessible name; this child
-        # paints only the open-book symbol over that text for a compact visual.
-        self.icon = tk.Canvas(self.button, width=24, height=24, bg="white",
+        # paints only the open-book symbol over that text inside the 32x28 box.
+        self.icon = tk.Canvas(self.button, width=26, height=26, bg="white",
                               highlightthickness=0, takefocus=False, cursor="hand2")
         self.icon.place(relx=0.5, rely=0.5, anchor="center")
         self.button.accessible_name = ""
@@ -92,8 +96,20 @@ class ReadIconButton:
         self.icon_kind = None
         self.tooltip = Tooltip(self.button, "")
         self.tooltip.bind_to(self.icon)
+        for widget in (self.button, self.icon):
+            widget.bind("<Enter>", self._enter, add="+")
+            widget.bind("<Leave>", self._leave, add="+")
         self.icon.bind("<Button-1>", self.invoke, add="+")
         self.button.bind("<Return>", lambda _: self.button.invoke(), add="+")
+
+    def _enter(self, _=None):
+        bg = "#eef7f2" if str(self.button.cget("state")) != "disabled" else "white"
+        self.button.configure(bg=bg)
+        self.icon.configure(bg=bg)
+
+    def _leave(self, _=None):
+        self.button.configure(bg="white")
+        self.icon.configure(bg="white")
 
     def invoke(self, _=None):
         if str(self.button.cget("state")) != "disabled":
@@ -110,7 +126,7 @@ class ReadIconButton:
         icon_kind = "READ_CHECK" if checked else "READ"
         if self.icon_kind != icon_kind:
             self.icon.delete("all")
-            draw_icon(self.icon, icon_kind, "#187b43", scale=0.78)
+            draw_icon(self.icon, icon_kind, "#187b43", scale=0.92)
             self.icon_kind = icon_kind
 
 
@@ -119,19 +135,21 @@ class ActionTile(tk.Frame):
     def __init__(self, parent, text, kind, family, command, tooltip):
         palette = PALETTES[family]
         super().__init__(parent, bg=palette["background"], highlightthickness=1,
-                         highlightbackground=palette["border"], padx=7, pady=3)
-        self.palette, self.tooltip_text = palette, tooltip
+                         highlightbackground=palette["border"], padx=8, pady=4)
+        self.palette, self.family, self.tooltip_text = palette, family, tooltip
         self.tooltip_window, self.tooltip_timer = None, None
         scale = max(1.0, self.winfo_fpixels("1i") / 96)
         self.icon = tk.Canvas(self, width=round(28 * scale), height=round(28 * scale),
                               bg=palette["background"], highlightthickness=0, takefocus=False)
-        self.icon.pack(side="left", padx=(0, 5))
+        self.icon.pack(side="left", padx=(0, 7))
         draw_icon(self.icon, kind, palette["foreground"], scale)
+        anchor = "w" if family == "file" else "center"
         self.button = tk.Button(self, text=text, command=command, relief="flat", borderwidth=0,
                                 bg=palette["background"], fg=palette["foreground"],
                                 activebackground=palette["hover"], activeforeground=palette["foreground"],
                                 highlightthickness=1, highlightbackground=palette["background"],
                                 highlightcolor=palette["foreground"], font=("Segoe UI", 10, "bold"),
+                                justify="left", anchor=anchor, wraplength=280,
                                 cursor="hand2", padx=4, pady=4, takefocus=True)
         self.button.pack(side="left", fill="both", expand=True)
         for widget in (self, self.icon, self.button):
@@ -181,7 +199,9 @@ class ActionTile(tk.Frame):
             self.tooltip_window = None
 
     def fit(self, width):
-        wrap = max(48, width - self.icon.winfo_reqwidth() - 30)
+        if width <= 1:
+            return
+        wrap = max(140, width - self.icon.winfo_reqwidth() - 28)
         if int(self.button.cget("wraplength")) != wrap:
             self.button.configure(wraplength=wrap)
 
@@ -191,29 +211,22 @@ class EventCard(ttk.Frame):
     def __init__(self, window, event):
         super().__init__(window.feed, style="Card.TFrame", padding=14)
         self.window, self.event = window, event
-        self.overview_open, self.artifact_key, self.text_value = False, None, None
+        self.overview_open = False
+        self.artifact_key, self.comments_key, self.text_value = None, None, None
         self.meta = window.label(self, "", color="#597089")
         self.header = ttk.Frame(self, style="Card.TFrame")
         self.header.pack(fill="x", pady=(0, 2))
         self.read_button = ReadIconButton(self.header, lambda: window.read_event(self.event["id"]))
-        self.more_button = ttk.Button(self.header, text=window.tr("more"), style="Link.TButton",
-                                      command=self.toggle_overview, takefocus=True)
-        self.more_button.pack(side="right", padx=(8, 0))
-        self.more_tooltip = Tooltip(self.more_button, window.tr("open_overview"))
         self.title_label = ttk.Label(self.header, text="", style="Card.TLabel", justify="left",
                                      font=("Segoe UI", 11, "bold"), wraplength=320)
         self.title_label._result_title_label = True
-        self.title_label.pack(side="left", fill="x", expand=True, anchor="w")
-        self.actions = ttk.Frame(self, style="Card.TFrame")
-        self.actions.pack(fill="x", pady=(7, 2))
-        self.actions.columnconfigure((0, 1), weight=1, uniform="actions")
-        self.details_button = ActionTile(self.actions, window.tr("details_full"), "DETAILS", "details",
-                                        lambda: window.toggle(self.event["id"]), window.tr("details_tooltip"))
-        self.details_button.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
-        self.question_button = ActionTile(self.actions, window.tr("question_action"), "CHAT", "chat",
-                                         lambda: window.copy_question(self.event["id"]), window.tr("question_tooltip"))
-        self.question_button.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
-        self.read_label = window.label(self, "", color="#597089")
+        self.title_label.pack(side="left", anchor="w")
+        self.more_button = ttk.Button(self.header, text=window.tr("more"), style="Link.TButton",
+                                      command=self.toggle_overview, takefocus=True)
+        self.more_button.pack(side="left", padx=(10, 6), anchor="w")
+        self.more_tooltip = Tooltip(self.more_button, window.tr("open_overview"))
+        self.read_label = ttk.Label(self, text="", style="Card.TLabel", foreground="#597089",
+                                    justify="left", font=("Segoe UI", 10))
         self.overview = ttk.Frame(self, style="Card.TFrame")
         self.summary = window.label(self.overview, "")
         self.result_status = window.label(self.overview, "", color="#215b91")
@@ -221,7 +234,32 @@ class EventCard(ttk.Frame):
         self.source = window.label(self.overview, "", color="#597089")
         self.notice = window.label(self.overview, "", color="#597089")
         self.artifacts = ttk.Frame(self.overview, style="Card.TFrame")
-        self.artifacts.pack(fill="x")
+        self.artifacts.pack(fill="x", pady=(4, 2))
+        self.comments_section = ttk.Frame(self.overview, style="Card.TFrame")
+        self.comments_section.pack(fill="x", pady=(8, 4))
+        self.comments_heading = ttk.Label(self.comments_section, text=window.tr("comments_heading"),
+                                          style="Card.TLabel", foreground="#18304a",
+                                          font=("Segoe UI", 10, "bold"))
+        self.comments_heading.pack(anchor="w", pady=(0, 4))
+        self.comments_list = ttk.Frame(self.comments_section, style="Card.TFrame")
+        self.comments_list.pack(fill="x")
+        self.comment_form = ttk.Frame(self.comments_section, style="Card.TFrame")
+        self.comment_form.pack(fill="x", pady=(6, 0))
+        self.comment_var = tk.StringVar(window.root, value="")
+        self.comment_entry = ttk.Entry(self.comment_form, textvariable=self.comment_var, font=("Segoe UI", 10))
+        self.comment_entry.pack(side="left", fill="x", expand=True, padx=(0, 6))
+        self.comment_entry.bind("<Return>", lambda _: self.submit_comment())
+        self.comment_button = ttk.Button(self.comment_form, text=window.tr("comment_add"),
+                                         command=self.submit_comment, takefocus=True)
+        self.comment_button.pack(side="right")
+        self.actions = ttk.Frame(self, style="Card.TFrame")
+        self.actions.columnconfigure((0, 1), weight=1, uniform="actions")
+        self.details_button = ActionTile(self.actions, window.tr("details_full"), "DETAILS", "details",
+                                         lambda: window.toggle(self.event["id"]), window.tr("details_tooltip"))
+        self.details_button.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        self.question_button = ActionTile(self.actions, window.tr("question_action"), "CHAT", "chat",
+                                          lambda: window.copy_question(self.event["id"]), window.tr("question_tooltip"))
+        self.question_button.grid(row=0, column=1, sticky="nsew", padx=(4, 0))
         self.panel = ttk.Frame(self)
         self.text = tk.Text(self.panel, wrap="word", height=18, font=("Segoe UI", 11), relief="flat",
                             background="#f7f9fc", foreground="#18304a", padx=10, pady=8)
@@ -235,6 +273,21 @@ class EventCard(ttk.Frame):
         self.overview_open = not self.overview_open
         self.window.render()
 
+    def submit_comment(self):
+        text = self.comment_var.get().strip()
+        if not text:
+            self.window.status.set(self.window.tr("comment_empty_error"))
+            return "break"
+        if self.window.add_event_comment(self.event["id"], text, author="user"):
+            self.comment_var.set("")
+        return "break"
+
+    def _after_header_target(self):
+        for candidate in (self.overview, self.actions, self.panel):
+            if candidate.winfo_manager():
+                return candidate
+        return None
+
     def update_event(self, event):
         self.event = event
         w, eid = self.window, event["id"]
@@ -242,7 +295,12 @@ class EventCard(ttk.Frame):
         self.title_label.configure(text=event["title"])
         self.summary.configure(text=event["summary"])
         self.result_status.configure(text=event["status"])
-        self.next_step.configure(text=w.tr("next_step") + event["next_step"] if event.get("next_step") else "")
+        if event.get("next_step"):
+            self.next_step.configure(text=w.tr("next_step") + event["next_step"])
+            if not self.next_step.winfo_manager():
+                self.next_step.pack(anchor="w", fill="x", pady=(2, 4), before=self.source)
+        elif self.next_step.winfo_manager():
+            self.next_step.pack_forget()
         refs = [event[k] for k in ("ticket_id", "message_id", "receipt_id", "log_id") if event.get(k)]
         self.source.configure(text=w.tr("source") + event["source"] + (" · " + " · ".join(refs) if refs else ""))
         state = w.message_states.get(eid, {})
@@ -250,7 +308,7 @@ class EventCard(ttk.Frame):
         read_state = is_read(w.data, event, w.message_states)
         if notice:
             caption = w.tr("read_canonical") if read_state else w.tr("read_unknown") if state.get("state") in {None, "unknown"} else w.tr("read_unacknowledged")
-            self.read_label.configure(text=caption + " · " + w.tr("read_notice_no_approval"))
+            read_caption = caption + " · " + w.tr("read_notice_no_approval")
             can_read = bool(w.backend and binding_for(event) and state.get("can_ack") and state.get("state") not in {None, "unknown", "delivered"} and eid not in w.message_busy)
             note = event.get("notification", {})
             unknown = w.tr("unknown")
@@ -259,19 +317,28 @@ class EventCard(ttk.Frame):
             if not can_read and not read_state:
                 info += "\n" + w.tr("ack_locked")
             self.notice.configure(text=info)
+            if not self.notice.winfo_manager():
+                self.notice.pack(anchor="w", fill="x", pady=(2, 4), before=self.artifacts)
         else:
             can_read = not read_state
-            self.read_label.configure(text=w.tr("read_result_no_acceptance") if read_state else "")
+            read_caption = w.tr("read_result_no_acceptance") if read_state else ""
             self.notice.configure(text="")
+            if self.notice.winfo_manager():
+                self.notice.pack_forget()
+        self.read_label.configure(text=read_caption)
+        if read_caption:
+            if not self.read_label.winfo_manager():
+                target = self._after_header_target()
+                self.read_label.pack(anchor="w", fill="x", pady=(2, 4), **({"before": target} if target else {}))
+        elif self.read_label.winfo_manager():
+            self.read_label.pack_forget()
         read_name = w.tr("receipt_checking") if eid in w.message_busy else w.tr("read_done") if read_state else w.tr("read_action")
         self.read_button.update(read_state, read_name, read_name)
         self.read_button.button.configure(state="normal" if can_read else "disabled")
         self.more_button.configure(text=w.tr("less") if self.overview_open else w.tr("more"))
         self.more_tooltip.set_text(w.tr("close_overview") if self.overview_open else w.tr("open_overview"))
-        if self.overview_open and not self.overview.winfo_manager():
-            self.overview.pack(fill="x", pady=(8, 0), before=self.panel if self.panel.winfo_manager() else None)
-        elif not self.overview_open and self.overview.winfo_manager():
-            self.overview.pack_forget()
+        self.comments_heading.configure(text=w.tr("comments_heading"))
+        self.comment_button.configure(text=w.tr("comment_add"))
         expanded = eid in w.expanded
         self.details_button.button.configure(text=w.tr("details_close") if expanded else w.tr("details_full"))
         self.details_button.button.configure(state="normal" if event.get("details") else "disabled")
@@ -283,21 +350,67 @@ class EventCard(ttk.Frame):
             self.text.configure(state="disabled")
             self.text.yview_moveto(position)
             self.text_value = event.get("details", "")
-        if expanded and not self.panel.winfo_manager():
-            self.panel.pack(fill="both", expand=True, pady=(8, 0))
-        elif not expanded and self.panel.winfo_manager():
-            self.panel.pack_forget()
-        key = json.dumps(event.get("artifacts", []), sort_keys=True)
+        key = json.dumps(event.get("artifacts", []), sort_keys=True, ensure_ascii=False)
         if key != self.artifact_key:
             for child in self.artifacts.winfo_children():
                 child.destroy()
             for artifact in event.get("artifacts", []):
                 passive = artifact["path"].startswith("https://") or Path(artifact["path"]).suffix.lower() in SAFE_SUFFIXES
-                caption = f"{artifact_badge(artifact)} · {artifact['label']}" + ("" if passive else " · " + w.tr("artifact_copy_suffix"))
+                clean_label = " ".join(str(artifact["label"]).split())
+                caption = f"{artifact_badge(artifact)} · {clean_label}" + ("" if passive else " · " + w.tr("artifact_copy_suffix"))
                 ActionTile(self.artifacts, caption, artifact_kind(artifact), "file",
                            lambda a=artifact, p=passive: w.open(a) if p else w.copy_path(a),
-                           w.tr("artifact_open_tooltip") if passive else w.tr("artifact_copy_tooltip")).pack(anchor="w", pady=3)
+                           w.tr("artifact_open_tooltip") if passive else w.tr("artifact_copy_tooltip")).pack(fill="x", anchor="w", pady=3)
             self.artifact_key = key
+        comments = event.get("comments", [])
+        ckey = json.dumps(comments, sort_keys=True, ensure_ascii=False) + "|" + w.language
+        if ckey != self.comments_key:
+            for child in self.comments_list.winfo_children():
+                child.destroy()
+            if not comments:
+                empty_lbl = ttk.Label(self.comments_list, text=w.tr("comments_empty"),
+                                      style="Card.TLabel", foreground="#597089", font=("Segoe UI", 9))
+                empty_lbl.pack(anchor="w", pady=(0, 2))
+            else:
+                for comment in comments:
+                    author_raw = comment["author"]
+                    lower = author_raw.lower()
+                    if lower in {"user", "nutzer", "local-user"}:
+                        author_display = w.tr("comment_author_user")
+                        bg_color, border_color, header_fg = "#f0f7f4", "#bce0ce", "#187b43"
+                    elif lower in {"model", "modell", "assistant", "agent"}:
+                        author_display = w.tr("comment_author_model")
+                        bg_color, border_color, header_fg = "#eef4fb", "#b5cbe7", "#174b85"
+                    else:
+                        author_display = author_raw
+                        bg_color, border_color, header_fg = "#f4f6f9", "#cbd5e1", "#215b91"
+                    bubble = tk.Frame(self.comments_list, bg=bg_color, highlightthickness=1,
+                                      highlightbackground=border_color, padx=8, pady=5)
+                    bubble.pack(fill="x", pady=2)
+                    tk.Label(bubble, text=f"{author_display} · {comment['created_at']}",
+                             bg=bg_color, fg=header_fg, justify="left", anchor="w",
+                             font=("Segoe UI", 9, "bold")).pack(anchor="w", fill="x")
+                    body_lbl = tk.Label(bubble, text=comment["text"], bg=bg_color, fg="#18304a",
+                                        justify="left", anchor="w", font=("Segoe UI", 10), wraplength=340)
+                    body_lbl._comment_body_label = True
+                    body_lbl.pack(anchor="w", fill="x", pady=(2, 0))
+            self.comments_key = ckey
+        if self.overview_open:
+            if not self.overview.winfo_manager():
+                before_widget = self.actions if self.actions.winfo_manager() else (self.panel if self.panel.winfo_manager() else None)
+                self.overview.pack(fill="x", pady=(8, 0), **({"before": before_widget} if before_widget else {}))
+            if not self.actions.winfo_manager():
+                before_widget = self.panel if self.panel.winfo_manager() else None
+                self.actions.pack(fill="x", pady=(8, 2), **({"before": before_widget} if before_widget else {}))
+        else:
+            if self.overview.winfo_manager():
+                self.overview.pack_forget()
+            if self.actions.winfo_manager():
+                self.actions.pack_forget()
+        if expanded and not self.panel.winfo_manager():
+            self.panel.pack(fill="both", expand=True, pady=(8, 0))
+        elif not expanded and self.panel.winfo_manager():
+            self.panel.pack_forget()
 
 
 class ResultsWindow:
@@ -348,11 +461,11 @@ class ResultsWindow:
         self.session_nav.pack(fill="x", pady=(14, 6))
         self.session_nav.button.configure(wraplength=110)
         self.message_nav = ActionTile(self.sidebar, self.tr("messages_nav"), "MAIL", "chat", self.show_messages,
-                                     self.tr("messages_nav_tooltip"))
+                                      self.tr("messages_nav_tooltip"))
         self.message_nav.pack(fill="x", pady=(6, 3))
         self.message_nav.button.configure(font=("Segoe UI", 10, "bold"), wraplength=110)
         self.settings_nav = ActionTile(self.sidebar, self.tr("settings_nav"), "SETTINGS", "file", self.show_settings,
-                                      self.tr("settings_nav_tooltip"))
+                                       self.tr("settings_nav_tooltip"))
         self.settings_nav.pack(fill="x", pady=(0, 7))
         self.settings_nav.button.configure(font=("Segoe UI", 9), wraplength=110)
         ttk.Label(self.sidebar, text=self.tr("session_disclaimer"), wraplength=167).pack(anchor="w")
@@ -419,14 +532,33 @@ class ResultsWindow:
         self.canvas.yview_scroll(int(-event.delta / 120), "units")
 
     def fit_tiles(self):
+        canvas_w = self.canvas.winfo_width()
+        if canvas_w <= 1:
+            canvas_w = 560
+
         def visit(parent):
             for child in parent.winfo_children():
                 if isinstance(child, ActionTile):
-                    child.fit(max(120, child.winfo_width() or self.canvas.winfo_width() - 40))
+                    actual_w = child.winfo_width()
+                    if actual_w > 160:
+                        target_w = min(actual_w, canvas_w - 24)
+                    elif child.winfo_manager() == "grid":
+                        target_w = max(160, (canvas_w - 44) // 2)
+                    else:
+                        target_w = max(220, canvas_w - 36)
+                    child.fit(target_w)
                 elif isinstance(child, ttk.Label):
-                    wrap = (max(160, child.master.winfo_width() - 110)
-                            if getattr(child, "_result_title_label", False)
-                            else max(160, self.canvas.winfo_width() - 56))
+                    if getattr(child, "_result_title_label", False):
+                        header_w = child.master.winfo_width()
+                        if header_w <= 160:
+                            header_w = canvas_w - 36
+                        wrap = max(160, header_w - 130)
+                    else:
+                        wrap = max(160, canvas_w - 56)
+                    if int(child.cget("wraplength") or 0) != wrap:
+                        child.configure(wraplength=wrap)
+                elif getattr(child, "_comment_body_label", False):
+                    wrap = max(160, canvas_w - 76)
                     if int(child.cget("wraplength") or 0) != wrap:
                         child.configure(wraplength=wrap)
                 else:
@@ -590,6 +722,17 @@ class ResultsWindow:
             self.render()
         except (ValueError, OSError) as exc:
             self.status.set(self.tr("result_read_save_error", error=str(exc)))
+
+    def add_event_comment(self, event_id, text, author="user"):
+        try:
+            add_comment(self.path, event_id, author, text, self.data["revision"], self.sha)
+            self.data, self.sha = read(self.path, self.session_id)
+            self.render()
+            self.status.set(self.tr("comment_saved"))
+            return True
+        except (ValueError, OSError) as exc:
+            self.status.set(self.tr("comment_save_error", error=str(exc)))
+            return False
 
     def render(self, preserve=True):
         # Keep a pixel anchor, not merely a fraction: appending below the viewport

@@ -1020,17 +1020,19 @@ def test_native_incremental_identity_scroll_focus_text_selection_and_archive(tmp
         assert w.evidence()["viewable"]
         assert not w.expanded and not w.cards["one"].overview.winfo_manager()
         card = w.cards["one"]
+        assert not card.actions.winfo_manager()
+        assert w.session_nav.palette["background"] == "#c12d3d"
+        assert card.window.session_nav.icon.database_image.width() >= 20
+        w.toggle("one")
+        card.toggle_overview()
+        root.update()
         assert card.details_button.master is card.question_button.master
         assert card.details_button.winfo_y() == card.question_button.winfo_y()
         assert card.details_button.winfo_height() == card.question_button.winfo_height()
         assert card.details_button.button.winfo_height() == card.question_button.button.winfo_height()
         assert card.details_button.button.winfo_rooty() == card.question_button.button.winfo_rooty()
         assert card.question_button.winfo_x() > card.details_button.winfo_x()
-        assert w.session_nav.palette["background"] == "#c12d3d"
-        assert card.window.session_nav.icon.database_image.width() >= 20
-        w.toggle("one")
-        card.toggle_overview()
-        root.update()
+        assert card.header.winfo_y() < card.overview.winfo_y() < card.actions.winfo_y() < card.panel.winfo_y()
         card.text.yview_moveto(.4)
         card.text.tag_add("sel", "40.0", "40.5")
         card.text.mark_set("insert", "40.2")
@@ -1089,3 +1091,149 @@ def test_native_incremental_identity_scroll_focus_text_selection_and_archive(tmp
         for timer in root.tk.call("after", "info"):
             root.after_cancel(timer)
         root.destroy()
+
+
+def test_comments_cas_validation_cli_and_read_reopen(tmp_path, session):
+    import jsonschema
+    import subprocess
+    import sys
+    from ticket_master_runtime.results.model import (
+        add_comment, event_digest, is_read, mark_result_read, validate, visible_events,
+    )
+    path = tmp_path / "session.json"
+    sha = write(path, session)
+    sha = add_comment(path, "one", "user", "Bitte Prüfgrenze für Abschnitt 2 erläutern.", 1, sha)
+    current, current_sha = read(path)
+    assert sha == current_sha and current["revision"] == 2
+    assert len(current["events"][0]["comments"]) == 1
+    assert current["events"][0]["comments"][0]["author"] == "user"
+    assert current["events"][0]["comments"][0]["text"] == "Bitte Prüfgrenze für Abschnitt 2 erläutern."
+    assert current["events"][0]["comments"][0]["id"] == "c-1"
+
+    # Mark result as read after user comment; then a model reply via CLI reopens it as unread.
+    sha = mark_result_read(path, "one", 2, sha, event_digest(current["events"][0]))
+    read_state, _ = read(path)
+    assert is_read(read_state, read_state["events"][0])
+    assert visible_events(read_state, archive="Ungelesen") == []
+
+    proc = subprocess.run(
+        [sys.executable, "-m", "ticket_master_runtime.results", "comment", str(path),
+         "--event-id", "one", "--author", "model",
+         "--text", "Abschnitt 2 wurde gegen das Schema geprüft; keine Abweichung.",
+         "--comment-id", "c-model-1", "--revision", "3", "--sha256", sha],
+        capture_output=True, text=True, encoding="utf-8",
+    )
+    assert proc.returncode == 0, proc.stderr
+    after_reply, reply_sha = read(path)
+    assert after_reply["revision"] == 4
+    assert len(after_reply["events"][0]["comments"]) == 2
+    assert after_reply["events"][0]["comments"][1]["id"] == "c-model-1"
+    assert after_reply["events"][0]["comments"][1]["author"] == "model"
+    assert not is_read(after_reply, after_reply["events"][0])
+    assert [e["id"] for e in visible_events(after_reply, archive="Ungelesen")] == ["one"]
+
+    schema = json.loads((Path(__file__).resolve().parents[1] / "contracts/session-results/session.schema.json").read_text(encoding="utf-8"))
+    jsonschema.Draft202012Validator(schema, format_checker=jsonschema.FormatChecker()).validate(after_reply)
+
+    # Reject duplicate comment IDs, stale CAS, missing events, or empty comment text.
+    with pytest.raises(ResultsError):
+        add_comment(path, "one", "model", "Doppelte ID", 4, reply_sha, comment_id="c-model-1")
+    with pytest.raises(ResultsError):
+        add_comment(path, "one", "user", "Veraltete Revision", 3, sha)
+    with pytest.raises(ResultsError):
+        add_comment(path, "missing", "user", "Unbekanntes Event", 4, reply_sha)
+    with pytest.raises(ResultsError):
+        add_comment(path, "one", "user", "   ", 4, reply_sha)
+    broken = copy.deepcopy(after_reply)
+    broken["events"][0]["comments"][0]["created_at"] = "ohne-zeitzone"
+    with pytest.raises(ResultsError):
+        validate(broken)
+
+
+@pytest.mark.skipif(__import__('os').environ.get('TM_NATIVE_UI_TEST') != '1', reason="Opt-in native hierarchy, unclipped read icon, comments, and file tile smoke")
+def test_native_read_icon_unclipped_hierarchy_comments_and_file_tiles(tmp_path, session, native_tk_app):
+    import tkinter as tk
+    from ticket_master_runtime.results.gui import ActionTile, ResultsWindow
+    from ticket_master_runtime.results.model import add_comment
+    doc = tmp_path / "Ärztlicher_Prüfbericht_Übersicht_2026.pdf"
+    doc.write_bytes(b"%PDF-1.4")
+    session["events"][0]["artifacts"] = [
+        {"path": str(doc), "label": "Ärztlicher Prüfbericht\nÜbersicht 2026", "mime": "application/pdf"}
+    ]
+    path = tmp_path / "session.json"
+    write(path, session)
+    root = tk.Toplevel(native_tk_app)
+    try:
+        window = ResultsWindow(root, path, language="de")
+        root.withdraw()
+        root.update()
+        card = window.cards["one"]
+
+        # 1. Read icon on the right of the first header line is unclipped, visible, and clickable.
+        assert card.read_button.button.winfo_width() >= 28
+        assert card.read_button.button.winfo_height() >= 24
+        assert card.read_button.icon.winfo_width() >= 24
+        assert card.read_button.icon.winfo_height() >= 24
+        assert card.read_button.tooltip.text == "Als gelesen markieren"
+        assert card.read_button.icon_kind == "READ"
+        assert card.title_label.winfo_rootx() < card.more_button.winfo_rootx() < card.read_button.button.winfo_rootx()
+
+        # 2. Compact start: Body (overview), actions, and fulltext panel are hidden until "Mehr" is clicked.
+        assert not card.overview.winfo_manager()
+        assert not card.actions.winfo_manager()
+        assert not card.panel.winfo_manager()
+
+        # File tiles never shrink to wraplength=48 while overview is still closed.
+        file_tiles = [w for w in card.artifacts.winfo_children() if isinstance(w, ActionTile)]
+        assert len(file_tiles) == 1
+        file_tile = file_tiles[0]
+        assert int(file_tile.button.cget("wraplength")) >= 140
+        assert "\n" not in file_tile.button.cget("text")
+        assert "PDF · Ärztlicher Prüfbericht Übersicht 2026" in file_tile.button.cget("text")
+        assert file_tile.button.cget("anchor") == "w"
+
+        # 3. Clicking "Mehr" expands the Body inline directly below the header, and places actions BELOW the Body.
+        card.more_button.invoke()
+        root.update()
+        assert card.overview_open
+        assert card.more_button.cget("text") == "Weniger"
+        assert card.overview.winfo_manager() == "pack"
+        assert card.actions.winfo_manager() == "pack"
+        assert not card.panel.winfo_manager()
+        assert card.header.winfo_y() < card.overview.winfo_y() < card.actions.winfo_y()
+        assert card.details_button.button.cget("text") == "Ergebnistext öffnen"
+        assert card.question_button.button.cget("text") == "Nachfrage / Auftrag kopieren"
+        assert int(file_tile.button.cget("wraplength")) >= 140
+        assert file_tile.winfo_width() >= 200
+
+        # 4. Inline comment thread: user adds a comment in the GUI, model answers via CAS, refresh updates thread.
+        card.comment_var.set("Bitte kurze Rückmeldung zur Validierung.")
+        card.comment_button.invoke()
+        root.update()
+        assert card.comment_var.get() == ""
+        assert window.data["revision"] == 2
+        assert window.data["events"][0]["comments"][0]["text"] == "Bitte kurze Rückmeldung zur Validierung."
+        add_comment(path, "one", "model", "Validierung ist vollständig abgeschlossen.", 2, window.sha)
+        window.refresh()
+        root.update()
+        assert window.data["revision"] == 3
+        assert len(card.comments_list.winfo_children()) == 2
+
+        # 5. Clicking "Ergebnistext öffnen" opens fulltext panel below the actions bar.
+        card.details_button.button.invoke()
+        root.update()
+        assert card.panel.winfo_manager() == "pack"
+        assert card.details_button.button.cget("text") == "Ergebnistext schließen"
+        assert card.header.winfo_y() < card.overview.winfo_y() < card.actions.winfo_y() < card.panel.winfo_y()
+
+        # 6. Clicking the read icon marks as read; in view "Alle" it shows the green checkmark (READ_CHECK).
+        window.archive.set("Alle")
+        card.read_button.invoke()
+        root.update()
+        assert card.read_button.icon_kind == "READ_CHECK"
+        assert card.read_button.tooltip.text == "Gelesen"
+    finally:
+        for timer in root.tk.call("after", "info"):
+            root.after_cancel(timer)
+        root.destroy()
+

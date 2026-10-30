@@ -111,6 +111,22 @@ def validate(data):
                     raise ResultsError("URL-Inhalte werden nicht abgerufen oder per Dateihash bestätigt")
             elif not Path(artifact["path"]).is_absolute():
                 raise ResultsError("Artefaktpfade müssen absolut sein")
+        if not isinstance(event.get("comments", []), list):
+            raise ResultsError("comments muss eine Liste sein")
+        comment_ids = set()
+        for comment in event.get("comments", []):
+            if not isinstance(comment, dict) or set(comment) != {"id", "author", "created_at", "text"}:
+                raise ResultsError("Kommentar muss id, author, created_at und text enthalten")
+            for field in ("id", "author", "created_at", "text"):
+                _text(comment.get(field), f"comment.{field}")
+            if comment["id"] in comment_ids:
+                raise ResultsError("Doppelte Kommentar-ID im selben Ergebnis")
+            comment_ids.add(comment["id"])
+            try:
+                if datetime.fromisoformat(comment["created_at"]).tzinfo is None:
+                    raise ValueError()
+            except ValueError as exc:
+                raise ResultsError("Kommentarzeit braucht Zeitzone") from exc
     metrics = data["metrics"]
     for key in ("skills", "tokens", "agents"):
         if not isinstance(metrics.get(key), list):
@@ -212,6 +228,40 @@ def append(path, event, revision, sha256):
     data, _ = read(path)
     data = copy.deepcopy(data)
     data["events"].append(event)
+    data["revision"] = revision + 1
+    data["updated_at"] = now()
+    return write(path, data, revision, sha256)
+
+
+def add_comment(path, event_id, author, text, revision, sha256, *, comment_id=None, created_at=None):
+    """Append a comment, follow-up question, or model reply to an existing event under CAS."""
+    _text(event_id, "event_id")
+    _text(author, "comment.author")
+    _text(text, "comment.text")
+    data, _ = read(path)
+    data = copy.deepcopy(data)
+    event = next((e for e in data["events"] if e["id"] == event_id), None)
+    if event is None:
+        raise ResultsError("Ergebnis-ID ist in dieser Sitzung nicht vorhanden")
+    comments = event.setdefault("comments", [])
+    existing_ids = {c["id"] for c in comments}
+    if comment_id is None:
+        idx = len(comments) + 1
+        comment_id = f"c-{idx}"
+        while comment_id in existing_ids:
+            idx += 1
+            comment_id = f"c-{idx}"
+    else:
+        _text(comment_id, "comment.id")
+        if comment_id in existing_ids:
+            raise ResultsError("Doppelte Kommentar-ID im selben Ergebnis")
+    stamp = now() if created_at is None else created_at
+    comments.append({
+        "id": comment_id.strip(),
+        "author": author.strip(),
+        "created_at": stamp,
+        "text": text.strip(),
+    })
     data["revision"] = revision + 1
     data["updated_at"] = now()
     return write(path, data, revision, sha256)
