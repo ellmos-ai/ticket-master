@@ -1,6 +1,6 @@
 ---
 name: session-results
-description: Create, update or open the native ticket-master result and notification display for the current console session, including all perceived external messages, canonical read receipts, analyses, artifacts and source-bound session metrics.
+description: Create, update or open the native ticket-master result and notification display for the current console session, including all perceived external messages, canonical read receipts, inline comments, analyses, artifacts and source-bound session metrics.
 ---
 
 # Ergebnisse und Meldungen anzeigen
@@ -16,7 +16,8 @@ ticket-master-results read session.json
 ticket-master-results session-data session.json
 ticket-master-results session-data session.json --input metrics-patch.json --revision 1 --sha256 <hash-aus-read>
 ticket-master-results append session.json --input event.json --revision 1 --sha256 <hash-aus-read>
-ticket-master-results replace session.json --input next.json --revision 2 --sha256 <hash-aus-read>
+ticket-master-results comment session.json --event-id <event-id> --author model --text "Antwort" --revision 2 --sha256 <hash-aus-read>
+ticket-master-results replace session.json --input next.json --revision 3 --sha256 <hash-aus-read>
 ticket-master-results open session.json
 ticket-master-results decision-open draw.json --skill-dir /trusted/decision-draw
 ```
@@ -26,7 +27,7 @@ ticket-master-results decision-open draw.json --skill-dir /trusted/decision-draw
 der drei Agenten geprüft; fehlt der Viewer, meldet die CLI das sichtbar und
 installiert nichts. Dateiinhalte dürfen keinen ausführbaren Skillpfad bestimmen.
 
-`read` liefert Revision und SHA-256. `replace` erwartet eine vollständige nächste Revision, exakt alte Revision + 1; `append` vergibt diese nächste Revision selbst. Nach Konflikt erneut lesen und den eigenen Eintrag auf den frischen Stand anwenden. Kooperierende Producer müssen ausschließlich diese CLI/API benutzen. Eine übrig gebliebene `.write-lock` sperrt fail-closed; vor manueller Bereinigung erst den schreibenden Prozess prüfen. Nicht kooperierende Editoren können die letzte Prüfung und das atomare Ersetzen unterlaufen; sie dürfen die Sessiondatei nicht parallel ändern.
+`read` liefert Revision und SHA-256. `replace` erwartet eine vollständige nächste Revision, exakt alte Revision + 1; `append` und `comment` vergeben diese nächste Revision selbst. Nach Konflikt erneut lesen und den eigenen Eintrag auf den frischen Stand anwenden. Kooperierende Producer müssen ausschließlich diese CLI/API benutzen. Eine übrig gebliebene `.write-lock` sperrt fail-closed; vor manueller Bereinigung erst den schreibenden Prozess prüfen. Nicht kooperierende Editoren können die letzte Prüfung und das atomare Ersetzen unterlaufen; sie dürfen die Sessiondatei nicht parallel ändern.
 
 `session-data` liest nur Identität, Revision, Hash und Metriken. Mit `--input`
 aktualisiert es angegebene Metrikgruppen in derselben Datei, erhält alle Events
@@ -37,18 +38,13 @@ Agenten/Skillbeobachtungen bei der Zusammenstellung bewahren.
 
 Ergebnisse brauchen stabile eigene Event-IDs; vorhandene Ticket-, Message-, Receipt- und Log-IDs nur referenzieren. Ergebnis, Status, nächster Schritt und Quelle unterscheiden. `created_at` ist die Eintragszeit, kein nachträglich erfundener Ereigniszeitpunkt. Volltexte können in `details` stehen. Artefakte führen absolute Dateipfade oder gültige HTTPS-URLs, verständliche Labels, MIME-Typen und für lokale Dateien optional SHA-256. Nur bewusste Nutzerklicks öffnen erlaubte Dokumenttypen oder HTTPS-Links; keine ausführbaren Dateien oder Shellbefehle aus JSON. URL-Inhalte werden weder abgerufen noch durch einen Dateihash bestätigt. Andere Protokolle, Zugangsdaten im Link, Steuerzeichen und fremde Ports sind ausgeschlossen. Lokale `.url`-Dateien werden nur als Pfad kopiert.
 
-Jede Ergebniskarte bietet „Nachfrage / Auftrag kopieren“. Die Vorlage enthält
-nur Session-ID, stabile Ergebnis-ID, als Daten quotierten Titel, optional die
-Ticket-ID, absoluten Sessiondateipfad und angezeigte Revision. Der Nutzer fügt
-sie in die Konsole ein und ergänzt „Meine Frage / Anweisung“. Keine Vollberichte,
-Artefaktinhalte, automatische Zustellung oder Modellaufrufe werden kopiert oder
-ausgeführt. Nach späteren Sessionupdates die stabile Ergebnis-ID auflösen.
+Jede Ergebniskarte bietet im aufgeklappten Überblick einen chronologischen Kommentar- und Rückfragenbereich (`comments`) sowie unter dem Body die Aktionskachel „Nachfrage / Auftrag kopieren“. Im Kommentarbereich kann der Nutzer direkt Kommentare, Rückfragen oder Anweisungen speichern (`author: "user"`), und das Modell kann per `ticket-master-results comment` unter Angabe der stabilen `--event-id`, `--revision` und `--sha256` direkt darauf antworten (`author: "model"`). Die Vorlage für „Nachfrage / Auftrag kopieren“ enthält Session-ID, stabile Ergebnis-ID, als Daten quotierten Titel, optional die Ticket-ID, absoluten Sessiondateipfad und angezeigte Revision. Keine Vollberichte, Artefaktinhalte, automatische Zustellung oder Modellaufrufe werden kopiert oder ausgeführt.
 
 Die rechtsbündige Nachfragekachel ist blau, Volltext violett und alle Dateilinks
-sind türkis. Einheitliche native Vektorsymbole, Beschriftungen und Tooltips
-ergänzen die Farben; Icons werden für MD/PDF/HTML/URL/WORD/TXT/PY und weitere
-Formate im Paketcode gezeichnet. Nicht zum sicheren Öffnen freigegebene Typen
-(insbesondere PY) bieten ausdrücklich „Pfad kopieren“, ohne Code auszuführen.
+sind türkis. Einheitliche native Vektorsymbole, linksbündige Beschriftungen und
+Tooltips ergänzen die Farben; Icons werden für MD/PDF/HTML/URL/WORD/TXT/PY und
+weitere Formate im Paketcode gezeichnet. Nicht zum sicheren Öffnen freigegebene
+Typen (insbesondere PY) bieten ausdrücklich „Pfad kopieren“, ohne Code auszuführen.
 
 `metrics.skills/tokens/agents` enthalten ausschließlich tatsächlich gemeldete Nutzung. Jede Beobachtung braucht `source`, `observed_at` und `scope`. Fehlende Tokens bleiben `null` und werden als unbekannt angezeigt. Goal-Zähler sind keine verifizierten Provider-/Billable-Tokens. Angeforderte und tatsächlich belegte Modelle getrennt führen; fehlendes tatsächliches Modell bleibt `null`. Beobachtete Subagenten, aktuelle Aktivität und unbekannte Lifetime-Gesamtzahl ausdrücklich unterscheiden.
 
@@ -81,13 +77,17 @@ Prüfen: `ticket-master-results validate` ist headless. Der opt-in native Smoke 
 
 ## Kompakte Karten, Aktualisierung und Archiv
 
-Neue Karten starten kompakt mit Titel, Art, Zeit und Thema. Der grüne Textlink
-„Mehr“ neben der Überschrift öffnet die Zusammenfassung, Quelle, Status und
-Dateien; „Mehr“ wechselt zu „Weniger“. Rechts in derselben Überschriftenzeile
-steht das Buchsymbol mit Tooltip „Als gelesen markieren“. „Voller Ergebnistext“
-öffnet anschließend den gesamten Bericht. Dieser Button und „Nachfrage / Auftrag
-kopieren“ stehen nebeneinander auf gleicher Höhe. Die Sessiondatenkachel ist rot;
-ihr schwarzes Datenbanksymbol liegt als generierte transparente PNG im Paket.
+Neue Karten starten kompakt mit Titel, Art, Zeit und Thema. Direkt neben der
+Überschrift steht der grüne Textlink „Mehr“ (`More`); ganz rechts in derselben
+ersten Überschriftenzeile steht das Buchsymbol mit Tooltip „Als gelesen markieren“
+(`Mark as read`). Klick auf „Mehr“ klappt direkt darunter inline den Body
+(Zusammenfassung, Status, nächster Schritt, Quelle, Dateikacheln sowie den
+Kommentarverlauf samt „Kommentar hinzufügen“) auf und wechselt zu „Weniger“
+(`Less`). Erst unter dem aufgeklappten Body stehen nebeneinander auf gleicher
+Höhe die beiden Aktionskacheln „Ergebnistext öffnen“ (`Open result text`) und
+„Nachfrage / Auftrag kopieren“ (`Copy follow-up / instruction`), und darunter
+klappt bei Bedarf der vollständige Bericht (`details`) auf. Die Sessiondatenkachel
+ist rot; ihr schwarzes Datenbanksymbol liegt als generierte transparente PNG im Paket.
 
 Die Anzeige gleicht Karten anhand ihrer stabilen Event-ID ab. Unveränderte
 Widgets, Volltextauswahl, Eingabefokus, Suchtext, aufgeklappte Stufen und der
@@ -96,22 +96,24 @@ Inhalte ersetzen keine fremden Sitzungsdaten.
 
 „Als gelesen markieren“ archiviert Ergebnisse lokal in derselben Sessiondatei
 unter `result_reads[event_id] = {read_at, event_sha256}`. Dafür gilt derselbe
-CAS-Vertrag wie für Producerupdates. Der Hash bindet sämtliche Eventinhalte;
-ändert ein Producer den Inhalt derselben ID, wird sie wieder ungelesen angezeigt.
-CAS-Konflikte werden angezeigt und nicht automatisch überschrieben. Beim
-vollständigen `replace` auch vorhandene `result_reads` erhalten. Der Laufzeitvalidator
-verlangt vorhandene Ergebnis-IDs; Message-/System-IDs sind dort ausgeschlossen.
-Lesen ist keine Taskabnahme, keine Entscheidung und keine Inhaltslöschung.
+CAS-Vertrag wie für Producerupdates. Der Hash bindet sämtliche Eventinhalte
+(einschließlich `comments`); ändert ein Producer den Inhalt oder fügt das Modell
+eine Antwort im Kommentarbereich hinzu, wird das Ergebnis automatisch wieder als
+ungelesen angezeigt. CAS-Konflikte werden angezeigt und nicht automatisch
+überschrieben. Beim vollständigen `replace` auch vorhandene `result_reads`
+erhalten. Der Laufzeitvalidator verlangt vorhandene Ergebnis-IDs; Message-/System-IDs
+sind dort ausgeschlossen. Lesen ist keine Taskabnahme, keine Entscheidung und
+keine Inhaltslöschung.
 
 Standardansicht ist „Ungelesen“ (`Unread`). „Archiv“ (`Archive`) zeigt Gelesenes,
 „Alle“ (`All`) beide Gruppen. Bei bereits gelesenen Ergebnissen zeigt das
-Buchsymbol in „Alle“ zusätzlich einen grünen Haken. Überblick, Filterwechsel,
-Navigation und Fensterstart buchen nie eine Lesebestätigung. Ergebnisse werden
-manuell über das Buchsymbol gelesen. Meldungen bleiben standardmäßig manuell;
-die bestehende optionale `on_open`-Einstellung quittiert nur das bewusste Öffnen
-des vollständigen Meldungstexts und nur bei aktueller Ownerfreigabe sowie
-erlaubender Nachrichtenpolicy. Diese Ausnahme wird nicht durch Überblick, `All`
-oder sonstige UI-Erweiterungen neu aktiviert.
+Buchsymbol in „Alle“ und „Archiv“ zusätzlich einen grünen Haken (Tooltip „Gelesen“
+/ `Read`). Überblick, Filterwechsel, Navigation und Fensterstart buchen nie eine
+Lesebestätigung. Ergebnisse werden manuell über das Buchsymbol gelesen. Meldungen
+bleiben standardmäßig manuell; die bestehende optionale `on_open`-Einstellung
+quittiert nur das bewusste Öffnen des vollständigen Meldungstexts und nur bei
+aktueller Ownerfreigabe sowie erlaubender Nachrichtenpolicy. Diese Ausnahme wird
+nicht durch Überblick, `All` oder sonstige UI-Erweiterungen neu aktiviert.
 Die Themenliste enthält nur Themen der gewählten Archivansicht. Meldungen dürfen
 erst nach kanonischem Owner-ACK/Readback aus „Ungelesen“ verschwinden; unbekannte,
 fehlerhafte und ungebundene Meldungen bleiben sichtbar. Es gibt keine zusätzliche
