@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import jsonschema
@@ -34,7 +35,7 @@ def test_subject_uses_real_message_store_and_never_forges_t_ticket(tmp_path):
     message = line.create(
         config=_config(), origin_ref="fixture:automation", recipient_ref="fixture:user",
         content_text="Prüfung mit Umlauten äöü", delivery_mode="on_demand",
-        today="2026-10-27",
+        created_at=datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc), today="2026-10-27",
     )
     first = build_message_route_intent(
         line, message["message_id"], target_ref="fixture:recipient",
@@ -64,7 +65,7 @@ def test_current_disable_and_changed_ids_fail_before_a_handoff(tmp_path):
     line = MessagesLine(tmp_path / "messages")
     message = line.create(
         config=_config(), origin_ref="fixture:manual", recipient_ref="fixture:user",
-        content_text="Synthetic", delivery_mode="on_demand", today="2026-10-27",
+        content_text="Synthetic", delivery_mode="on_demand", created_at=datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc), today="2026-10-27",
     )
     with pytest.raises(MessageLineError, match="current config"):
         build_message_route_intent(
@@ -83,7 +84,7 @@ def test_unverified_external_ack_import_remains_closed(tmp_path):
     line = MessagesLine(tmp_path / "messages")
     message = line.create(
         config=_config(), origin_ref="fixture:log", recipient_ref="fixture:user",
-        content_text="Synthetic", delivery_mode="on_demand", today="2026-10-27",
+        content_text="Synthetic", delivery_mode="on_demand", created_at=datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc), today="2026-10-27",
     )
     ack = line.record_observation(
         message["message_id"], target_ref="fixture:recipient", surface="registered_server",
