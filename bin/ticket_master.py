@@ -17,6 +17,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import sysconfig
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -32,7 +33,15 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
-from config_paths import expand_placeholders, resolve_queue_alias  # noqa: E402
+from config_paths import QueueAliasError, expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
+from ticket_inventory import capture_inventory  # noqa: E402
+from messages_line import (  # noqa: E402
+    DELIVERY_MODES,
+    SURFACES,
+    MessagesLine,
+    validate_log_registry,
+    validate_messages_config,
+)
 
 
 class ConfigError(ValueError):
@@ -123,10 +132,17 @@ def _resolve_path(raw: Any, *, root: Path, field: str, allow_outside: bool) -> P
 def resolve_tickets_dir(
     config: str | Path | None = None,
     override: str | Path | None = None,
+    *, preserve_links: bool = False,
 ) -> Path:
     cfg = load_config(config)
     raw = override if override is not None else cfg.get("tickets_dir", "tickets")
-    path = _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
+    if preserve_links:
+        path = resolve_config_path(raw)
+        if path is None:
+            raise ConfigError("tickets_dir must be a non-empty path")
+        path = Path(os.path.abspath(path if path.is_absolute() else REPO_ROOT / path))
+    else:
+        path = _resolve_path(raw, root=REPO_ROOT, field="tickets_dir", allow_outside=True)
     # Rename-tolerant, solange `_TICKETS` -> `TICKETS` nicht auf allen Hosts
     # angekommen ist (T-20260906-387521104).
     return resolve_queue_alias(path)
@@ -151,10 +167,22 @@ def resolve_prompt(
     """
 
     cfg = load_config(config)
-    raw_dir = cfg.get("prompts_dir", "prompts")
-    prompt_dir = _resolve_path(
-        raw_dir, root=REPO_ROOT, field="prompts_dir", allow_outside=False
-    )
+    raw_dir = cfg.get("prompts_dir")
+    if raw_dir is None:
+        source_prompts = REPO_ROOT / "prompts"
+        installed_prompts = (
+            Path(sysconfig.get_path("data")) / "share" / "ticket-master" / "prompts"
+        )
+        if source_prompts.is_dir():
+            prompt_dir = source_prompts.resolve()
+        elif installed_prompts.is_dir():
+            prompt_dir = installed_prompts.resolve()
+        else:
+            raise ConfigError("default prompt data not found in source tree or installed distribution")
+    else:
+        prompt_dir = _resolve_path(
+            raw_dir, root=REPO_ROOT, field="prompts_dir", allow_outside=False
+        )
     requested = language if language is not None else os.environ.get("TM_LANG")
     if requested is None:
         requested = cfg.get("default_language", "en")
@@ -411,6 +439,128 @@ def launch_provider(
     return subprocess.run(command, cwd=REPO_ROOT, check=False).returncode
 
 
+def _messages_data_path(value: str | None, filename: str) -> Path:
+    """Resolve an explicit Messages-Line document or its packaged example."""
+    if value is not None:
+        path = Path(value).expanduser()
+        return (path if path.is_absolute() else Path.cwd() / path).resolve()
+
+    candidates = (
+        REPO_ROOT / "config" / filename,
+        Path(sysconfig.get_path("data")) / "share" / "ticket-master" / "config" / filename,
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    raise ConfigError(f"Messages-Line example document is unavailable: {filename}")
+
+
+def _read_messages_document(path: Path, label: str) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ConfigError(f"cannot read {label} JSON: {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ConfigError(f"{label} JSON must contain an object: {path}")
+    return value
+
+
+def _required_message_options(args: argparse.Namespace, *names: str) -> None:
+    missing = [name for name in names if getattr(args, name) is None]
+    if missing:
+        flags = ", ".join("--" + name.replace("_", "-") for name in missing)
+        raise ConfigError(f"--messages-line {args.messages_line} requires {flags}")
+
+
+def _emit_messages_json(value: Any) -> None:
+    print(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+def run_messages_line(args: argparse.Namespace) -> int:
+    """Expose the local Messages-Line APIs without transport or auto-ack."""
+    action = args.messages_line
+    if action == "config":
+        raw = _read_messages_document(
+            _messages_data_path(args.messages_config, "messages-line.example.json"),
+            "Messages-Line config",
+        )
+        _emit_messages_json(validate_messages_config(raw))
+        return 0
+    if action == "registry":
+        raw = _read_messages_document(
+            _messages_data_path(args.log_registry, "log-registry.example.json"),
+            "log registry",
+        )
+        _emit_messages_json(validate_log_registry(raw))
+        return 0
+
+    _required_message_options(args, "messages_dir")
+    line = MessagesLine(args.messages_dir)
+    if action == "list":
+        rows = line.by_thread(args.thread_id) if args.thread_id else line.list_messages()
+        _emit_messages_json(rows)
+        return 0
+    if action == "read":
+        _required_message_options(args, "message_id")
+        _emit_messages_json(line.get(args.message_id))
+        return 0
+    if action == "create":
+        _required_message_options(
+            args,
+            "origin_ref",
+            "recipient_ref",
+            "content_text",
+            "delivery_mode",
+        )
+        config = validate_messages_config(
+            _read_messages_document(
+                _messages_data_path(args.messages_config, "messages-line.example.json"),
+                "Messages-Line config",
+            )
+        )
+        message = line.create(
+            config=config,
+            origin_ref=args.origin_ref,
+            recipient_ref=args.recipient_ref,
+            content_text=args.content_text,
+            delivery_mode=args.delivery_mode,
+            thread_id=args.thread_id,
+        )
+        _emit_messages_json(message)
+        return 0
+    if action == "ack":
+        _required_message_options(
+            args,
+            "message_id",
+            "target_ref",
+            "surface",
+            "channel_ref",
+            "actor_ref",
+            "evidence_ref",
+        )
+        config = validate_messages_config(
+            _read_messages_document(
+                _messages_data_path(args.messages_config, "messages-line.example.json"),
+                "Messages-Line config",
+            )
+        )
+        receipt = line.acknowledge(
+            args.message_id,
+            target_ref=args.target_ref,
+            surface=args.surface,
+            channel_ref=args.channel_ref,
+            actor_ref=args.actor_ref,
+            evidence_ref=args.evidence_ref,
+            current_config=config,
+            observed_at=args.observed_at,
+        )
+        _emit_messages_json(
+            {"receipt": receipt, "delivery_state": line.delivery_state(args.message_id)}
+        )
+        return 0
+    raise ConfigError(f"unsupported Messages-Line action: {action}")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ticket_master",
@@ -426,9 +576,36 @@ def build_parser() -> argparse.ArgumentParser:
         help="create one exclusive INBOX intake ticket; DESCRIPTION may also come from --body",
     )
     mode.add_argument("--print-prompt", action="store_true", help="resolve and print the prompt path")
-    parser.add_argument("--json", action="store_true", help="emit --list output as JSON")
+    mode.add_argument("--ticket-inventory", "--ticketinventur", action="store_true",
+                      help="capture a read-only Ticketinventur matrix as JSON; no provider starts")
+    mode.add_argument(
+        "--messages-line",
+        choices=("create", "list", "read", "ack", "config", "registry"),
+        metavar="ACTION",
+        help="use the local Messages-Line core (never sends or auto-acknowledges)",
+    )
+    parser.add_argument("--inventory-content", action="store_true",
+                        help="include private source text in inventory JSON; store outside the watched queue")
+    parser.add_argument("--json", action="store_true",
+                        help="emit --list, --ticket-inventory or --messages-line output as JSON")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")
     parser.add_argument("--config", help="path to local JSON config")
+    parser.add_argument("--messages-dir", help="explicit local Messages-Line store for create/list/read/ack")
+    parser.add_argument("--messages-config", help="current Messages-Line config JSON; defaults to the disabled example")
+    parser.add_argument("--log-registry", help="log-registry JSON for --messages-line registry")
+    parser.add_argument("--message-id", help="MessageID for --messages-line read/ack")
+    parser.add_argument("--thread-id", help="existing ThreadID filter or thread for --messages-line create")
+    parser.add_argument("--origin-ref", help="opaque origin reference for --messages-line create")
+    parser.add_argument("--recipient-ref", help="opaque recipient reference for --messages-line create")
+    parser.add_argument("--content-text", help="message text stored locally by --messages-line create")
+    parser.add_argument("--delivery-mode", choices=sorted(DELIVERY_MODES),
+                        help="delivery mode snapshot for --messages-line create")
+    parser.add_argument("--target-ref", help="configured target reference for manual ack")
+    parser.add_argument("--surface", choices=sorted(SURFACES), help="surface for manual ack")
+    parser.add_argument("--channel-ref", help="channel reference for manual ack")
+    parser.add_argument("--actor-ref", help="actor reference for manual ack")
+    parser.add_argument("--evidence-ref", help="evidence reference for manual ack")
+    parser.add_argument("--observed-at", help="optional timezone-aware timestamp for manual ack")
     parser.add_argument(
         "--body",
         help="intake body; the public producer contract (--title/--body) used by system-auditor",
@@ -446,8 +623,17 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.json and not args.list:
-            raise ConfigError("--json is only valid with --list")
+        if args.json and not (args.list or args.ticket_inventory or args.messages_line):
+            raise ConfigError("--json is only valid with --list, --ticket-inventory or --messages-line")
+        if args.inventory_content and not args.ticket_inventory:
+            raise ConfigError("--inventory-content requires --ticket-inventory")
+        if args.messages_line:
+            return run_messages_line(args)
+        if args.ticket_inventory:
+            report = capture_inventory(resolve_tickets_dir(args.config, args.tickets_dir, preserve_links=True),
+                                       include_content=args.inventory_content)
+            print(json.dumps(report, ensure_ascii=False, indent=2))
+            return 2 if report["errors"] else 0
         if args.print_prompt:
             _lang, path, warnings = resolve_prompt(config=args.config, language=args.lang)
             for warning in warnings:
@@ -475,7 +661,7 @@ def main(argv: list[str] | None = None) -> int:
             language=args.lang,
             skip_permissions=args.skip_permissions,
         )
-    except (ConfigError, ValueError, OSError) as exc:
+    except (ConfigError, QueueAliasError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

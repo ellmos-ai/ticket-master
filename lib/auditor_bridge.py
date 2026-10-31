@@ -16,8 +16,8 @@ Four pure-ish functions plus a CLI:
   multi-agent run, and a silent read failure looks exactly like a quiet normal
   state (the same failure mode this ticket's night was named after).
 * decide(config)        -- combines the above into one spawn/skip verdict.
-* findings_to_tickets() -- turns system-auditor findings/*.md into draft
-  ticket-master INBOX tickets, deduplicated by the finding's own ID.
+* findings_to_tickets() -- keeps finding-ID duplicate protection while
+  exposing linked tickets that lack a current readback as needs_readback.
 
 CLI:
     python lib/auditor_bridge.py --check [--manual] [--config <ticket-master.config.json>]
@@ -28,8 +28,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -382,16 +384,222 @@ def decide(config: dict[str, Any], *, manual: bool = False) -> dict[str, Any]:
 # findings_to_tickets
 # --------------------------------------------------------------------------
 
-def _finding_already_ticketed(finding_id: str, tickets_dir: Path) -> bool:
-    """Grep every lifecycle ticket file for the finding ID (dedup key)."""
+_FINDING_OBSERVATION_DATE_RE = re.compile(r"^M-(\d{8})-")
+_READBACK_LOG_LINE_RE = re.compile(
+    r"^\s*(?P<date>\d{4}-\d{2}-\d{2})\s*\|\s*"
+    r"(?P<actor>[^|\s@]+@[^|\s@]+)\s*\|\s*"
+    r"(?P<statement>.+?)\s+—\s+(?P<evidence>\S.*)\s*$",
+    re.IGNORECASE,
+)
+# This is a bounded recognizer, not a bag of positive/negative keywords.
+# Every clause must be consumed by an assertion or evidence production. Thus
+# an unrecognized qualification cannot borrow a neighbouring hash/path to
+# turn a non-measurement into a receipt. See docs/AUDITOR_READBACK.md.
+_READBACK_PATH = r"(?:[A-Za-z]:[\\/]|[./\\]|[\w.-]+[/\\])[\w./\\:-]+|[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)"
+_READBACK_SCALAR = (
+    r"(?:-?\d+(?:\.\d+)?|true|false|none|unknown|clear|locked|open|closed|"
+    r"present|missing|available|unavailable|error|failed|pass|passed|fail|"
+    r"frei|gesperrt|offen|geschlossen|vorhanden|fehlt|unbekannt|"
+    r"aktiv|inaktiv|dedup-aware)"
+)
+_READBACK_FIELDS_RE = re.compile(
+    rf"(?P<key>location|ort|path|pfad|value|wert|observed|beobachtet|state|status|lock)"
+    rf"\s*[:=]\s*(?P<value>{_READBACK_PATH}|{_READBACK_SCALAR})(?=\s|$)",
+    re.IGNORECASE,
+)
+_READBACK_PROSE_RE = re.compile(
+    rf"(?:at|in|bei|an|Ort:|Pfad:)?\s*(?P<location>{_READBACK_PATH})\s+"
+    rf"(?:(?:currently|derzeit|aktuell)\s+)?"
+    rf"(?:is|was|ist|sind|shows?|showed|reports?|reported|returns?|returned|"
+    rf"contains?|contained|lists?|listed|zeigt|zeigte|meldet|meldete|liefert|"
+    rf"lieferte|enthält|ergibt|ergab|beträgt)\s+(?P<value>{_READBACK_SCALAR})"
+    rf"(?:\s+(?:linked\s+|verknüpfte\s+)?(?:tickets?|files?|Dateien|locks?|entries|Einträge|tests?))?",
+    re.IGNORECASE,
+)
+_READBACK_ARTIFACT_RE = re.compile(
+    rf"(?:(?:sha-?256|hash)\s*[:=]?\s*[0-9a-f]{{8,64}}|"
+    rf"commit\s+[0-9a-f]{{7,40}}|https?://[^\s;]+|"
+    rf"(?:(?:log|receipt|report|Beleg|Protokoll)\s*[:=]\s*)?(?:{_READBACK_PATH}))",
+    re.IGNORECASE,
+)
+_READBACK_TEST_RE = re.compile(
+    # Arguments are flags/paths, not arbitrary prose that could hide a denial.
+    rf"(?:python\s+-m\s+)?pytest(?:\s+(?:-[\w=-]+|(?:{_READBACK_PATH})))*\s*:\s*"
+    rf"\d+\s+(?:passed|failed|skipped|errors?)(?:,\s*\d+\s+(?:passed|failed|skipped|errors?))*",
+    re.IGNORECASE,
+)
+_READBACK_COMMAND_RE = re.compile(
+    rf"(?:lock_scan|(?:API|CLI|query|command|Messung)\s+(?:readback\s+)?"
+    rf"(?:returned|reports?|shows?|liefert|meldet|ergibt|zeigt)|"
+    rf"command\s*[:=]\s*[\w./\\-]+)"
+    rf"(?:\s+(?:--[\w-]+|(?:{_READBACK_PATH})))*\s+"
+    rf"(?P<outputs>(?:(?:exit(?:[_ -]?code)?|http|status|value|result|output)"
+    rf"\s*[:=]\s*{_READBACK_SCALAR}(?=\s|$)\s*)+)",
+    re.IGNORECASE,
+)
+_READBACK_OUTPUT_RE = re.compile(
+    rf"(?P<key>exit(?:[_ -]?code)?|http|status|value|result|output)\s*[:=]\s*"
+    rf"(?P<value>{_READBACK_SCALAR})(?=\s|$)", re.IGNORECASE,
+)
+
+
+def _readback_assertion(finding_id: str, statement: str) -> str | None:
+    """Bind one ID, an actual location and a value in one complete assertion."""
+    prefix = re.match(
+        rf"(?i:Finding|Readback|Messung)?\s*{re.escape(finding_id)}\s+", statement,
+    )
+    if prefix is None:
+        return None
+    body = statement[prefix.end():].strip()
+    prose = _READBACK_PROSE_RE.fullmatch(body)
+    if prose:
+        return prose.group("value").lower()
+    fields: dict[str, str] = {}
+    while body:
+        field = _READBACK_FIELDS_RE.match(body)
+        if field is None:
+            return None
+        key, value = field.group("key").lower(), field.group("value")
+        if key in {"location", "ort", "path", "pfad"}:
+            key = "location"
+            if re.fullmatch(_READBACK_PATH, value, re.IGNORECASE) is None:
+                return None
+        elif key in {"value", "wert", "observed", "beobachtet"}:
+            key = "value"
+        if key != "location" and re.fullmatch(_READBACK_SCALAR, value, re.IGNORECASE) is None:
+            return None
+        if key in fields:
+            return None  # ambiguous, even if two spellings happen to agree
+        fields[key] = value.lower()
+        body = body[field.end():].strip()
+    if "location" not in fields:
+        return None
+    results = {fields[key] for key in ("value", "state", "status") if key in fields}
+    if len(results) != 1:
+        return None
+    return fields.get("value", fields.get("state", fields.get("status")))
+
+
+def _readback_evidence(value: str, evidence: str) -> bool:
+    """Recognize entire evidence clauses; unknown context stays observable.
+
+    A failed command is an observation too. Its exit code need not be zero;
+    reported state/value outputs, however, must agree with the assertion.
+    """
+    measured = False
+    concrete = False
+    for clause in evidence.split(";"):
+        clause = clause.strip()
+        if not clause:
+            return False
+        command = _READBACK_COMMAND_RE.fullmatch(clause)
+        if command:
+            outputs = list(_READBACK_OUTPUT_RE.finditer(command.group("outputs")))
+            # Every spelling names the same exit-code measurement.
+            keys = [
+                "exit" if item.group("key").lower().startswith("exit")
+                else item.group("key").lower()
+                for item in outputs
+            ]
+            if len(keys) != len(set(keys)):
+                return False
+            states = [item.group("value").lower() for item in outputs
+                      if item.group("key").lower() in {"status", "value", "result", "output"}]
+            if states and any(state != value for state in states):
+                return False
+            measured = True
+            concrete = True
+        elif _READBACK_TEST_RE.fullmatch(clause):
+            failures = sum(int(count) for count in re.findall(r"(\d+)\s+(?:failed|errors?)", clause, re.I))
+            if value in {"failed", "fail", "error"} and not failures:
+                return False
+            if value in {"clear", "frei", "pass", "passed"} and failures:
+                return False
+            measured = True
+            concrete = True
+        elif _READBACK_ARTIFACT_RE.fullmatch(clause):
+            concrete = True
+        elif clause.lower() in {"no lock found", "kein lock gefunden"} and value in {"clear", "frei"}:
+            pass  # observed absence of a lock, not absence of a measurement
+        else:
+            return False
+    # Ambiguous failure/absence words require an execution result. A standalone
+    # hash plus "unavailable" cannot establish whether anything was measured.
+    return concrete and (
+        measured or value not in {"missing", "unavailable", "error", "failed", "fehlt", "fail"}
+    )
+
+
+def _finding_observation_date(finding_id: str) -> date | None:
+    """Date encoded by system-auditor's M-YYYYMMDD finding ID, if valid."""
+    match = _FINDING_OBSERVATION_DATE_RE.match(finding_id)
+    if match is None:
+        return None
+    value = match.group(1)
+    try:
+        return date(int(value[:4]), int(value[4:6]), int(value[6:8]))
+    except ValueError:
+        return None
+
+
+def _contains_finding_id(text: str, finding_id: str) -> bool:
+    """Match a full ID token so a longer, different finding cannot validate it."""
+    return re.search(
+        rf"(?<![A-Za-z0-9_-]){re.escape(finding_id)}(?![A-Za-z0-9_-])",
+        text,
+    ) is not None
+
+
+def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
+    """Recognize bounded dated assertions, never infer truth from ID linkage.
+
+    A receipt predating the finding is stale; future dates are not current.
+    There is no additional TTL or claim of general natural-language validation.
+    Unrecognized/ambiguous assertions remain needs_readback, without a duplicate.
+    """
+    observation_date = _finding_observation_date(finding_id)
+    if observation_date is None:
+        return False
+
+    for line in ticket_text.splitlines():
+        match = _READBACK_LOG_LINE_RE.match(line)
+        if match is None:
+            continue
+        try:
+            readback_date = date.fromisoformat(match.group("date"))
+        except ValueError:
+            continue
+        if readback_date < observation_date or readback_date > date.today():
+            continue
+
+        value = _readback_assertion(finding_id, match.group("statement"))
+        if value is None:
+            continue
+        evidence = match.group("evidence")
+        if not _readback_evidence(value, evidence):
+            continue
+        return True
+    return False
+
+
+def _finding_ticket_links(
+    finding_id: str, tickets_dir: Path,
+) -> list[tuple[Path, str]]:
+    """Return tickets that link the ID; a link alone is not a current readback."""
+    links: list[tuple[Path, str]] = []
     for entry, _date, _number, _suffix in ticket_writer.iter_lifecycle_files(tickets_dir):
         try:
             text = entry.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if finding_id in text:
-            return True
-    return False
+        if _contains_finding_id(text, finding_id):
+            links.append((entry, text))
+    return links
+
+
+def _finding_already_ticketed(finding_id: str, tickets_dir: Path) -> bool:
+    """Whether any ticket links the ID; callers must still assess its readback."""
+    return bool(_finding_ticket_links(finding_id, tickets_dir))
 
 
 def _finding_to_ticket_text(path: Path, finding_id: str) -> tuple[str, str]:
@@ -430,11 +638,27 @@ def findings_to_tickets(
 
     for path in sorted(findings_dir.glob("M-*.md")):
         finding_id = path.stem
-        if _finding_already_ticketed(finding_id, tickets_dir):
-            results.append({
-                "finding_id": finding_id, "finding_path": str(path),
-                "status": "skipped_existing", "ticket_path": None,
-            })
+        links = _finding_ticket_links(finding_id, tickets_dir)
+        if links:
+            current_links = [
+                entry for entry, ticket_text in links
+                if _has_current_readback(finding_id, ticket_text)
+            ]
+            if current_links:
+                results.append({
+                    "finding_id": finding_id, "finding_path": str(path),
+                    "status": "skipped_existing", "ticket_path": None,
+                })
+            else:
+                results.append({
+                    "finding_id": finding_id, "finding_path": str(path),
+                    "status": "needs_readback", "ticket_path": None,
+                    "existing_ticket_paths": [str(entry) for entry, _ in links],
+                    "reason": (
+                        "finding ID is linked, but no current dated location/value "
+                        "readback receipt was recognized; duplicate creation suppressed"
+                    ),
+                })
             continue
 
         title, body = _finding_to_ticket_text(path, finding_id)

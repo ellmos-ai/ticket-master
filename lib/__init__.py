@@ -15,6 +15,12 @@ from .routing_contract import (
     release_contract,
 )
 from .ticket_writer import create, create_routed_ticket
+from .message_route_contract import (
+    MESSAGE_ROUTE_SCHEMA,
+    build_message_route_intent,
+    payload_digest,
+    validate_message_route_intent,
+)
 from .ticket_note import append_ticket_note, update_ticket_note
 from .unicorn_intake import (
     IntakeValidationError,
@@ -43,6 +49,10 @@ from .trithon_shadow import (
 __all__ = [
     "append_ticket_note",
     "build_route_intent",
+    "build_message_route_intent",
+    "MESSAGE_ROUTE_SCHEMA",
+    "payload_digest",
+    "validate_message_route_intent",
     "claim_contract",
     "complete_contract",
     "create",

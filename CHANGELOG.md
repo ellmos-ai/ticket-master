@@ -10,6 +10,22 @@ All notable changes to ticket-master are documented here.
   configured TASKPLAN role/provider/model and task/lock/scope gates. The
   private profile and installed runtime remain separate activation gates.
 
+### Messages-Line contract foundation
+
+- Add retrievable text Message-Ticket records with stable ticket-style MessageIDs, ThreadIDs and one canonical ReceiptID per message; reuse `ticket_writer.draw_id()` and exclusive file creation.
+- Add closed schemas and validators for delivery receipts, disabled-by-default routing modes, GUI-open acknowledgement policy, and provenance-only 24-hour/monthly log sources.
+- Add a persistent, idempotent message-acknowledgement ledger that binds channel observations to the same per-message ReceiptID across restart and replay; no transport queue or retry loop is added.
+- Keep `.SYNC` transport and system-gap-master reconciliation as the cross-system boundary; document GUI/server adapters as pending.
+
+### Ticketinventur / ticket inventory
+
+- Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.
+- Add the local workflow adapter for complete semantic consolidation, active remainder preservation, reversible native archive moves and separate independent acceptance.
+- Traverse queue entries through held no-follow handles, report queue alias conflicts cleanly, and include historical `_logs` files as ancillary evidence.
+- Package one shared inventory CLI for source and wheel installs, resolve installed prompts, and expose the inventory library through a public module entry point.
+- Close POSIX directory probes when fallback classification excludes cache and root evidence directories.
+
+
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
 
 - **Bilinguale CONTRIBUTING Guidelines (EN/DE)**: Deployed canonical `CONTRIBUTING.md` defining development guidelines, Plan D local-first clone setup (`C:\_Local_DEV\repos\ticket-master`), quality gates (`pytest`, `ruff check`, `compileall`, `git diff --check`), unprivileged `RunAsInvoker` mode, all ten governance invariants `INV-LOCAL-01` through `INV-SLA-10`, canonical lock discipline, version freeze rule (`T-20260920-167562623`), and 48-hour security response SLA.

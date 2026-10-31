@@ -10,7 +10,8 @@
     "control.tickets",
     "workflow.ticket-triage",
     "tickets.capture",
-    "control.trithon-shadow"
+    "control.trithon-shadow",
+    "tickets.inventory"
   ],
   "requires": [],
   "optional": [
@@ -40,7 +41,16 @@
     "path": ".",
     "repository": "https://github.com/ellmos-ai/ticket-master"
   },
-  "adapters": [],
+  "adapters": [
+    {
+      "type": "cli-wrapper",
+      "id": "ocean-tickets-inventory",
+      "target": "open-ocean:ocean.py tickets inventory",
+      "status": "source-and-isolated-runtime-smoke-pass",
+      "role": "read-only host adapter",
+      "note": "Delegates to ticket_master_runtime.adapters.ocean and the shared inventory engine; an isolated OCEAN CLI smoke passed. No task or database access. BACH host CLI binding remains separate and unverified."
+    }
+  ],
   "roles": [
     {
       "id": "ticket-master",

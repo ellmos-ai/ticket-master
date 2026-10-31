@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:message-receipt-ledger:v1",
+  "title": "Ticket-Master Canonical Message Receipt Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "receipt_id", "message_id"],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.message-receipt-ledger.v1"},
+    "receipt_id": {"type": "string", "pattern": "^R-[0-9]{8}-[1-9][0-9]{8}$"},
+    "message_id": {"type": "string", "pattern": "^M-[0-9]{8}-[1-9][0-9]{8}$"}
+  }
+}
