@@ -676,6 +676,13 @@ Four optional layers turn the plain ticket router into a personal-assistant tria
 - **Delegation wiring (1.7.0, extended 1.8.0):** The prompt's intake gate resolves an `ENDPOINT` for a matched domain; model selection prefers an optional external `router_command` over the built-in score-formula fallback; permission checks against `LOCK*.txt` run before worker spawn; and `woche`/`backlog`-urgency tickets are handed to an optional `task_db_command`.
 - **System-knowledge layer (1.9.0):** `config/knowledge.json` lists knowledge sources in four categories: `maps`, `state`, `capabilities`, and `user_model`.
 
+An optional, claim-bound AgentLauncher SDK adapter for a single rotating
+TASKPLAN companion is described in [the German dispatch protocol](docs/COMPANION_DISPATCH.de.md).
+It needs a fresh controller attestation backed by native management and quota
+readbacks, a configured TASKPLAN role/provider/model, and an active private
+session profile. It never treats a launcher exit code or native chat spawn as
+an accepted companion. AgentLauncher and TASKPLAN remain optional integrations.
+
 ---
 
 <a id="sec-14"></a>

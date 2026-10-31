@@ -677,6 +677,14 @@ Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen 
 - **Delegations-Verdrahtung (1.7.0, 1.8.0):** Auflösung des passenden Endpunkts, Schutz durch Permission-Prüfung gegen `LOCK*.txt` und Weiterleitung an `task_db_command`.
 - **Systemwissen-Ebene (1.9.0):** `config/knowledge.json` strukturiert Wissensquellen in `maps`, `state`, `capabilities` und `user_model`.
 
+Der optionale, an einen Claim gebundene SDK-Start einer einzigen rotierenden
+TASKPLAN-Begleitrolle ist im [Bedienvertrag](docs/COMPANION_DISPATCH.de.md)
+beschrieben. Er verlangt einen frischen Steueragentenbeleg mit nativen
+Management- und Quotenreadbacks, ein konfiguriertes Rollenmodell und ein
+aktives privates Sitzungsprofil. Weder ein Launcher-Exitcode noch ein nativer
+Chat-Spawn gilt als bestätigte Annahme. TASKPLAN und AgentLauncher bleiben
+optionale Integrationen.
+
 ---
 
 <a id="sec-14"></a>

@@ -4,6 +4,12 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+- T411: Added an optional, one-attempt AgentLauncher SDK companion dispatcher
+  bound to the existing session claim and native ACK verifier. Controller
+  admissions bind fresh management/quota readbacks, slot classification, the
+  configured TASKPLAN role/provider/model and task/lock/scope gates. The
+  private profile and installed runtime remain separate activation gates.
+
 ### Messages-Line contract foundation
 
 - Add retrievable text Message-Ticket records with stable ticket-style MessageIDs, ThreadIDs and one canonical ReceiptID per message; reuse `ticket_writer.draw_id()` and exclusive file creation.
