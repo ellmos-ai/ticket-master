@@ -265,6 +265,196 @@ class TicketMasterCliTests(unittest.TestCase):
             text = (ROOT / "bin" / name).read_text(encoding="utf-8")
             self.assertIn("ticket_master.py", text, name)
 
+    def test_messages_line_public_cli_exposes_local_core_without_transport(self):
+        import ticket_master_runtime.cli as packaged_cli
+        from lib.messages_line import MessagesLine
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            messages_dir = root / "private-messages"
+            active_config = {
+                "schema": "ellmos.ticket.messages-line-config.v1",
+                "updated_at": "2026-10-27T12:00:00Z",
+                "enabled": True,
+                "delivery_modes": {
+                    "chat_start": True,
+                    "on_demand": True,
+                    "active_chat": True,
+                },
+                "targets": [{"target_ref": "fixture:local-gui", "surface": "local_gui"}],
+                "gui_open_counts_as_delivery": True,
+                "message_content_logging": False,
+                "audio_logging": False,
+                "transport_contract_ref": "ellmos.ticket.route-intent.v1",
+            }
+            disabled_config = {
+                **active_config,
+                "updated_at": "2026-10-27T12:02:00Z",
+                "enabled": False,
+            }
+            active_path = root / "active-messages-config.json"
+            active_path.write_text(json.dumps(active_config), encoding="utf-8")
+            disabled_path = root / "disabled-messages-config.json"
+            disabled_path.write_text(json.dumps(disabled_config), encoding="utf-8")
+            registry_path = root / "log-registry.json"
+            registry_path.write_text(
+                json.dumps({"schema": "ellmos.ticket.log-registry.v1", "sources": []}),
+                encoding="utf-8",
+            )
+
+            def invoke(argv):
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    code = packaged_cli.main(argv)
+                return code, stdout.getvalue(), stderr.getvalue()
+
+            common = ["--messages-dir", str(messages_dir)]
+            code, output, _error = invoke(["--messages-line", "config"])
+            self.assertEqual(code, 0)
+            self.assertFalse(json.loads(output)["enabled"])
+            code, output, _error = invoke(["--messages-line", "registry"])
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output)["sources"], [])
+
+            code, output, _error = invoke(
+                [
+                    "--messages-line",
+                    "create",
+                    *common,
+                    "--json",
+                    "--messages-config",
+                    str(active_path),
+                    "--origin-ref",
+                    "fixture:automation",
+                    "--recipient-ref",
+                    "fixture:user",
+                    "--content-text",
+                    "CLI fixture message.",
+                    "--delivery-mode",
+                    "on_demand",
+                ]
+            )
+            self.assertEqual(code, 0)
+            first = json.loads(output)
+            self.assertEqual(first["content_text"], "CLI fixture message.")
+            self.assertEqual(first["target_snapshot"], active_config["targets"])
+
+            core = MessagesLine(messages_dir)
+            self.assertEqual(core.delivery_state(first["message_id"]), "prepared")
+
+            code, output, _error = invoke(
+                [
+                    "--messages-line",
+                    "create",
+                    *common,
+                    "--messages-config",
+                    str(active_path),
+                    "--origin-ref",
+                    "fixture:automation",
+                    "--recipient-ref",
+                    "fixture:user",
+                    "--content-text",
+                    "Second CLI fixture message.",
+                    "--delivery-mode",
+                    "active_chat",
+                    "--thread-id",
+                    first["thread_id"],
+                ]
+            )
+            self.assertEqual(code, 0)
+            second = json.loads(output)
+            self.assertEqual(second["thread_id"], first["thread_id"])
+
+            code, output, _error = invoke(
+                ["--messages-line", "read", *common, "--message-id", first["message_id"]]
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output)["content_text"], "CLI fixture message.")
+            self.assertEqual(core.delivery_state(first["message_id"]), "prepared")
+
+            code, output, _error = invoke(
+                [
+                    "--messages-line",
+                    "list",
+                    *common,
+                    "--json",
+                    "--thread-id",
+                    first["thread_id"],
+                ]
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual([item["message_id"] for item in json.loads(output)],
+                             [first["message_id"], second["message_id"]])
+            self.assertEqual(core.delivery_state(first["message_id"]), "prepared")
+
+            code, output, error = invoke(
+                [
+                    "--messages-line",
+                    "create",
+                    *common,
+                    "--messages-config",
+                    str(active_path),
+                    "--origin-ref",
+                    "fixture:automation",
+                    "--recipient-ref",
+                    "fixture:user",
+                    "--content-text",
+                    "Rejected unknown thread.",
+                    "--delivery-mode",
+                    "on_demand",
+                    "--thread-id",
+                    "TH-20261027-111111111",
+                ]
+            )
+            self.assertEqual(code, 2)
+            self.assertIn("existing canonical thread ledger", error)
+            self.assertEqual(len(core.list_messages()), 2)
+
+            code, output, _error = invoke(
+                [
+                    "--messages-line",
+                    "config",
+                    "--messages-config",
+                    str(active_path),
+                ]
+            )
+            self.assertEqual(code, 0)
+            self.assertTrue(json.loads(output)["enabled"])
+
+            code, output, _error = invoke(
+                ["--messages-line", "registry", "--log-registry", str(registry_path)]
+            )
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output)["sources"], [])
+
+            code, output, _error = invoke(
+                [
+                    "--messages-line",
+                    "ack",
+                    *common,
+                    "--messages-config",
+                    str(disabled_path),
+                    "--message-id",
+                    first["message_id"],
+                    "--target-ref",
+                    "fixture:local-gui",
+                    "--surface",
+                    "local_gui",
+                    "--channel-ref",
+                    "fixture:manual-cli",
+                    "--actor-ref",
+                    "fixture:user",
+                    "--evidence-ref",
+                    "fixture:explicit-user-action",
+                ]
+            )
+            self.assertEqual(code, 0)
+            ack = json.loads(output)
+            self.assertEqual(ack["receipt"]["event"], "explicit_ack")
+            self.assertEqual(ack["delivery_state"], "delivered")
+            self.assertEqual(core.delivery_state(second["message_id"]), "prepared")
+
 
 if __name__ == "__main__":
     unittest.main()

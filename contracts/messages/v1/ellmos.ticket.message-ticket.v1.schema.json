@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:message-ticket:v1",
+  "title": "Ticket-Master Message-Ticket v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "message_id",
+    "receipt_id",
+    "thread_id",
+    "created_at",
+    "origin_ref",
+    "recipient_ref",
+    "content_text",
+    "delivery_mode",
+    "target_snapshot",
+    "delivery_policy_snapshot"
+  ],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.message-ticket.v1"},
+    "message_id": {"type": "string", "pattern": "^M-[0-9]{8}-[1-9][0-9]{8}$"},
+    "receipt_id": {"type": "string", "pattern": "^R-[0-9]{8}-[1-9][0-9]{8}$"},
+    "thread_id": {"type": "string", "pattern": "^TH-[0-9]{8}-[1-9][0-9]{8}$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "origin_ref": {"$ref": "#/$defs/ref"},
+    "recipient_ref": {"$ref": "#/$defs/ref"},
+    "content_text": {"type": "string", "minLength": 1, "maxLength": 1048576},
+    "delivery_mode": {"enum": ["chat_start", "on_demand", "active_chat"]},
+    "target_snapshot": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/target"},
+      "uniqueItems": true
+    },
+    "delivery_policy_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gui_open_counts_as_delivery", "config_updated_at"],
+      "properties": {
+        "gui_open_counts_as_delivery": {"type": "boolean"},
+        "config_updated_at": {"type": "string", "format": "date-time"}
+      }
+    }
+  },
+  "$defs": {
+    "ref": {"type": "string", "minLength": 1, "maxLength": 256, "pattern": "^(?!/)(?![A-Za-z]:/)[^\\u0000-\\u0020\\u007F\\\\]{1,256}$"},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ref", "surface"],
+      "properties": {
+        "target_ref": {"$ref": "#/$defs/ref"},
+        "surface": {
+          "enum": ["ticket_master", "local_gui", "server_gui", "registered_server"]
+        }
+      }
+    }
+  }
+}

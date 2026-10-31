@@ -615,6 +615,100 @@ Boot-Pflicht: `python lib/ticket_audit.py <tickets_dir> --lint` meldet
 Pflichtfelder, STATUS-Vokabular und doppelte Block-Überschriften — nur
 melden, nie reparieren.
 
+### (c8) Persönlicher Sessionstart
+
+Einmal pro Session `python -X utf8 lib/session_boot.py --report` lesen. Der Bericht
+zeigt die wirksamen Einstellungen des aktuellen OS-Nutzers und die Abdeckung
+der konfigurierten Quellen. Ohne Profil gilt das bisherige Bootverhalten.
+Fehler und unlesbare Quellen sichtbar nennen; keine Vollabdeckung behaupten.
+Persönliche Daten und Entscheidungs-IDs gehören nicht in Publicdefaults.
+
+Bei `approval_routing.enabled` zuerst den **aktuellen** kanonischen
+DecisionIndex aus dem Bericht und seinen Aktivvertrag prüfen. Seine Einträge
+sind Kandidaten, keine neuen Freigabepflichten. Für jede aus einer
+angeschlossenen Quelle auftauchende Genehmigungsfrage und jedes vorhandene
+`USER`-Ticket vor der Nutzereskalation konkrete Projektregel und Standing
+Authority, frühere direkte Nutzerentscheidungen, Profil/Memory und, nur bei
+zulässigem Zweck, `decision-avatar` prüfen. Avatar-Konfidenz ist eine
+Vorhersage, niemals Ausführungsautorität. Status je Quelle als `checked_hit`,
+`checked_nohit`, `unknown` oder `not_applicable` samt Pfad/Readback festhalten.
+Ungültige, widerrufene, abgelaufene, widersprüchliche oder fremde Geltungs-
+bereiche erteilen keine Autorität. Der reine `USER`-Status ist kein Beleg.
+Bei unklaren Quellen erst weiter untersuchen, keine Frage künstlich vorlegen.
+`python -X utf8 lib/session_boot.py --route-evidence <private-JSON>` kann
+diesen belegten Routingfall ohne Queue-Änderung klassifizieren.
+
+Gültig gedeckte Arbeit mit Quellenbeleg selbst lösen oder an einen passenden
+Worker routen; technische Blockaden an Worker statt User. Nur wenn nach der
+Prüfung eine **konkrete** Nutzerwahl nötig bleibt, im kanonischen Ticketbaum
+nach D-ID bzw. Aktion+Version+Adressat suchen und vorhandenes Ticket nutzen.
+`python -X utf8 lib/session_boot.py --plan-approval-ticket <private-JSON>
+--tickets-dir <kanonische-Queue>` kann die Lifecycle-Dateien
+lesend gegen diese Identität prüfen; bei `duplicate-conflict` zuerst klären.
+Fehlt es, den ausgegebenen D-ID-/`APPROVAL-REF`-Marker in den Tickettext
+übernehmen, über `ticket_writer.py` ein Ticket anlegen und nach normaler
+Triage/Claim-Reihenfolge routen. Kein zweites Approval-Register anlegen.
+Alle echten Nutzerfreigaben laufen so als Ticket, auch Outreach, Zenodo und
+UMBRUCH; die Kategorie allein erzwingt keine Freigabe. Insbesondere Zenodo-
+Folgeartikel sind nach aktueller Projektregel oft schon gedeckt. Fehlende
+Producer-Connectoren im Quellenbericht als Abdeckungslücke nennen und
+betroffene Projektquellen gezielt manuell prüfen; keinen vollständigen
+automatischen Eingang behaupten.
+
+Bei `decision_draw.enabled` Kandidaten gegen aktuellen Chat, Projektregister,
+Entscheidungsarchiv, Autorität und Ticketstand prüfen. Nur nach obigem Gate
+verbleibende offene Entscheidungen und Genehmigungen mit IDs, Versionen und
+Adressaten nach `decision-draw` als empfohlenes Gesamtbild vorlegen; Details
+und Alternativen verlinken und ausdrückliche Gesamtabnahme erbitten.
+Teilkorrekturen nur für eindeutig betroffene Posten über `decision-briefing`
+Phase 4 buchen, niemals still alles abnehmen.
+
+Bei `attention.enabled` nur deduplizierte relevante Fehler, Blockaden,
+Entscheidungen und Fristen der konfigurierten Quellen melden. Der Helfer
+filtert Dateien nach mtime und datierte Zeilen nach UTC-Zeit; bei Zeilen mit
+nur Datum bleibt die Randstunde unbestimmt. Undatierte Zeilen fehlen; offene Zustände
+aktuell rücklesen, Routineerfolge weglassen, Quellenabdeckung und Lesefehler
+nennen.
+
+Bei `audit.enabled` den vorhandenen `auditor_bridge.decide()`-Verdikt verwenden.
+Nur bei `action=spawn` und tatsächlichem Budget, Cooldown, freiem hohen Modell
+und Betreuung einen fälligen Astra-/Opus-5.5-Lauf starten; dessen Rotation
+und Fälligkeit nicht nachrechnen.
+
+Bei `companion.enabled` pro echter Session genau eine rotierende Aufgabe für
+taskwriter/tasksolver/maintainer automatisch durchführen, wenn ein
+autorisierter freier Slot und Task-/Lock-/Scope-Gates bestehen. Persönliche
+Grenze: das persönliche `max_luna` (eins oder zwei) und höchstens ein Sol/Astra;
+aktuelle Sitzungsgrenzen zusätzlich beachten. Niedrig/mittel bezeichnet das
+Modell, nicht die Aufgabenschwierigkeit. Mit autoritativer Session-ID
+`python -X utf8 lib/session_boot.py --claim-companion <ID>` exklusiv vormerken.
+Bestehendes `pending` erst klären, keine zweite Instanz starten. Rolle mit
+sinnvollem Auftrag tatsächlich dispatchen. Für den optionalen AgentLauncher-SDK-
+Pfad nach frischem nativen Management- und Quotenreadback einen privaten,
+höchstens zwei Minuten gültigen Admission-Beleg für genau Session, Claim, Rolle,
+Provider und das in TASKPLAN konfigurierte Modell erstellen. Der Beleg enthält
+die hashgebundenen Readbacks, vom Steueragenten klassifizierte aktive Slots
+und Task-/Lock-/Scope-Belege; ein Profil-Ceiling oder Freitext ist kein freier
+Slot. Dann `python -X utf8 lib/session_boot.py --dispatch-companion <ID>
+--admission-file <privater-beleg.json>` aufrufen. Der Adapter löst den Rollenprompt
+über TASKPLAN auf, übergibt die Claimmetadaten an `AgentLauncher.start` und ruft
+nur nach erfolgreichem SDK-Start den vorhandenen nativen `companion_ack`-Prüfer.
+Nur dessen `accepted` ist eine Annahme. Bei `pending-reconcile` den eigenen
+Attempt und Registryprozess prüfen; denselben Claim nicht erneut starten.
+Freitext, ein bloßer Launcher-Exitcode oder ein nativer Chat-Spawn ohne
+lesbaren Annahmebeleg bleiben `pending`. Fehlt die optionale Runtime, das
+konfigurierte Modell, ein freier Slot oder ein belastbarer Quotenreadback,
+ebenfalls nicht quittieren. Ergebnis betreuen.
+Bei fehlendem Slot/Gate den Rest in derselben Session offen halten. Das
+manuelle Rollenmenü bleibt; sein Enter-Default gilt bei ausgeschalteter
+persönlicher Automatik.
+
+Bei `umbruch.enabled` darf eine ausdrückliche Nutzerfreigabe zur benannten
+Manuskriptversion Modellreviews ersetzen. Ist sie klar mit „veröffentlichen“
+oder einer benannten Publikationsvorlage verbunden, autorisiert sie auch die
+Publikation. Version und Provenienz getrennt festhalten. Die allgemeine
+Präferenz genehmigt weder ungeprüfte Inhalte noch eine beliebige Fassung.
+
 ### (d) Auf POSITION 0 gehen
 
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut

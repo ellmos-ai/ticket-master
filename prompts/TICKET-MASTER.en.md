@@ -593,6 +593,89 @@ rather than a boot requirement:
 STATUS vocabulary and duplicate section headings — reports only, never
 repairs.
 
+### (c8) Personal session boot
+
+Read `python -X utf8 lib/session_boot.py --report` once per session. It displays the
+effective settings for the current OS user and source coverage. Without a
+profile, keep the historical boot behavior. Report invalid profiles and
+unreadable sources; never imply complete coverage. Keep personal data and
+decision IDs out of public defaults.
+
+When `approval_routing.enabled`, check the **live** canonical DecisionIndex
+and its active contract first. Its entries are candidates, not new approval
+requirements. For each approval question from an attached source, and for any
+existing `USER` ticket, check the current project rule and standing authority,
+prior direct user decisions, profile/memory and, only for an authorized
+purpose, `decision-avatar`. Avatar confidence predicts preference; it never
+grants execution authority. Record `checked_hit`, `checked_nohit`, `unknown`
+or `not_applicable` and the source/readback for each check. Expired, revoked,
+conflicting or out-of-scope evidence grants nothing. `USER` status alone is
+not proof. Investigate unknown sources before escalating. The read-only
+`python -X utf8 lib/session_boot.py --route-evidence <private-JSON>` can
+classify a documented case without changing the queue.
+
+Perform or route work already covered by current authority with its source;
+send technical blockers to workers. Only a concrete user choice that remains
+after those checks enters the canonical ticket tree. Search lifecycle tickets
+for its D-ID or action+version+recipient; reuse an existing ticket, otherwise
+use `python -X utf8 lib/session_boot.py --plan-approval-ticket <private-JSON>
+--tickets-dir <canonical-queue>` to check canonical lifecycle
+files. Reconcile `duplicate-conflict` first. Put its D-ID/`APPROVAL-REF` marker
+into the ticket body, create with `ticket_writer.py`, and follow normal
+triage/claim routing. Do
+not create a parallel approval register. This applies to outreach, Zenodo and
+UMBRUCH alike; category names do not make approval mandatory. Zenodo follow-on
+articles are often covered by current project rules. Disclose missing producer
+connectors in the source report and inspect their project sources manually;
+do not claim complete automated ingestion.
+
+For `decision_draw.enabled`, verify candidates against the current chat,
+project registers, decided archive, authority and ticket status. Present only
+remaining genuinely open decisions and approvals as one
+recommended coherent picture under `decision-draw`. Bind it to IDs, versions
+and recipients, link details and alternatives, and request explicit total
+acceptance. Transfer partial corrections only via `decision-briefing` phase 4.
+
+For `attention.enabled`, report only deduplicated attention-worthy errors,
+blockages, decisions and deadlines from configured sources. The helper uses
+file mtime and dated lines by UTC timestamp. Date-only lines have an uncertain
+boundary hour and undated lines are excluded; check current state before
+reporting and state source coverage and read errors. Omit routine successes.
+
+For `audit.enabled`, use the existing `auditor_bridge.decide()` verdict. Start
+a due Astra/Opus 5.5 audit only for `action=spawn` and after actual budget,
+cooldown, high-model slot and supervision gates. Do not recreate its clock.
+
+For `companion.enabled`, automatically perform exactly one rotating
+taskwriter/tasksolver/maintainer task per real session when a free authorized
+slot and task/lock/scope gates exist. Respect the personal `max_luna` (one or
+two), at most one Sol/Astra, and any current session cap. Low/medium describes
+model class, not task difficulty. With an
+authoritative session ID, call `python -X utf8 lib/session_boot.py --claim-companion
+<ID>` after live gates. Reconcile an existing pending claim before any new
+start. Actually dispatch the proposed role with a useful task. For the optional
+AgentLauncher SDK route, collect fresh native management and provider-quota
+readbacks, then prepare a private admission bound to the exact session, claim,
+role, configured TASKPLAN provider/model, classified slot occupancy, and current
+task/lock/scope checks. Hash-bind the readbacks; a profile ceiling or free text
+does not prove availability. Call `python -X utf8 lib/session_boot.py
+--dispatch-companion <ID> --admission-file <private.json>`. The adapter resolves
+the canonical TASKPLAN role prompt, passes claim metadata to the SDK, and calls
+the existing native ACK verifier only after a successful new start. Only its
+`accepted` result counts. On `pending-reconcile`, inspect the one-shot attempt
+and native registry; never start the same claim again. Free text, a launcher
+exit code alone, or a native chat spawn without a readable acceptance record
+remain pending. Missing optional runtime, configured model, available slot or
+measured quota also cannot acknowledge. Supervise the result. If
+gates fail, retain the task for later in the same session.
+The optional manual menu remains available; its Enter default applies when
+this personal automation is off.
+
+For `umbruch.enabled`, explicit approval of a named manuscript version may
+replace model reviews. The same approval authorizes publication only when
+clearly tied to publishing or a named publication template. Record version
+and provenance. General preference never approves arbitrary content.
+
 ### (d) Go to POSITION 0
 
 **POSITION 0** = inactive waiting state. The session is open; the agent does

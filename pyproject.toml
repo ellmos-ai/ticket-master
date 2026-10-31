@@ -59,6 +59,7 @@ routing-v2 = ["clutch-router>=0.5,<0.6"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6.0",
+    "filelock>=3.16.0",
     "build>=1.2.0",
     "jsonschema>=4.18,<5",
     "rfc3339-validator>=0.1.4,<0.2",
@@ -107,10 +108,18 @@ include = ["lib*", "bin*", "ticket_master_runtime*"]
 "share/ticket-master/contracts/trithon/v1/fixtures" = [
     "contracts/trithon/v1/fixtures/*.json",
 ]
+"share/ticket-master/contracts/messages/v1" = [
+    "contracts/messages/v1/*.json",
+]
+"share/ticket-master/config" = [
+    "config/messages-line.example.json",
+    "config/log-registry.example.json",
+]
 "share/ticket-master/docs" = [
     "docs/TRITHON_PHASE0_CONTRACTS.de.md",
     "docs/SESSION_MESSAGES.de.md",
     "docs/SESSION_LOCK_VIEW.de.md",
+    "docs/MESSAGES_LINE.de.md",
 ]
 
 [tool.ruff]

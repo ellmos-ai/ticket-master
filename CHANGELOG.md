@@ -14,6 +14,18 @@ All notable changes to ticket-master are documented here.
 - Add one-file versioned JSON projections, cooperative hash/revision-bound atomic producer commands, public schema/example, a usage skill and packaged platform starters. Display never changes ticket acceptance or owns message receipts.
 - Add a notification view with canonical Messages-Line read receipts, explicit hash-pinned optional owner installation, idempotent observed-message ingestion, manual/default and policy-gated fulltext-open modes, unread/unknown counts, and user-click HTTPS links. No parallel receipt registry or remote transport is introduced.
 - Bind displayed notification identities, threads and timestamps to the canonical owner envelope before status or acknowledgement. Isolate each approved owner import from preloaded module namespaces and reject replacement of its own cached modules.
+- T411: Added an optional, one-attempt AgentLauncher SDK companion dispatcher
+  bound to the existing session claim and native ACK verifier. Controller
+  admissions bind fresh management/quota readbacks, slot classification, the
+  configured TASKPLAN role/provider/model and task/lock/scope gates. The
+  private profile and installed runtime remain separate activation gates.
+
+### Messages-Line contract foundation
+
+- Add retrievable text Message-Ticket records with stable ticket-style MessageIDs, ThreadIDs and one canonical ReceiptID per message; reuse `ticket_writer.draw_id()` and exclusive file creation.
+- Add closed schemas and validators for delivery receipts, disabled-by-default routing modes, GUI-open acknowledgement policy, and provenance-only 24-hour/monthly log sources.
+- Add a persistent, idempotent message-acknowledgement ledger that binds channel observations to the same per-message ReceiptID across restart and replay; no transport queue or retry loop is added.
+- Keep `.SYNC` transport and system-gap-master reconciliation as the cross-system boundary; document GUI/server adapters as pending.
 
 ### Ticketinventur / ticket inventory
 
