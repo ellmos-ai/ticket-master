@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:bundles-reg:v1",
+  "title": "Ticket-Master Configurable Ticket Bundles Registry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "updated_at", "bundles", "ticket_pointers"],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.bundles-reg.v1"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "bundles": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/bundle"}
+    },
+    "ticket_pointers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^B-[0-9]{8}-[1-9][0-9]{8}$"
+      }
+    }
+  },
+  "$defs": {
+    "bundle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "bundle_id",
+        "state",
+        "ticket_ids",
+        "rationale",
+        "source_ref",
+        "owner_actor",
+        "scope_key",
+        "created_at",
+        "updated_at",
+        "member_outcomes"
+      ],
+      "properties": {
+        "bundle_id": {"type": "string", "pattern": "^B-[0-9]{8}-[1-9][0-9]{8}$"},
+        "state": {"enum": ["proposed", "bound", "executing", "completed", "partial"]},
+        "ticket_ids": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": {"type": "string", "pattern": "^(T-[0-9]{8}-[1-9][0-9]{8}|T-[0-9]{8}-[0-9]{2,9})$"}
+        },
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 1024},
+        "source_ref": {"type": "string", "minLength": 1, "maxLength": 256},
+        "owner_actor": {"type": "string", "minLength": 1, "maxLength": 256},
+        "scope_key": {"type": "string", "minLength": 1, "maxLength": 256},
+        "created_at": {"type": "string", "format": "date-time"},
+        "updated_at": {"type": "string", "format": "date-time"},
+        "member_outcomes": {
+          "type": "object",
+          "additionalProperties": {
+            "enum": ["pending", "bound", "executing", "done", "failed", "released"]
+          }
+        }
+      }
+    }
+  }
+}
