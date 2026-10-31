@@ -322,3 +322,24 @@ class TestAcknowledgeMessageNamesTheQuotableId(unittest.TestCase):
                 ticket, queue / "USER",
                 acknowledged_decisions=["D-20260916-004@DECIDED-AND-DONE"])
             self.assertTrue(moved.exists())
+
+    def test_cluster_planning_decision_kind_is_logged_as_hit_but_does_not_block(self):
+        """T-20260920-716303992 / D-20261030-003 (Richtung A): Cluster-Rahmenentscheide
+        tragen im Index decision_kind='cluster-planning'. Sie werden beim Readback
+        weiterhin als TREFFER protokolliert, blockieren aber keine spaetere
+        Einzel-Eskalation nach USER/."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260916-004@DECIDED-AND-DONE", "id": "D-20260916-004",
+                "status_class": "DONE", "decision_kind": "cluster-planning",
+                "title": "Cluster-Planungsrahmen",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "WAITING", "T-20260920-000000002.txt",
+                             "Bezug D-20260916-004.")
+            moved = ticket_mover.move_ticket(ticket, queue / "USER")
+            self.assertTrue(moved.exists())
+            text = moved.read_text(encoding="utf-8")
+            self.assertIn("Entscheidungs-Readback: TREFFER", text)
+            self.assertIn("D-20260916-004@DECIDED-AND-DONE", text)
