@@ -4,6 +4,10 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Auditor bridge dedup
+
+- `findings_to_tickets` links a finding to a ticket only through the exact `Finding: <id>` line that the bridge itself writes. A ticket that merely mentions the finding ID elsewhere (cross-reference) no longer suppresses creation of a never-delivered measure. Readback assessment (`_has_current_readback`) is unchanged.
+
 ### Native session result window
 
 - Preserve event widget identity, focus, fulltext selection and scroll anchors across refresh; start with compact overview/fulltext stages and place fulltext and question actions in one equal-height row.

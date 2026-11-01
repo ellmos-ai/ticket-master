@@ -582,17 +582,28 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
     return False
 
 
+def _has_finding_line(text: str, finding_id: str) -> bool:
+    """True only for the ``Finding: <id>`` line that ``_finding_to_ticket_text`` writes.
+
+    A cross-reference elsewhere in a ticket must not count as the finding's ticket,
+    otherwise a measure that was never delivered is never created.
+    """
+    return re.search(
+        rf"^Finding:[ \t]*{re.escape(finding_id)}[ \t]*\r?$", text, re.MULTILINE,
+    ) is not None
+
+
 def _finding_ticket_links(
     finding_id: str, tickets_dir: Path,
 ) -> list[tuple[Path, str]]:
-    """Return tickets that link the ID; a link alone is not a current readback."""
+    """Return tickets carrying the finding's ``Finding:`` line; a link alone is not a current readback."""
     links: list[tuple[Path, str]] = []
     for entry, _date, _number, _suffix in ticket_writer.iter_lifecycle_files(tickets_dir):
         try:
             text = entry.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        if _contains_finding_id(text, finding_id):
+        if _has_finding_line(text, finding_id):
             links.append((entry, text))
     return links
 
