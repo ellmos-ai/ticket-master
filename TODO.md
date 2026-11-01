@@ -298,7 +298,7 @@ unverändert ausstehend.
 
 ## Entscheidungs-Readback vor Eskalation (2026-08-26)
 
-- [ ] **(hoch, Ticket `T-20260913-867541218`)** Vor dem Verschieben eines
+- [x] **(hoch, Ticket `T-20260913-867541218` — erledigt in v1.12.0)** Vor dem Verschieben eines
       Tickets nach `USER/` oder dem
       Markieren „Entscheidung offen“ den kanonischen Entscheidungsindex und
       die dort angegebene Primärquelle nach Ticketbegriffen, F-/E-Kennung und
@@ -307,7 +307,8 @@ unverändert ausstehend.
       seit 31.07. vollständig enthielt und ein Register-Readback vom 22.08.
       ausdrücklich vor erneuter Vorlage warnte. Gewünschtes Gate: Ohne
       protokollierten Index- und Primärquellen-Treffer darf der Router nur
-      „nicht gefunden“, nicht „offen“ behaupten.
+      „nicht gefunden“, nicht „offen“ behaupten. Umgesetzt in `lib/decision_readback.py`
+      und verifiziert durch `tests/test_decision_readback.py`.
 
 ## Rückspiegelung aus FolderHome (T-20260830-294539438, 2026-08-30)
 
@@ -315,15 +316,15 @@ Quelle: `ellmos-ai/FolderHome` @ `f9fdb6a` (unter Judging-Lock, nur gelesen),
 `src/folderhome/application/master_agent.py::confirm_master_agent_plan`,
 `application/workflow_execution.py`. Herkunft bei Übernahme im Code-Kommentar mitführen.
 
-- [ ] **Hashgebundene Einmal-Freigabe für `USER/freigabe`** (Ticket
-      `T-20260913-744071825`): FolderHome erzeugt
+- [x] **Hashgebundene Einmal-Freigabe für `USER/freigabe`** (Ticket
+      `T-20260913-744071825` — erledigt in v1.12.0): FolderHome erzeugt
       `plan_id = "plan_" + sha256(plan)[:20]`; eine Freigabe gilt nur bei **exakter**
       `plan_id`-Übereinstimmung und ist einmalig (`MasterConfirmationReceipt`). Übertragen:
       Ein Ticket in `USER/freigabe` trägt `FREIGABE_ID: frg_<sha256(freizugebender
       Auftragstext)[:20]>`; die Nutzerantwort muss diese ID nennen, sonst zählt sie nicht als
       Freigabe (verhindert, dass eine spätere Textänderung stillschweigend „mitfreigegeben"
-      wird). Kandidat für `ticket_mover.py --mark-released <ticket> --freigabe-id <id>`,
-      fail-closed bei Abweichung. Bezug: TODO-Punkt „Entscheidungs-Readback vor Eskalation".
+      wird). Umgesetzt in `lib/ticket_freigabe.py` (`freigabe_state`, `mark_freigabe`) und
+      abgedeckt durch `tests/test_ticket_freigabe.py`.
 - **Verworfen (beitragsspezifisch):** Experten-Routing des Master-Agenten, Domänen-
   Executor-Adapter (Kalender, Finanzen, Gesundheit) — Fachlogik, nicht Ticket-Routing.
 
@@ -347,15 +348,15 @@ kennt.
 | 1 | `USER / uac-live-abnahme` | **nein** (zusaetzlich mit Leerzeichen) |
 | 1 | `USER/manual-hardware-restart` | **nein** |
 
-- [ ] **Unterkategorie im Audit pruefen** (Ticket `T-20260913-204557243`): Ein Wert, der im Cluster-Vokabular
+- [x] **Unterkategorie im Audit pruefen** (Ticket `T-20260913-204557243` — erledigt in v1.12.0): Ein Wert, der im Cluster-Vokabular
       nicht vorgesehen ist, sollte als eigener Befund erscheinen (analog zum
       2026-09-02 ergaenzten `legacy-header`), nicht stillschweigend
       durchgehen. Wichtig dabei: nur MELDEN. Die drei abweichenden Werte sind
       inhaltlich nicht unsinnig -- `decision-partial` beschreibt einen real
       existierenden Zwischenzustand (Teil entschieden, Rest offen), und
-      `uac-live-abnahme` benennt praezise, worauf gewartet wird. Es ist daher
-      offen, ob das Vokabular erweitert oder die Werte angeglichen werden
-      sollten; diese Entscheidung gehoert NICHT nebenbei in den Audit-Fix.
+      `uac-live-abnahme` benennt praezise, worauf gewartet wird. Umgesetzt in
+      `lib/ticket_audit.py` (`status_drift`, `unknown-subcategory`) und abgedeckt
+      durch `tests/test_ticket_audit_status_drift.py`.
 - **Nicht empfohlen:** die zehn Altfaelle einfach umschreiben. Sie sind der
   Beleg dafuer, welche Zwischenzustaende in der Praxis gebraucht werden --
   genau die Information, die man fuer die Vokabularentscheidung braucht.
