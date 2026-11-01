@@ -65,6 +65,19 @@
         "kimi"
       ],
       "starter": "starters/posix/ticket-master.sh"
+    },
+    {
+      "id": "ticket-writer",
+      "label": "TICKET-WRITER",
+      "prompt": "prompts/TICKET-WRITER.en.md",
+      "request": "Start as TICKET-WRITER. Capture evidence-backed problem reports and write structured tickets.",
+      "modes": [],
+      "providers": [
+        "claude",
+        "codex",
+        "agy",
+        "kimi"
+      ]
     }
   ]
 }
