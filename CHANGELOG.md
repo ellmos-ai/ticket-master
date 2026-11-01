@@ -4,6 +4,15 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad B: Discoverability, Visual Architecture, Bilingual Mermaid Sequence Diagrams & Badges Recency (2026-11-01)
+
+- **Bilinguale End-to-End Sequenzdiagramme**: Enriched Section 06 ("Architecture & Routing Flow" / "Architektur & Routing-Ablauf") in both `README.md` and `README_de.md` with an end-to-end Mermaid sequence diagram (`sequenceDiagram` with `autonumber`) illustrating the interactive developer triage cycle from issue input to canonical ticket minting (`T-YYYYMMDD-#########.txt`), 5-dimension scoring, autonomous sub-agent execution across Claude Code, Codex, and Gemini, local test suite verification, and final `SOLVED` ledger resolution.
+- **Syntaxschutz & Linting**: Validated all Mermaid diagrams with `_tools/lint_mermaid.py` ensuring zero syntax errors, compliant node/edge quoting, and semicolon-free sequence messages.
+- **Echte gemessene Test-Badge-Aktualisierung**: Updated Pytest badge to real measured test count (`pytest-769%20passed`, 100% green via `pytest` with 769 passed and 13 subtests) in `README.md` and `README_de.md` following the empirical test measurement rule.
+- **RAG-Kontext & Status-Badges-Synchronisation**: Synchronized status badges (`Verified-2026--11--01`, `Last--Checked-2026--11--01`) across `README.md` and `README_de.md`; updated `llms.txt` context index (Stand 2026-11-01) with 769 passed tests baseline.
+- **Vertragstest-Erweiterung**: Expanded automated contract test suite in `tests/test_metadata.py` with 2 new contract tests verifying bilingual sequence diagram presence and 2026-11-01 badge/audit recency.
+- **Strikte Versions-Freeze-Disziplin**: Preserved `version = "1.12.0"` strictly frozen per fleet-wide governance rule T-20260920-167562623 (no unauthorized version bump in Pfad A/B runs).
+
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
 
 - **Bilinguale CONTRIBUTING Guidelines (EN/DE)**: Deployed canonical `CONTRIBUTING.md` defining development guidelines, Plan D local-first clone setup (`C:\_Local_DEV\repos\ticket-master`), quality gates (`pytest`, `ruff check`, `compileall`, `git diff --check`), unprivileged `RunAsInvoker` mode, all ten governance invariants `INV-LOCAL-01` through `INV-SLA-10`, canonical lock discipline, version freeze rule (`T-20260920-167562623`), and 48-hour security response SLA.

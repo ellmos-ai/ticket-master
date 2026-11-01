@@ -18,14 +18,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-666%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-769%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Sicherheits-SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Drittanbieter auditiert](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verifiziert](https://img.shields.io/badge/Verified-2026--10--09-blue.svg)](MARKETING-LOG.txt)
-[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--10--09-success.svg)](MARKETING-LOG.txt)
+[![Verifiziert](https://img.shields.io/badge/Verified-2026--11--01-blue.svg)](MARKETING-LOG.txt)
+[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--11--01-success.svg)](MARKETING-LOG.txt)
 [![Marketing-Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Bereit](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -219,6 +219,47 @@ graph TD
     GATE4 -->|Erfolg| Solved[tickets/SOLVED/<br>Commit & Verifizieren]
     GATE4 -->|Fehlschlag / Timeout| Fallback[Fallback-Kette<br>Nächster Provider]
     Fallback --> GATE4
+`
+
+### End-to-End Triage- & Delegierungs-Sequenzdiagramm
+
+Das folgende Sequenzdiagramm veranschaulicht den interaktiven Lebenszyklus von der formlosen Meldung über die kanonische Ticket-Prägung, die 5-Dimensionen-Bewertung, die autonome Subagenten-Ausführung über Claude Code, Codex und Gemini, die Testverifikation bis zum finalen Ledger-Abschluss:
+
+`mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Entwickler / Nutzer
+    participant P0 as Position 0 (Triage-Konsole)
+    participant G1 as GATE 1 (Intake & Writer)
+    participant G2 as GATE 2 (Scoring & Router)
+    participant FS as Lokales Dateisystem (tickets/)
+    participant Sub as Ziel-Agent (Claude / Codex / Gemini)
+    participant Git as Projekt-Git-Repository
+
+    Dev->>P0: Problem, Bug oder Feature-Wunsch eingeben
+    P0->>G1: Formalisierung des Intake-Auftrags
+    G1->>FS: Kanonisches Ticket prägen (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    FS-->>P0: Ticket angelegt mit byte-erhaltendem Originaltext
+    P0->>G2: 5 Score-Dimensionen bewerten & Fähigkeitsstufe zuordnen
+    G2-->>P0: Gewählter Provider & Fallback-Kette
+    alt Sofort-Fix (Stufe 1-4 & dringend)
+        P0->>Sub: GATE 4 - Delegierung mit Ticket-Kontext
+        Sub->>Git: Codeänderungen umsetzen & lokale Tests ausführen
+        alt Verifikation erfolgreich
+            Sub-->>P0: Erfolgsbeleg & Diff-Verifikation
+            P0->>FS: Ticket nach tickets/SOLVED/ verschieben
+            P0->>Dev: Erfolgsmeldung mit Commit-Hash ausgeben
+        else Verifikation fehlgeschlagen oder Timeout
+            Sub-->>P0: Fehler- oder Timeout-Signal
+            P0->>Sub: Fallback auf nächsten verfügbaren Provider
+        end
+    else Backlog / Geparkt
+        P0->>FS: Ticket nach tickets/PARKED/ verschieben (Taskboard)
+        P0->>Dev: Geparkt mit Priorität & Begründung
+    else Manuelle Übergabe
+        P0->>FS: Ticket nach tickets/USER/ verschieben (Wartet auf Nutzerentscheid)
+        P0->>Dev: Rückfrage zur Klärung stellen
+    end
 ```
 
 ### ASCII-Vier-Sichten-Architekturtopologie

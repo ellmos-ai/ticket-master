@@ -17,14 +17,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-666%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-769%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Security SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Third-Party Audited](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verified](https://img.shields.io/badge/Verified-2026--10--09-blue.svg)](MARKETING-LOG.txt)
-[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--10--09-success.svg)](MARKETING-LOG.txt)
+[![Verified](https://img.shields.io/badge/Verified-2026--11--01-blue.svg)](MARKETING-LOG.txt)
+[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--11--01-success.svg)](MARKETING-LOG.txt)
 [![Marketing Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Ready](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -212,6 +212,47 @@ graph TD
     GATE4 -->|Success| Solved[tickets/SOLVED/<br>Commit & Verify]
     GATE4 -->|Fail / Timeout| Fallback[Fallback Chain<br>Next Best Provider]
     Fallback --> GATE4
+`
+
+### End-to-End Triage & Delegation Sequence
+
+The sequence diagram below models the interactive lifecycle from developer issue submission through canonical ticket minting, 5-dimension scoring, autonomous sub-agent execution across Claude Code, Codex, and Gemini, local test suite verification, and final SOLVED ledger resolution:
+
+`mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer / User
+    participant P0 as Position 0 (Triage Console)
+    participant G1 as GATE 1 (Intake & Writer)
+    participant G2 as GATE 2 (Scorer & Router)
+    participant FS as Local Filesystem (tickets/)
+    participant Sub as Target Agent (Claude / Codex / Gemini)
+    participant Git as Project Git Repository
+
+    Dev->>P0: Enter raw issue or feature request
+    P0->>G1: Formalize intake request
+    G1->>FS: Mint canonical ticket (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    FS-->>P0: Ticket created with byte-preserving original text
+    P0->>G2: Evaluate 5 score dimensions & match capability tier
+    G2-->>P0: Selected provider & fallback chain
+    alt Immediate Fix (Tier 1-4 & Urgent)
+        P0->>Sub: GATE 4 - Delegate task with ticket context
+        Sub->>Git: Apply code changes & run local test suite
+        alt Verification Passes
+            Sub-->>P0: Success receipt & diff verification
+            P0->>FS: Move ticket to tickets/SOLVED/
+            P0->>Dev: Report resolution with commit hash
+        else Verification Fails or Timeout
+            Sub-->>P0: Failure or timeout signal
+            P0->>Sub: Fallback to next best available provider
+        end
+    else Backlog / Parked
+        P0->>FS: Move ticket to tickets/PARKED/ (Task board)
+        P0->>Dev: Parked with priority & rationale
+    else Manual Handoff
+        P0->>FS: Move ticket to tickets/USER/ (Awaiting human decision)
+        P0->>Dev: Prompt for required clarification
+    end
 ```
 
 ### ASCII Four-View Architectural Topology
