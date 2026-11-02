@@ -4,14 +4,46 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
-### Pfad B: Discoverability, Visual Architecture, Bilingual Mermaid Sequence Diagrams & Badges Recency (2026-11-01)
+### Pfad B: Bilingual sequence documentation (original PR48, 2026-11-01)
 
-- **Bilinguale End-to-End Sequenzdiagramme**: Enriched Section 06 ("Architecture & Routing Flow" / "Architektur & Routing-Ablauf") in both `README.md` and `README_de.md` with an end-to-end Mermaid sequence diagram (`sequenceDiagram` with `autonumber`) illustrating the interactive developer triage cycle from issue input to canonical ticket minting (`T-YYYYMMDD-#########.txt`), 5-dimension scoring, autonomous sub-agent execution across Claude Code, Codex, and Gemini, local test suite verification, and final `SOLVED` ledger resolution.
-- **Syntaxschutz & Linting**: Validated all Mermaid diagrams with `_tools/lint_mermaid.py` ensuring zero syntax errors, compliant node/edge quoting, and semicolon-free sequence messages.
-- **Echte gemessene Test-Badge-Aktualisierung**: Updated Pytest badge to real measured test count (`pytest-769%20passed`, 100% green via `pytest` with 769 passed and 13 subtests) in `README.md` and `README_de.md` following the empirical test measurement rule.
-- **RAG-Kontext & Status-Badges-Synchronisation**: Synchronized status badges (`Verified-2026--11--01`, `Last--Checked-2026--11--01`) across `README.md` and `README_de.md`; updated `llms.txt` context index (Stand 2026-11-01) with 769 passed tests baseline.
-- **Vertragstest-Erweiterung**: Expanded automated contract test suite in `tests/test_metadata.py` with 2 new contract tests verifying bilingual sequence diagram presence and 2026-11-01 badge/audit recency.
-- **Strikte Versions-Freeze-Disziplin**: Preserved `version = "1.12.0"` strictly frozen per fleet-wide governance rule T-20260920-167562623 (no unauthorized version bump in Pfad A/B runs).
+- Preserve the original bilingual sequence diagrams with separate complete Mermaid fences and stage names bound to the canonical workflow prompt.
+- Keep the SBOM index date tied to the referenced audited artifact; retain current main inventory, verification counts and version without claiming a new audit.
+
+### Auditor bridge dedup
+
+- `findings_to_tickets` links a finding to a ticket only through the exact `Finding: <id>` line that the bridge itself writes. A ticket that merely mentions the finding ID elsewhere (cross-reference) no longer suppresses creation of a never-delivered measure. Readback assessment (`_has_current_readback`) is unchanged.
+
+### Native session result window
+
+- Preserve event widget identity, focus, fulltext selection and scroll anchors across refresh; start with compact overview/fulltext stages and place fulltext and question actions in one equal-height row.
+- Add content-bound, CAS-protected result reads and unread/archive/all filters with matching topics; canonical message receipts remain the only message read authority.
+- Add a red session-data action with a packaged generated black database image and an optional pinned, evidence-bound existing Lock-Master adapter without scanning, installation or service startup.
+
+- Add a standalone Tk/ttk session feed, topic/search filters, expandable full results, passive local document links and source-bound skill/token/subagent observations.
+- Add one-file versioned JSON projections, cooperative hash/revision-bound atomic producer commands, public schema/example, a usage skill and packaged platform starters. Display never changes ticket acceptance or owns message receipts.
+- Add a notification view with canonical Messages-Line read receipts, explicit hash-pinned optional owner installation, idempotent observed-message ingestion, manual/default and policy-gated fulltext-open modes, unread/unknown counts, and user-click HTTPS links. No parallel receipt registry or remote transport is introduced.
+- Bind displayed notification identities, threads and timestamps to the canonical owner envelope before status or acknowledgement. Isolate each approved owner import from preloaded module namespaces and reject replacement of its own cached modules.
+- T411: Added an optional, one-attempt AgentLauncher SDK companion dispatcher
+  bound to the existing session claim and native ACK verifier. Controller
+  admissions bind fresh management/quota readbacks, slot classification, the
+  configured TASKPLAN role/provider/model and task/lock/scope gates. The
+  private profile and installed runtime remain separate activation gates.
+
+### Messages-Line contract foundation
+
+- Add retrievable text Message-Ticket records with stable ticket-style MessageIDs, ThreadIDs and one canonical ReceiptID per message; reuse `ticket_writer.draw_id()` and exclusive file creation.
+- Add closed schemas and validators for delivery receipts, disabled-by-default routing modes, GUI-open acknowledgement policy, and provenance-only 24-hour/monthly log sources.
+- Add a persistent, idempotent message-acknowledgement ledger that binds channel observations to the same per-message ReceiptID across restart and replay; no transport queue or retry loop is added.
+- Keep `.SYNC` transport and system-gap-master reconciliation as the cross-system boundary; document GUI/server adapters as pending.
+
+### Ticketinventur / ticket inventory
+
+- Add a read-only `--ticket-inventory` / `--ticketinventur` entry point with raw source hashes, contiguous section ranges, ancillary/legacy coverage and explicit read failures. No provider starts or archive/status mutations.
+- Add the local workflow adapter for complete semantic consolidation, active remainder preservation, reversible native archive moves and separate independent acceptance.
+- Traverse queue entries through held no-follow handles, report queue alias conflicts cleanly, and include historical `_logs` files as ancillary evidence.
+- Package one shared inventory CLI for source and wheel installs, resolve installed prompts, and expose the inventory library through a public module entry point.
+- Close POSIX directory probes when fallback classification excludes cache and root evidence directories.
+
 
 ### Pfad A: Technische Hygiene, Bilingual CONTRIBUTING, CI Lifecycle & Dependabot Guard, Level 1 SBOM Re-Audit & Contract Tests (2026-10-09)
 

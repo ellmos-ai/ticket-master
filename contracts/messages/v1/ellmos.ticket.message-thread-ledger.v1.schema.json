@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:ellmos:ticket:message-thread-ledger:v1",
+  "title": "Ticket-Master Message Thread Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "thread_id", "created_at"],
+  "properties": {
+    "schema": {"const": "ellmos.ticket.message-thread-ledger.v1"},
+    "thread_id": {"type": "string", "pattern": "^TH-[0-9]{8}-[1-9][0-9]{8}$"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

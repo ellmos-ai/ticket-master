@@ -60,6 +60,11 @@
     }
   },
   "default_provider": "claude",
+  "session_profile_path": null,
+  "_comment_session_profile_path": "Optional private per-OS-user JSON profile (schema ticket-master.session-profile.v1). Default: <HOME>/.config/ticket-master/session-profile.json; TM_SESSION_PROFILE overrides. Never commit personal preferences, decision IDs or log paths here. lib/session_boot.py --report displays the effective settings at role boot.",
+  "agent_launcher_registry_dir": null,
+  "agent_launcher_work_root": null,
+  "_comment_agent_launcher": "Optional inner companion SDK only: set agent_launcher_work_root to an existing private directory. A null registry_dir uses the AgentLauncher user default. No runtime starts while the personal profile is pending; role, provider and model resolve through installed TASKPLAN configuration. No public default model or private admission is stored here.",
   "execution_binding": {
     "_comment": "Schema-v2 execution bindings store an absolute UTC expiry in each ticket. 'never' is allowed only as an explicit ticket override; expiry never completes a ticket or changes its target snapshot.",
     "default_ttl_days": 7

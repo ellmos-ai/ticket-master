@@ -1,0 +1,12 @@
+{
+  "source": "example:external-automation",
+  "external_id": "example:approval-request-001",
+  "title": "Beispiel: Veröffentlichung wartet auf Freigabe",
+  "text": "DEMO: Ein externer Prozess meldet eine offene Publikationsfreigabe. Lesen ist keine Freigabe. Diese Vorlage startet oder veröffentlicht nichts.",
+  "observed_at": "2026-10-27T12:00:00+00:00",
+  "kind": "system",
+  "tags": [
+    "Meldungen",
+    "Freigabefrage"
+  ]
+}

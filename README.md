@@ -2,6 +2,28 @@
 
 # ticket-master
 
+Native session results: `ticket-master-results open /absolute/session.json` opens
+the standalone, file-based Tk window. One JSON file belongs to one console session;
+analysis, document links and source-bound session metrics stay local. See the
+[usage skill](skills/session-results/SKILL.md) for producer/CAS commands and the
+[schema and example](contracts/session-results/). No BACH/Ocean or server is required.
+Native vector icons and three tonal action families distinguish right-aligned
+question copying, full result text, and documents. Unsupported executable types
+offer explicit path copying and are never launched from JSON.
+Stable event cards preserve focus, text selection and scroll position during
+refresh. Cards start compact; full text and the right-aligned question button
+share one row. Results can be read and archived in the same CAS-protected session
+file; the archive filter restores them without deleting content or accepting tasks.
+Session data has a red button with a packaged generated black database icon.
+An [optional, pinned Lock-Master view](docs/SESSION_LOCK_VIEW.de.md) reads only
+individually evidenced own grants and can link to an existing local dashboard;
+it never starts scanners or services.
+The notification view records all actually perceived external messages through
+the existing, explicitly pinned Messages-Line owner. Manual read receipts,
+optional policy-gated read-on-open, unread/unknown counts and HTTPS artifacts
+are described in the [local owner integration](docs/SESSION_MESSAGES.de.md).
+No remote services are polled or approved by opening a message.
+
 A cross-platform, multi-provider **workflow / operating mode** for an AI coding agent.
 
 ticket-master is a workflow/operating mode for an AI coding agent, not a tool that
@@ -17,14 +39,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest Status](https://img.shields.io/badge/pytest-769%20passed-brightgreen.svg)](tests/)
+[![Pytest Status](https://img.shields.io/badge/pytest-808%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Privacy](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Security](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Security SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Third-Party Audited](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verified](https://img.shields.io/badge/Verified-2026--11--01-blue.svg)](MARKETING-LOG.txt)
-[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--11--01-success.svg)](MARKETING-LOG.txt)
+[![Verified](https://img.shields.io/badge/Verified-2026--10--09-blue.svg)](MARKETING-LOG.txt)
+[![Last Checked](https://img.shields.io/badge/Last--Checked-2026--10--09-success.svg)](MARKETING-LOG.txt)
 [![Marketing Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Ready](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Providers](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -93,6 +115,7 @@ The system is designed with a strict local-first philosophy: all queues, tickets
 | **Informal Intake & Formalization** | Automatically ingests raw text files dropped into `INBOX/`, formalizing them with byte-identical `ORIGINALTEXT` preservation and safe archiving. |
 | **Auditor Bridge & Sparmodus Gate** | Seamlessly interfaces with `ellmos-ai/system-auditor`, converting audit findings to draft tickets while respecting token-budget sparmodus states. |
 | **Trithon Shadow Projection (Phase 1)** | Builds a local, pointer-only SQLite projection with atomic rebuilds, idempotent imports, crash recovery, and a no-op mock executor; it never changes ticket files or starts a production runtime. |
+| **Messages-Line Contract Foundation** | Adds text message tickets with stable message/thread/receipt IDs, a persistent per-message acknowledgement ledger, and pointer-only log-source registration; it does not send messages or create a transport queue. |
 | **Zero External Runtime Dependencies** | Core functionality runs entirely on the pure Python standard library (`dependencies = []`), ensuring maximum portability and stability. |
 | **Unprivileged User Execution** | Runs entirely in user space (`RunAsInvoker`) without requiring root, administrative elevation, or UAC prompts. |
 
@@ -212,39 +235,47 @@ graph TD
     GATE4 -->|Success| Solved[tickets/SOLVED/<br>Commit & Verify]
     GATE4 -->|Fail / Timeout| Fallback[Fallback Chain<br>Next Best Provider]
     Fallback --> GATE4
-`
+```
 
 ### End-to-End Triage & Delegation Sequence
 
+Stage labels follow the [canonical workflow](prompts/TICKET-MASTER.de.md): GATE 1 confirms project/endpoint assignment; GATE 4 verifies the result after delegation. The configured router is primary; 5-dimension scoring is a fallback.
+
 The sequence diagram below models the interactive lifecycle from developer issue submission through canonical ticket minting, 5-dimension scoring, autonomous sub-agent execution across Claude Code, Codex, and Gemini, local test suite verification, and final SOLVED ledger resolution:
 
-`mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor Dev as Developer / User
     participant P0 as Position 0 (Triage Console)
-    participant G1 as GATE 1 (Intake & Writer)
-    participant G2 as GATE 2 (Scorer & Router)
+    participant Writer as Canonical Ticket Writer
+    participant G1 as GATE 1 (Project & Endpoint Confirmation)
+    participant G2 as GATE 2 (Ranked Routing Candidates)
+    participant G4 as GATE 4 (Success Verification)
     participant FS as Local Filesystem (tickets/)
     participant Sub as Target Agent (Claude / Codex / Gemini)
     participant Git as Project Git Repository
 
     Dev->>P0: Enter raw issue or feature request
-    P0->>G1: Formalize intake request
-    G1->>FS: Mint canonical ticket (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    P0->>Writer: Formalize intake request
+    Writer->>FS: Mint canonical ticket (tickets/INBOX/T-YYYYMMDD-#########.txt)
     FS-->>P0: Ticket created with byte-preserving original text
-    P0->>G2: Evaluate 5 score dimensions & match capability tier
+    P0->>G1: Confirm project and endpoint from project control file
+    G1-->>P0: Project and endpoint confirmed
+    P0->>G2: Select configured router or 5-dimension fallback
     G2-->>P0: Selected provider & fallback chain
     alt Immediate Fix (Tier 1-4 & Urgent)
-        P0->>Sub: GATE 4 - Delegate task with ticket context
+        P0->>Sub: Delegate task with ticket context
         Sub->>Git: Apply code changes & run local test suite
+        Sub-->>P0: Candidate result and test evidence
+        P0->>G4: Verify result against ticket requirements
         alt Verification Passes
-            Sub-->>P0: Success receipt & diff verification
+            G4-->>P0: Success confirmed after evidence review
             P0->>FS: Move ticket to tickets/SOLVED/
             P0->>Dev: Report resolution with commit hash
         else Verification Fails or Timeout
-            Sub-->>P0: Failure or timeout signal
-            P0->>Sub: Fallback to next best available provider
+            G4-->>P0: Failure or missing evidence
+            P0->>Sub: Request correction or use fallback only if candidate unreachable
         end
     else Backlog / Parked
         P0->>FS: Move ticket to tickets/PARKED/ (Task board)
@@ -628,6 +659,16 @@ under `contracts/trithon/v1/`. They define no runtime. The field mapping,
 authority boundaries, privacy allowlist and threat model are documented in
 [`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
 
+The local Messages-Line core defines retrievable text message tickets and
+threads, one persistent acknowledgement ledger per message, disabled-by-default
+routing configuration, and a provenance-only log registry. It does not log
+message text or audio and does not implement transport delivery. See
+[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md) for the contract and the
+remaining GUI/server integration gates. The existing `ticket-master` CLI
+exposes local `create`, `list`, `read`, manual `ack`, `config`, and `registry`
+operations through `--messages-line`; it never sends or automatically
+acknowledges a message.
+
 
 ### Companion Pattern
 
@@ -705,6 +746,13 @@ Four optional layers turn the plain ticket router into a personal-assistant tria
 - **Urgency axis (1.7.0):** `config/urgency.json` maps each domain to a default deadline (`sofort` / `heute` / `woche` / `backlog`) plus escalation rules. This axis is **decoupled** from the 5-dimension complexity score.
 - **Delegation wiring (1.7.0, extended 1.8.0):** The prompt's intake gate resolves an `ENDPOINT` for a matched domain; model selection prefers an optional external `router_command` over the built-in score-formula fallback; permission checks against `LOCK*.txt` run before worker spawn; and `woche`/`backlog`-urgency tickets are handed to an optional `task_db_command`.
 - **System-knowledge layer (1.9.0):** `config/knowledge.json` lists knowledge sources in four categories: `maps`, `state`, `capabilities`, and `user_model`.
+
+An optional, claim-bound AgentLauncher SDK adapter for a single rotating
+TASKPLAN companion is described in [the German dispatch protocol](docs/COMPANION_DISPATCH.de.md).
+It needs a fresh controller attestation backed by native management and quota
+readbacks, a configured TASKPLAN role/provider/model, and an active private
+session profile. It never treats a launcher exit code or native chat spawn as
+an accepted companion. AgentLauncher and TASKPLAN remain optional integrations.
 
 ---
 
@@ -811,3 +859,7 @@ Author & Maintainer: Lukas Geiger ([github.com/lukisch](https://github.com/lukis
 `TICKET-MASTER.bat` starts the triage role through TASKPLAN. Windows/POSIX starter files and the German/English TICKET-MASTER prompts ship in wheels and source archives. A wheel installs them below the active Python environment's `share/ticket-master/` directory. The existing ticket CLI remains available; on macOS/Linux use `bash starters/posix/ticket-master.sh`.
 
 Install the current source with `python -m pip install .` and TASKPLAN with launcher support. `TM_LANG=de|en` selects the prompt. Provider, model, work directory and trusted automation come from explicit user configuration. The starter never changes permissions or chooses a personal account. It requests boot steps (a) through (d) and POSITION 0, then waits for the user's ticket. Preview by setting `TASKPLAN_STARTER_DRY_RUN=1` and passing `--provider codex --model configured-model --effort high --no-probe`.
+
+## Ticket inventory (Ticketinventur)
+
+`python bin/ticket_master.py --ticket-inventory --tickets-dir /path/to/queue` produces a read-only JSON source matrix without launching an agent. The wheel also installs the `ticket-master` command, which works outside a source checkout: `ticket-master --ticket-inventory --tickets-dir /path/to/queue`. `ticket-master --help` and `ticket-master --print-prompt` use the same packaged CLI and installed prompt data. Use `--inventory-content` only for private reports outside the watched queue. Read the [local workflow adapter](skills/ticket-inventory/SKILL.md) for full semantic coverage, active remainder tickets, byte-preserving reversible archives and independent acceptance. A successful capture is not archive approval or completion.

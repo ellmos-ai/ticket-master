@@ -50,11 +50,16 @@ keywords = [
 requires-python = ">=3.10"
 dependencies = []
 
+[project.scripts]
+ticket-master = "ticket_master_runtime.cli:main"
+ticket-master-results = "ticket_master_runtime.results.__main__:main"
+
 [project.optional-dependencies]
 routing-v2 = ["clutch-router>=0.5,<0.6"]
 dev = [
     "pytest>=8.0",
     "ruff>=0.6.0",
+    "filelock>=3.16.0",
     "build>=1.2.0",
     "jsonschema>=4.18,<5",
     "rfc3339-validator>=0.1.4,<0.2",
@@ -83,10 +88,17 @@ testpaths = ["tests"]
 norecursedirs = [".git", ".pytest_cache", ".pytest_temp", ".hypothesis", ".turbo", ".nyc_output", ".tox", "__pycache__", "build", "dist", "tickets"]
 
 [tool.setuptools.packages.find]
-include = ["lib*"]
+include = ["lib*", "bin*", "ticket_master_runtime*"]
+
+[tool.setuptools.package-data]
+"ticket_master_runtime.results" = ["assets/*.png", "assets/*.md"]
 
 [tool.setuptools.data-files]
 "share/ticket-master" = ["ellmos-module.v2.json"]
+"share/ticket-master/skills/ticket-inventory" = ["skills/ticket-inventory/SKILL.md"]
+"share/ticket-master/skills/session-results" = ["skills/session-results/SKILL.md"]
+"share/ticket-master/skills/githubbot-companion" = ["skills/githubbot-companion/SKILL.md"]
+"share/ticket-master/contracts/session-results" = ["contracts/session-results/*.json"]
 "share/ticket-master/prompts" = ["prompts/TICKET-MASTER.de.md", "prompts/TICKET-MASTER.en.md"]
 "share/ticket-master/starters/windows" = ["starters/windows/*.bat"]
 "share/ticket-master/starters/posix" = ["starters/posix/*.sh"]
@@ -96,8 +108,18 @@ include = ["lib*"]
 "share/ticket-master/contracts/trithon/v1/fixtures" = [
     "contracts/trithon/v1/fixtures/*.json",
 ]
+"share/ticket-master/contracts/messages/v1" = [
+    "contracts/messages/v1/*.json",
+]
+"share/ticket-master/config" = [
+    "config/messages-line.example.json",
+    "config/log-registry.example.json",
+]
 "share/ticket-master/docs" = [
     "docs/TRITHON_PHASE0_CONTRACTS.de.md",
+    "docs/SESSION_MESSAGES.de.md",
+    "docs/SESSION_LOCK_VIEW.de.md",
+    "docs/MESSAGES_LINE.de.md",
 ]
 
 [tool.ruff]

@@ -1,0 +1,15 @@
+{
+  "schema": "ellmos.ticket.messages-line-config.v1",
+  "updated_at": "2026-10-27T00:00:00Z",
+  "enabled": false,
+  "delivery_modes": {
+    "chat_start": false,
+    "on_demand": false,
+    "active_chat": false
+  },
+  "targets": [],
+  "gui_open_counts_as_delivery": true,
+  "message_content_logging": false,
+  "audio_logging": false,
+  "transport_contract_ref": "ellmos.ticket.route-intent.v1"
+}

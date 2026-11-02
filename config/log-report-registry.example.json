@@ -1,0 +1,5 @@
+{
+  "schema": "ellmos.ticket.log-report-registry.v1",
+  "alias_of": "ellmos.ticket.log-registry.v1",
+  "sources": []
+}

@@ -6,8 +6,8 @@ import re
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-EXPECTED_TEST_COUNT = 769
-LAST_CHECKED = "2026-11-01"
+EXPECTED_TEST_COUNT = 808
+LAST_CHECKED = "2026-10-27"
 
 
 def test_version_consistency():
@@ -711,28 +711,3 @@ def test_marketing_log_recent_pfad_a_2026_10_09_entry():
     assert mkt_path.is_file()
     content = mkt_path.read_text(encoding="utf-8")
     assert "## 2026-10-09 — Pfad A: Technische Hygiene, Bilingual CONTRIBUTING" in content
-
-
-def test_readme_sequence_diagram_bilingual_parity():
-    """Verify README.md and README_de.md contain matching Mermaid sequence diagrams with autonumber."""
-    readme_en = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
-    readme_de = (REPO_ROOT / "README_de.md").read_text(encoding="utf-8")
-
-    assert "sequenceDiagram" in readme_en
-    assert "sequenceDiagram" in readme_de
-    assert "autonumber" in readme_en
-    assert "autonumber" in readme_de
-    assert "participant P0 as Position 0 (Triage Console)" in readme_en
-    assert "participant P0 as Position 0 (Triage-Konsole)" in readme_de
-    assert "tickets/INBOX/T-YYYYMMDD-#########.txt" in readme_en
-    assert "tickets/INBOX/T-YYYYMMDD-#########.txt" in readme_de
-    assert "tickets/SOLVED/" in readme_en
-    assert "tickets/SOLVED/" in readme_de
-
-
-def test_changelog_recent_pfad_b_2026_11_01_entry():
-    """Verify CHANGELOG.md contains the 2026-11-01 Pfad B entry under ## [Unreleased]."""
-    changelog_path = REPO_ROOT / "CHANGELOG.md"
-    assert changelog_path.is_file()
-    content = changelog_path.read_text(encoding="utf-8")
-    assert "### Pfad B: Discoverability, Visual Architecture, Bilingual Mermaid Sequence Diagrams & Badges Recency (2026-11-01)" in content

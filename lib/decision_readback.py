@@ -174,11 +174,16 @@ def decision_readback(ticket: Path | str, *, queue_dir: Path | str | None = None
             hits.append({
                 "id": entry.get("key") or entry.get("id"),
                 "status": entry.get("status_class"),
+                "decision_kind": entry.get("decision_kind"),
                 "title": entry.get("title"),
                 "source": entry.get("source_file"),
                 "matched": matched,
             })
-    blocking = [hit for hit in hits if hit["status"] in _DECIDED_STATES]
+    blocking = [
+        hit for hit in hits
+        if hit["status"] in _DECIDED_STATES
+        and hit.get("decision_kind") != "cluster-planning"
+    ]
     return {"state": "checked", "index": str(path), "keys": keys,
             "hits": hits, "blocking": blocking}
 

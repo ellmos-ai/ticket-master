@@ -364,6 +364,41 @@ def test_id_link_without_readback_reports_needs_readback_and_suppresses_duplicat
     assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 1
 
 
+def test_cross_reference_without_finding_line_is_not_the_findings_ticket(tmp_path):
+    """A ticket that only MENTIONS the ID elsewhere (cross-reference) must not suppress creation."""
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("crossref")
+    make_finding(findings_dir, finding_id, "Never delivered")
+    link_ticket(
+        tickets_dir, "T-20261020-333333333.txt",
+        f"Other topic entirely.\nSee also {finding_id} for background.\n"
+        f"Finding: {finding_id}-other\n",  # longer, different ID on the Finding: line
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "planned"
+    assert not auditor_bridge._finding_already_ticketed(finding_id, tickets_dir)
+
+
+def test_finding_line_is_the_dedup_key_negative_control(tmp_path):
+    """Same fixture as the cross-reference case, plus the exact Finding: line -> now linked."""
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("crossref-ctrl")
+    make_finding(findings_dir, finding_id, "Delivered")
+    link_ticket(
+        tickets_dir, "T-20261020-444444444.txt",
+        f"Other topic entirely.\nSee also {finding_id} for background.\n"
+        f"Finding: {finding_id}\r\n",  # CRLF line ending is tolerated
+    )
+
+    results = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+
+    assert results[0]["status"] == "needs_readback"
+
+
 def test_link_with_current_readback_is_skipped_without_creating_duplicate(tmp_path):
     findings_dir = tmp_path / "findings"
     tickets_dir = tmp_path / "tickets"
@@ -764,10 +799,12 @@ def test_real_cli_apply_preserves_links_and_distinguishes_measurement(tmp_path):
     for index in (1, 2):
         linked.append(link_ticket(
             tickets, f"T-20261025-{index:09d}.txt",
+            f"Finding: {absent}\n"
             f"{date.today()} | reviewer@host | Finding {absent} "
             "location=lib/probe.py value=clear; measurement never performed — SHA256 deadbeef",
         ))
     link_ticket(tickets, "T-20261025-000000003.txt",
+                f"Finding: {measured}\n"
                 f"{date.today()} | reviewer@host | Finding {measured} "
                 "location=lib/probe.py value=missing — command=stat exit_code=1 result=missing; log=stat.log")
     config = write_json(tmp_path / "config.json", {})

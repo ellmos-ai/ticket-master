@@ -18,14 +18,14 @@ multi-provider (Claude Code, Codex, agy/Gemini).
 [![Attribution: NOTICE](https://img.shields.io/badge/Attribution-NOTICE-blue.svg)](NOTICE)
 [![Version](https://img.shields.io/badge/version-1.12.0-blue.svg)](VERSION)
 [![CI](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml/badge.svg)](https://github.com/ellmos-ai/ticket-master/actions/workflows/tests.yml)
-[![Pytest-Status](https://img.shields.io/badge/pytest-769%20passed-brightgreen.svg)](tests/)
+[![Pytest-Status](https://img.shields.io/badge/pytest-808%20passed-brightgreen.svg)](tests/)
 [![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![Datenschutz](https://img.shields.io/badge/privacy-100%25%20Local--First%20%7C%20Zero--Egress-success.svg)](#sec-05)
 [![Sicherheit](https://img.shields.io/badge/security-RunAsInvoker%20%7C%20Non--Elevation-informational.svg)](SECURITY.md)
 [![Sicherheits-SLA](https://img.shields.io/badge/security%20SLA-48h%20%2F%205d-blue.svg)](SECURITY.md)
 [![Drittanbieter auditiert](https://img.shields.io/badge/third--party-audited%20%7C%200%20Dependencies-success.svg)](THIRD_PARTY_LICENSES.md)
-[![Verifiziert](https://img.shields.io/badge/Verified-2026--11--01-blue.svg)](MARKETING-LOG.txt)
-[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--11--01-success.svg)](MARKETING-LOG.txt)
+[![Verifiziert](https://img.shields.io/badge/Verified-2026--10--09-blue.svg)](MARKETING-LOG.txt)
+[![Letzte Prüfung](https://img.shields.io/badge/Last--Checked-2026--10--09-success.svg)](MARKETING-LOG.txt)
 [![Marketing-Log](https://img.shields.io/badge/marketing%20log-active-blueviolet.svg)](MARKETING-LOG.txt)
 [![LLM Bereit](https://img.shields.io/badge/llms.txt-ready-purple.svg)](llms.txt)
 [![Provider](https://img.shields.io/badge/providers-Claude%20%7C%20Codex%20%7C%20Gemini-orange)](#sec-09)
@@ -96,6 +96,7 @@ Das System folgt einer strikten Local-First-Philosophie: Sämtliche Warteschlang
 | **Formloser Intake & Formalisierung** | Automatische Erfassung formloser Notizen in `INBOX/` mit zeichengetreuer Aufbewahrung im `ORIGINALTEXT`-Block und sicherer Archivierung. |
 | **Auditor-Brücke & Sparmodus-Gate** | Nahtlose Schnittstelle zu `ellmos-ai/system-auditor`; wandelt Prüfbefunde fehlersicher unter Beachtung aktiver Token-Sparstufen in Entwurfstickets um. |
 | **Trithon-Shadow-Projektion (Phase 1)** | Erstellt eine lokale, pointer-only SQLite-Projektion mit atomaren Rebuilds, idempotenten Imports, Crash-Recovery und einem No-op-Mock-Executor; Ticketdateien und Produktionslaufzeit bleiben unverändert. |
+| **Messages-Line-Vertragskern** | Ergänzt abrufbare Text-Message-Tickets mit stabiler Nachrichten-/Thread-/ReceiptID, ein persistentes Quittungs-Ledger je Nachricht und ein reines Quellenregister; es werden keine Nachrichten versendet und keine Transportqueue angelegt. |
 | **0 externe Laufzeit-Abhängigkeiten** | Der Kern läuft vollständig auf der reinen Python-Standardbibliothek (`dependencies = []`); maximale Portabilität und Langlebigkeit. |
 | **Unprivilegierte Ausführung** | Läuft standardmäßig im Benutzermodus (`RunAsInvoker`) ohne Administratorrechte, Root-Zugriff oder UAC-Prompts. |
 
@@ -219,39 +220,47 @@ graph TD
     GATE4 -->|Erfolg| Solved[tickets/SOLVED/<br>Commit & Verifizieren]
     GATE4 -->|Fehlschlag / Timeout| Fallback[Fallback-Kette<br>Nächster Provider]
     Fallback --> GATE4
-`
+```
 
 ### End-to-End Triage- & Delegierungs-Sequenzdiagramm
 
+Die Stufen folgen dem [kanonischen Ablauf](prompts/TICKET-MASTER.de.md): GATE 1 bestätigt Projekt-/Endpunktzuordnung; GATE 4 prüft das Ergebnis nach der Delegierung. Primär gilt der konfigurierte Router; die 5-Dimensionen-Bewertung ist ein Fallback.
+
 Das folgende Sequenzdiagramm veranschaulicht den interaktiven Lebenszyklus von der formlosen Meldung über die kanonische Ticket-Prägung, die 5-Dimensionen-Bewertung, die autonome Subagenten-Ausführung über Claude Code, Codex und Gemini, die Testverifikation bis zum finalen Ledger-Abschluss:
 
-`mermaid
+```mermaid
 sequenceDiagram
     autonumber
     actor Dev as Entwickler / Nutzer
     participant P0 as Position 0 (Triage-Konsole)
-    participant G1 as GATE 1 (Intake & Writer)
-    participant G2 as GATE 2 (Scoring & Router)
+    participant Writer as Kanonischer Ticket-Writer
+    participant G1 as GATE 1 (Projekt- & Endpunktbestätigung)
+    participant G2 as GATE 2 (Gerankte Routing-Kandidaten)
+    participant G4 as GATE 4 (Erfolgsprüfung)
     participant FS as Lokales Dateisystem (tickets/)
     participant Sub as Ziel-Agent (Claude / Codex / Gemini)
     participant Git as Projekt-Git-Repository
 
     Dev->>P0: Problem, Bug oder Feature-Wunsch eingeben
-    P0->>G1: Formalisierung des Intake-Auftrags
-    G1->>FS: Kanonisches Ticket prägen (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    P0->>Writer: Formalisierung des Intake-Auftrags
+    Writer->>FS: Kanonisches Ticket prägen (tickets/INBOX/T-YYYYMMDD-#########.txt)
     FS-->>P0: Ticket angelegt mit byte-erhaltendem Originaltext
-    P0->>G2: 5 Score-Dimensionen bewerten & Fähigkeitsstufe zuordnen
+    P0->>G1: Projekt und Endpunkt anhand der Steuerungsdatei bestätigen
+    G1-->>P0: Projekt und Endpunkt bestätigt
+    P0->>G2: Konfigurierten Router oder 5-Dimensionen-Fallback wählen
     G2-->>P0: Gewählter Provider & Fallback-Kette
     alt Sofort-Fix (Stufe 1-4 & dringend)
-        P0->>Sub: GATE 4 - Delegierung mit Ticket-Kontext
+        P0->>Sub: Delegierung mit Ticket-Kontext
         Sub->>Git: Codeänderungen umsetzen & lokale Tests ausführen
+        Sub-->>P0: Ergebnisvorschlag und Testbelege
+        P0->>G4: Ergebnis gegen Ticketanforderungen prüfen
         alt Verifikation erfolgreich
-            Sub-->>P0: Erfolgsbeleg & Diff-Verifikation
+            G4-->>P0: Erfolg nach Prüfung der Belege bestätigt
             P0->>FS: Ticket nach tickets/SOLVED/ verschieben
             P0->>Dev: Erfolgsmeldung mit Commit-Hash ausgeben
         else Verifikation fehlgeschlagen oder Timeout
-            Sub-->>P0: Fehler- oder Timeout-Signal
-            P0->>Sub: Fallback auf nächsten verfügbaren Provider
+            G4-->>P0: Fehler oder fehlende Belege
+            P0->>Sub: Korrektur anfordern oder nur bei Unerreichbarkeit Fallback nutzen
         end
     else Backlog / Geparkt
         P0->>FS: Ticket nach tickets/PARKED/ verschieben (Taskboard)
@@ -628,6 +637,17 @@ noch keine Laufzeit. Feldabbildung, Autoritätsgrenzen, Datenschutz-Allowlist un
 Gefahrenmodell stehen in
 [`docs/TRITHON_PHASE0_CONTRACTS.de.md`](docs/TRITHON_PHASE0_CONTRACTS.de.md).
 
+Der lokale Messages-Line-Kern speichert abrufbare Text-Message-Tickets,
+Threads und ein persistentes Quittungs-Ledger je Nachricht. Die
+Routing-Konfiguration ist standardmäßig deaktiviert; das
+Protokollquellenregister enthält nur Provenienzreferenzen. Nachrichtentexte
+werden nicht protokolliert, Audio nicht gespeichert und Transportzustellung
+nicht implementiert. Vertrag und offene GUI-/Server-Integrationen stehen in
+[`docs/MESSAGES_LINE.de.md`](docs/MESSAGES_LINE.de.md). Der vorhandene
+`ticket-master`-CLI-Dispatcher bietet lokale Aktionen für `create`, `list`,
+`read`, manuelles `ack`, `config` und `registry` über `--messages-line`.
+Er versendet nichts und quittiert nicht automatisch.
+
 
 ### Companion-Muster
 
@@ -705,6 +725,14 @@ Vier optionale Ebenen erweitern den reinen Ticket-Router zu einer persönlichen 
 - **Dringlichkeitsachse (1.7.0):** `config/urgency.json` bildet Standardfristen ab (`sofort`, `heute`, `woche`, `backlog`). Diese Achse ist von der 5D-Komplexitätsbewertung entkoppelt.
 - **Delegations-Verdrahtung (1.7.0, 1.8.0):** Auflösung des passenden Endpunkts, Schutz durch Permission-Prüfung gegen `LOCK*.txt` und Weiterleitung an `task_db_command`.
 - **Systemwissen-Ebene (1.9.0):** `config/knowledge.json` strukturiert Wissensquellen in `maps`, `state`, `capabilities` und `user_model`.
+
+Der optionale, an einen Claim gebundene SDK-Start einer einzigen rotierenden
+TASKPLAN-Begleitrolle ist im [Bedienvertrag](docs/COMPANION_DISPATCH.de.md)
+beschrieben. Er verlangt einen frischen Steueragentenbeleg mit nativen
+Management- und Quotenreadbacks, ein konfiguriertes Rollenmodell und ein
+aktives privates Sitzungsprofil. Weder ein Launcher-Exitcode noch ein nativer
+Chat-Spawn gilt als bestätigte Annahme. TASKPLAN und AgentLauncher bleiben
+optionale Integrationen.
 
 ---
 
@@ -814,3 +842,7 @@ Autor & Maintainer: Lukas Geiger ([github.com/lukisch](https://github.com/lukisc
 `TICKET-MASTER.bat` startet die Triage-Rolle über TASKPLAN. Windows- und POSIX-Starter sowie die deutschen und englischen TICKET-MASTER-Prompts werden in Wheel und Quellarchiv mitgeliefert. Ein Wheel installiert sie unter `share/ticket-master/` in der aktiven Python-Umgebung. Die bisherige Ticket-CLI bleibt verfügbar. Auf macOS/Linux `bash starters/posix/ticket-master.sh` verwenden.
 
 Aktuellen Quellstand mit `python -m pip install .` und TASKPLAN mit Launcher-Unterstützung installieren. `TM_LANG=de|en` wählt die Sprache. Anbieter, Modell, Arbeitsverzeichnis und erweiterte Berechtigungen kommen aus ausdrücklicher Nutzerkonfiguration. Der Starter verändert keine Berechtigungen und wählt kein persönliches Konto. Er fordert die Boot-Schritte (a) bis (d) und POSITION 0 an; danach wartet die Rolle auf das Ticket des Nutzers. Für eine Vorschau `TASKPLAN_STARTER_DRY_RUN=1` setzen und `--provider codex --model konfiguriertes-modell --effort high --no-probe` übergeben.
+
+## Ticketinventur
+
+`python bin/ticket_master.py --ticketinventur --tickets-dir /pfad/zur/queue` erstellt eine lesende JSON-Quellenmatrix, ohne einen Agenten zu starten. Das Wheel installiert zusätzlich den Befehl `ticket-master`, der auch außerhalb eines Quell-Checkouts funktioniert: `ticket-master --ticketinventur --tickets-dir /pfad/zur/queue`. `ticket-master --help` und `ticket-master --print-prompt` verwenden dieselbe paketierte CLI und die installierten Promptdaten. `--inventory-content` ergänzt private Quelltexte; Berichte gehören außerhalb der beobachteten Queue. Der [lokale Workflow-Adapter](skills/ticket-inventory/SKILL.md) beschreibt vollständige inhaltliche Abdeckung, aktive Rest-Sammeltickets, byteerhaltende reversible Archive und unabhängige Abnahme. Eine erfolgreiche Aufnahme ist weder Archivfreigabe noch Erledigungsnachweis.

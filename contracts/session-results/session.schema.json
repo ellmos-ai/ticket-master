@@ -1,0 +1,426 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/ticket-master/session-results/v1",
+  "title": "Session results projection v1",
+  "type": "object",
+  "required": [
+    "schema",
+    "session_id",
+    "host",
+    "revision",
+    "updated_at",
+    "events",
+    "metrics"
+  ],
+  "properties": {
+    "schema": {
+      "const": "ellmos.ticket.session-results.v1"
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "host": {
+      "type": "string",
+      "minLength": 1
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "created_at",
+          "title",
+          "summary",
+          "status",
+          "source",
+          "tags"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "created_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "enum": [
+              "message",
+              "system",
+              "analysis",
+              "ticket_result",
+              "decision"
+            ]
+          },
+          "details": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "path",
+                "label",
+                "mime"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "anyOf": [
+                    {
+                      "pattern": "^(?:[A-Za-z]:[\\\\/]|/)"
+                    },
+                    {
+                      "pattern": "^https://[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)*(?::443)?(?:[/?#][^\\s\\u0000-\\u0020\\u007f\\\\]*)?$"
+                    }
+                  ]
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "mime": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-fA-F]{64}$"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "path": {
+                        "pattern": "^https:"
+                      }
+                    }
+                  },
+                  "then": {
+                    "not": {
+                      "required": [
+                        "sha256"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "comments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "author",
+                "created_at",
+                "text"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "not": {
+                    "pattern": "\\u0000"
+                  }
+                },
+                "author": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "not": {
+                    "pattern": "\\u0000"
+                  }
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "pattern": "\\S",
+                  "not": {
+                    "pattern": "\\u0000"
+                  }
+                }
+              }
+            }
+          },
+          "message_id": {
+            "type": "string"
+          },
+          "receipt_id": {
+            "type": "string"
+          },
+          "notification": {
+            "type": "object",
+            "required": [
+              "external_id",
+              "observed_at",
+              "thread_id",
+              "message_sha256"
+            ],
+            "properties": {
+              "external_id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "observed_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "thread_id": {
+                "type": "string",
+                "pattern": "^TH-[0-9]{8}-[1-9][0-9]{8}$"
+              },
+              "message_sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            }
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "required": [
+                "notification"
+              ]
+            },
+            "then": {
+              "required": [
+                "message_id",
+                "receipt_id"
+              ],
+              "properties": {
+                "kind": {
+                  "enum": [
+                    "message",
+                    "system"
+                  ]
+                },
+                "message_id": {
+                  "pattern": "^M-[0-9]{8}-[1-9][0-9]{8}$"
+                },
+                "receipt_id": {
+                  "pattern": "^R-[0-9]{8}-[1-9][0-9]{8}$"
+                }
+              }
+            }
+          }
+        ]
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "required": [
+        "skills",
+        "tokens",
+        "agents"
+      ],
+      "properties": {
+        "skills": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "observed_at",
+              "scope"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "observed_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "observed_at",
+              "scope"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "observed_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              },
+              "value": {
+                "type": [
+                  "integer",
+                  "null"
+                ],
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "agents": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "source",
+              "observed_at",
+              "scope",
+              "id",
+              "status",
+              "task"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1
+              },
+              "observed_at": {
+                "type": "string",
+                "minLength": 1
+              },
+              "scope": {
+                "type": "string",
+                "minLength": 1
+              },
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "status": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "task": {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S",
+                "not": {
+                  "pattern": "\\u0000"
+                }
+              },
+              "requested_model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "actual_model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "message_settings": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "read_mode": {
+          "enum": [
+            "manual",
+            "on_open"
+          ],
+          "default": "manual"
+        }
+      }
+    },
+    "result_reads": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "read_at",
+          "event_sha256"
+        ],
+        "properties": {
+          "read_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event_sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "description": "Local result reads keyed by stable event ID; runtime additionally rejects unknown IDs and message/system events. Content changes reopen a result."
+    }
+  }
+}
