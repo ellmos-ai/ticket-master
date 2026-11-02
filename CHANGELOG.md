@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Pfad B: Bilingual sequence documentation (original PR48, 2026-11-01)
+
+- Preserve the original bilingual sequence diagrams with separate complete Mermaid fences and stage names bound to the canonical workflow prompt.
+- Keep the SBOM index date tied to the referenced audited artifact; retain current main inventory, verification counts and version without claiming a new audit.
+
 ### Auditor bridge dedup
 
 - `findings_to_tickets` links a finding to a ticket only through the exact `Finding: <id>` line that the bridge itself writes. A ticket that merely mentions the finding ID elsewhere (cross-reference) no longer suppresses creation of a never-delivered measure. Readback assessment (`_has_current_readback`) is unchanged.

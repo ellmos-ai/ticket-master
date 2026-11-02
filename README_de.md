@@ -222,6 +222,55 @@ graph TD
     Fallback --> GATE4
 ```
 
+### End-to-End Triage- & Delegierungs-Sequenzdiagramm
+
+Die Stufen folgen dem [kanonischen Ablauf](prompts/TICKET-MASTER.de.md): GATE 1 bestätigt Projekt-/Endpunktzuordnung; GATE 4 prüft das Ergebnis nach der Delegierung. Primär gilt der konfigurierte Router; die 5-Dimensionen-Bewertung ist ein Fallback.
+
+Das folgende Sequenzdiagramm veranschaulicht den interaktiven Lebenszyklus von der formlosen Meldung über die kanonische Ticket-Prägung, die 5-Dimensionen-Bewertung, die autonome Subagenten-Ausführung über Claude Code, Codex und Gemini, die Testverifikation bis zum finalen Ledger-Abschluss:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Entwickler / Nutzer
+    participant P0 as Position 0 (Triage-Konsole)
+    participant Writer as Kanonischer Ticket-Writer
+    participant G1 as GATE 1 (Projekt- & Endpunktbestätigung)
+    participant G2 as GATE 2 (Gerankte Routing-Kandidaten)
+    participant G4 as GATE 4 (Erfolgsprüfung)
+    participant FS as Lokales Dateisystem (tickets/)
+    participant Sub as Ziel-Agent (Claude / Codex / Gemini)
+    participant Git as Projekt-Git-Repository
+
+    Dev->>P0: Problem, Bug oder Feature-Wunsch eingeben
+    P0->>Writer: Formalisierung des Intake-Auftrags
+    Writer->>FS: Kanonisches Ticket prägen (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    FS-->>P0: Ticket angelegt mit byte-erhaltendem Originaltext
+    P0->>G1: Projekt und Endpunkt anhand der Steuerungsdatei bestätigen
+    G1-->>P0: Projekt und Endpunkt bestätigt
+    P0->>G2: Konfigurierten Router oder 5-Dimensionen-Fallback wählen
+    G2-->>P0: Gewählter Provider & Fallback-Kette
+    alt Sofort-Fix (Stufe 1-4 & dringend)
+        P0->>Sub: Delegierung mit Ticket-Kontext
+        Sub->>Git: Codeänderungen umsetzen & lokale Tests ausführen
+        Sub-->>P0: Ergebnisvorschlag und Testbelege
+        P0->>G4: Ergebnis gegen Ticketanforderungen prüfen
+        alt Verifikation erfolgreich
+            G4-->>P0: Erfolg nach Prüfung der Belege bestätigt
+            P0->>FS: Ticket nach tickets/SOLVED/ verschieben
+            P0->>Dev: Erfolgsmeldung mit Commit-Hash ausgeben
+        else Verifikation fehlgeschlagen oder Timeout
+            G4-->>P0: Fehler oder fehlende Belege
+            P0->>Sub: Korrektur anfordern oder nur bei Unerreichbarkeit Fallback nutzen
+        end
+    else Backlog / Geparkt
+        P0->>FS: Ticket nach tickets/PARKED/ verschieben (Taskboard)
+        P0->>Dev: Geparkt mit Priorität & Begründung
+    else Manuelle Übergabe
+        P0->>FS: Ticket nach tickets/USER/ verschieben (Wartet auf Nutzerentscheid)
+        P0->>Dev: Rückfrage zur Klärung stellen
+    end
+```
+
 ### ASCII-Vier-Sichten-Architekturtopologie
 
 ```text

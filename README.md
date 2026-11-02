@@ -237,6 +237,55 @@ graph TD
     Fallback --> GATE4
 ```
 
+### End-to-End Triage & Delegation Sequence
+
+Stage labels follow the [canonical workflow](prompts/TICKET-MASTER.de.md): GATE 1 confirms project/endpoint assignment; GATE 4 verifies the result after delegation. The configured router is primary; 5-dimension scoring is a fallback.
+
+The sequence diagram below models the interactive lifecycle from developer issue submission through canonical ticket minting, 5-dimension scoring, autonomous sub-agent execution across Claude Code, Codex, and Gemini, local test suite verification, and final SOLVED ledger resolution:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Dev as Developer / User
+    participant P0 as Position 0 (Triage Console)
+    participant Writer as Canonical Ticket Writer
+    participant G1 as GATE 1 (Project & Endpoint Confirmation)
+    participant G2 as GATE 2 (Ranked Routing Candidates)
+    participant G4 as GATE 4 (Success Verification)
+    participant FS as Local Filesystem (tickets/)
+    participant Sub as Target Agent (Claude / Codex / Gemini)
+    participant Git as Project Git Repository
+
+    Dev->>P0: Enter raw issue or feature request
+    P0->>Writer: Formalize intake request
+    Writer->>FS: Mint canonical ticket (tickets/INBOX/T-YYYYMMDD-#########.txt)
+    FS-->>P0: Ticket created with byte-preserving original text
+    P0->>G1: Confirm project and endpoint from project control file
+    G1-->>P0: Project and endpoint confirmed
+    P0->>G2: Select configured router or 5-dimension fallback
+    G2-->>P0: Selected provider & fallback chain
+    alt Immediate Fix (Tier 1-4 & Urgent)
+        P0->>Sub: Delegate task with ticket context
+        Sub->>Git: Apply code changes & run local test suite
+        Sub-->>P0: Candidate result and test evidence
+        P0->>G4: Verify result against ticket requirements
+        alt Verification Passes
+            G4-->>P0: Success confirmed after evidence review
+            P0->>FS: Move ticket to tickets/SOLVED/
+            P0->>Dev: Report resolution with commit hash
+        else Verification Fails or Timeout
+            G4-->>P0: Failure or missing evidence
+            P0->>Sub: Request correction or use fallback only if candidate unreachable
+        end
+    else Backlog / Parked
+        P0->>FS: Move ticket to tickets/PARKED/ (Task board)
+        P0->>Dev: Parked with priority & rationale
+    else Manual Handoff
+        P0->>FS: Move ticket to tickets/USER/ (Awaiting human decision)
+        P0->>Dev: Prompt for required clarification
+    end
+```
+
 ### ASCII Four-View Architectural Topology
 
 ```text
