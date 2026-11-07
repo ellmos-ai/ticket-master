@@ -62,7 +62,7 @@ try:  # package import
     from .ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
     from .decision_readback import (
         DECISIONS_INDEX_ENV, INDEX_RELATIVE_PATH,
-        decision_readback, readback_log_line,
+        decision_readback, readback_log_line, rebuild_hint,
     )
     from .ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
@@ -97,7 +97,7 @@ except ImportError:  # direct import from lib on sys.path
     from ticket_freigabe import FreigabeError, freigabe_state, mark_freigabe, stamp_freigabe_id
     from decision_readback import (
         DECISIONS_INDEX_ENV, INDEX_RELATIVE_PATH,
-        decision_readback, readback_log_line,
+        decision_readback, readback_log_line, rebuild_hint,
     )
     from ticket_audit import (
         _KNOWN_STATUS_CLUSTERS,
@@ -541,7 +541,8 @@ def _decision_readback_gate(source: Path, dest_dir: Path,
     Three outcomes, and the difference between them is the whole point:
       * the register answers this ticket (a hit in a decided state)  -> refuse,
         unless the caller names that ID as checked-and-not-applicable;
-      * a NAMED index cannot be read                                 -> refuse;
+      * an EXPECTED index (named, or a register sits next to the queue)
+        cannot be read                                               -> refuse;
       * nothing found, or no index at all                            -> allow,
         but the line says so, so "not found" can never be read as "open".
     """
@@ -550,9 +551,9 @@ def _decision_readback_gate(source: Path, dest_dir: Path,
         source, queue_dir=dest_dir.parent, index_path=index_path)
     if result["state"] == "unavailable":
         raise DecisionReadbackError(
-            f"decision index named but unreadable: {result['index']} "
+            f"decision index unreadable: {result['index']} "
             f"({result.get('error', '?')}). Escalating to USER/ would claim "
-            "'open' without having looked.")
+            f"'open' without having looked. {rebuild_hint(result['index'])}")
     unhandled = [hit for hit in result["blocking"]
                  if hit["id"] not in acknowledged]
     if unhandled:
@@ -1024,7 +1025,9 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.decision_readback:
         if args.source or args.dest_dir:
             parser.error("--decision-readback cannot be combined with a move")
-        queue = Path(args.tickets_dir) if args.tickets_dir else Path(args.decision_readback).parent.parent
+        # queue_root_of makes the path absolute and knows root-level tickets;
+        # Path(...).parent.parent of a relative path was '.' (T-20261107-456970984).
+        queue = Path(args.tickets_dir) if args.tickets_dir else queue_root_of(args.decision_readback)
         try:
             result = decision_readback(args.decision_readback, queue_dir=queue,
                                        index_path=args.decisions_index)
@@ -1033,6 +1036,9 @@ def _cli(argv: list[str] | None = None) -> int:
             return 1
         print(f"DECISION READBACK {result['state'].upper()}: {args.decision_readback}")
         print(f"  index: {result['index'] or '-'}")
+        if result["state"] == "unavailable":
+            print(f"  error: {result.get('error', '?')}")
+            print(f"  fix:   {rebuild_hint(result['index'])}")
         print(f"  keys:  {', '.join(result['keys']) or '-'}")
         for hit in result["hits"]:
             mark = "BLOCKING" if hit in result["blocking"] else "info"
