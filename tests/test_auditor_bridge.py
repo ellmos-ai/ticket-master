@@ -399,6 +399,29 @@ def test_finding_line_is_the_dedup_key_negative_control(tmp_path):
     assert results[0]["status"] == "needs_readback"
 
 
+def test_apply_delivers_exactly_what_the_dry_run_planned_despite_cross_references(tmp_path):
+    """Live evidence 2026-10-24: the dry run planned 15 tickets, --apply created 12.
+
+    Tickets created earlier in the same run quote the IDs of findings processed
+    later; those quotes must not count as the later findings' tickets.
+    """
+    findings_dir = tmp_path / "findings"
+    tickets_dir = verified_queue(tmp_path / "tickets")
+    first, second, third = (current_finding_id(name) for name in ("alpha", "beta", "gamma"))
+    # findings_to_tickets walks sorted(M-*.md): alpha is ticketed before beta and gamma are checked
+    make_finding(findings_dir, first, "First", body=f"Quotes {second} and {third} in prose.")
+    make_finding(findings_dir, second, "Second", body=f"See also {third}.")
+    make_finding(findings_dir, third, "Third")
+
+    planned = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=True)
+    applied = auditor_bridge.findings_to_tickets(findings_dir, tickets_dir, dry_run=False)
+
+    assert [r["status"] for r in planned] == ["planned"] * 3
+    assert [r["status"] for r in applied] == ["created"] * 3
+    assert [r["finding_id"] for r in applied] == [r["finding_id"] for r in planned]
+    assert len(list(ticket_writer.iter_lifecycle_files(tickets_dir))) == 3
+
+
 def test_link_with_current_readback_is_skipped_without_creating_duplicate(tmp_path):
     findings_dir = tmp_path / "findings"
     tickets_dir = tmp_path / "tickets"
