@@ -1,5 +1,6 @@
 """Test-only helpers for explicit ticket-queue setup."""
 
+import importlib.util
 from pathlib import Path
 
 
@@ -11,3 +12,20 @@ def verified_queue(path: str | Path) -> Path:
         "ticket-master-queue-v1\n", encoding="utf-8",
     )
     return root
+
+
+def write_file(path: str | Path, text: str) -> Path:
+    """Write *text* (creating parents) and return the path."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def load_cli(name: str = "ticket_master_cli_under_test"):
+    """Import bin/ticket_master.py as a fresh module."""
+    path = Path(__file__).resolve().parents[1] / "bin" / "ticket_master.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

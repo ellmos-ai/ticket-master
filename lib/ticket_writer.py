@@ -107,6 +107,38 @@ def _default_systems_registry() -> Path | None:
 _QUEUE_MARKER = ".ticket-master-queue"
 _QUEUE_MARKER_VALUE = "ticket-master-queue-v1"
 
+# T-20261107-847936256: a folder inside a module/mirror tree is never a live queue, marker or not.
+# On 2026-09-09 the fixture `tickets/` of the ticket-master OneDrive mirror got the marker by hand and
+# then took 27 real tickets that were missing from the canonical queue.
+_MODULE_ROOT_FILES = ("ellmos-module.v2.json", "REPO.pointer.json")
+
+
+def queue_location_problem(base: Path | str) -> str | None:
+    """Why *base* can never be a live ticket queue, or None if its location is fine.
+
+    A queue home is neither a module/mirror root nor inside a module tree: the folder itself or its
+    parent carries ``ellmos-module.v2.json`` / ``REPO.pointer.json`` (the repository's own ``tickets/``
+    fixture and its mirrors), or a path component is a ``.MODULES`` tree. Checked on the path as given
+    and on its resolved target, so a link cannot smuggle a fixture in.
+    """
+    given = Path(os.path.abspath(base))
+    candidates = [given]
+    try:
+        resolved = given.resolve()
+    except OSError:
+        resolved = given
+    if resolved != given:
+        candidates.append(resolved)
+    for path in candidates:
+        if any(part.casefold() == ".modules" for part in path.parts):
+            return f"{path} lies inside a .MODULES tree (module/mirror), not a queue home"
+        for folder in (path, path.parent):
+            for name in _MODULE_ROOT_FILES:
+                if (folder / name).is_file():
+                    return (f"{folder} carries {name}, so it is a module/mirror root and its tickets/ "
+                            "folder is a fixture, not a queue home")
+    return None
+
 
 def require_verified_queue_root(tickets_dir: Path) -> Path:
     """Return *tickets_dir* only when it identifies an intentional queue.
@@ -124,6 +156,12 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
     (T-20260906-387521104).
     """
     base = resolve_queue_alias(tickets_dir)
+    problem = queue_location_problem(base)
+    if problem:
+        raise ValueError(
+            f"tickets_dir is not a live ticket queue: {problem}. Use the configured live queue "
+            "(\"tickets_dir\" in config/ticket-master.config.json) instead."
+        )
     marker = base / _QUEUE_MARKER
     if marker.is_file():
         try:
