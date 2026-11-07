@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
 
 import status_drift_fixer  # noqa: E402
+from queue_helpers import QueueTemporaryDirectory  # noqa: E402
 
 
 def _ticket(path: Path, status: str, loesung: str, verlauf_extra: str = "") -> Path:
@@ -115,7 +116,7 @@ class TestApplyFixErrors(unittest.TestCase):
         """T-20260903-965930417: a shared, lock-free ticket tree means the
         classify() scan and apply_fix() write can straddle a foreign edit.
         The compare-and-swap must refuse instead of overwriting it."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             path = _ticket(base / "SOLVED" / "T-20260816-000000001.txt", "INBOX", _FILLED, _DONE_ENTRY)
             report = status_drift_fixer.classify(base)
@@ -144,7 +145,7 @@ class TestRun(unittest.TestCase):
             self.assertTrue(report["preview"][0]["new_status"].startswith("SOLVED (seit "))
 
     def test_apply_rewrites_status_line_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             path = _ticket(base / "SOLVED" / "T-20260816-000000001.txt", "INBOX", _FILLED, _DONE_ENTRY)
             before = path.read_text(encoding="utf-8")

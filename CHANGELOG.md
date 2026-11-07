@@ -9,9 +9,14 @@ All notable changes to ticket-master are documented here.
 - The queue check now guards every writer that changes an EXISTING ticket, through one helper
   (`ticket_writer.require_ticket_in_verified_queue()`, root rule `ticket_writer.queue_root_of()`): `ticket_mover`
   (`move_ticket`, `release_claim`, `release_claims`, `mark_delegated`, therefore also `--claim-current-host` and the
-  routing-v2 claim/release), `ticket_note`, `ticket_freigabe` (`stamp_freigabe_id`, `mark_freigabe`) and the
+  routing-v2 `claim_contract`), `ticket_note`, `ticket_freigabe` (`stamp_freigabe_id`, `mark_freigabe`) and the
   idempotent branch of `formalize_informal_entry`. Before, only the writers that create tickets verified their root,
-  so a shadow queue that already existed could still be triaged. `ticket_audit` has no write path. The accepted queue
+  so a shadow queue that already existed could still be triaged. The other routing-v2 contract writers
+  (`record_receipt`, `release_contract`, `complete_contract`, `normalize_expired_binding`, `refresh_resolution`) and
+  `status_drift_fixer --apply` do not go through `move_ticket` first; they are checked in the three shared write
+  functions of `routing_contract` (`_atomic_rewrite`, `atomic_rewrite_if_unchanged`, `_exclusive_rewrite_move`), before
+  anything is written. Before, a shadow ticket was rewritten, or `complete_contract` left `STATUS: SOLVED` in a file
+  that stayed where it was (found in review of #54). `ticket_audit` has no write path. The accepted queue
   kinds are unchanged (v1 marker, v2 marker from `--init-queue`, README + `_templates/TICKET.txt` contract; the live
   queue is recognised by the README contract). Tests that build their tickets straight below a temp folder now use
   `QueueTemporaryDirectory` / `verified_queue()` from `tests/queue_helpers.py`.

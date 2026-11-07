@@ -770,6 +770,7 @@ def test_v2_release_helper_and_legacy_multi_host_release_stay_distinct(tmp_path)
 
 
 def test_atomic_rewrite_if_unchanged_happy_path(tmp_path):
+    verified_queue(tmp_path)  # the write functions check the queue before they write
     path = tmp_path / "T-20260903-000000001.txt"
     path.write_text("STATUS:        INBOX\n", encoding="utf-8")
     text, digest = rc.read_for_update(path)
@@ -778,6 +779,7 @@ def test_atomic_rewrite_if_unchanged_happy_path(tmp_path):
 
 
 def test_atomic_rewrite_if_unchanged_refuses_stale_write(tmp_path):
+    verified_queue(tmp_path)  # the write functions check the queue before they write
     """T-20260903-965930417: a foreign writer editing the file between the
     caller's read and its write must not be silently overwritten -- the
     caller gets StaleContentError with the CURRENT content to merge from."""
