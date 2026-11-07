@@ -1024,7 +1024,9 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.decision_readback:
         if args.source or args.dest_dir:
             parser.error("--decision-readback cannot be combined with a move")
-        queue = Path(args.tickets_dir) if args.tickets_dir else Path(args.decision_readback).parent.parent
+        # queue_root_of makes the path absolute and knows root-level tickets;
+        # Path(...).parent.parent of a relative path was '.' (T-20261107-456970984).
+        queue = Path(args.tickets_dir) if args.tickets_dir else queue_root_of(args.decision_readback)
         try:
             result = decision_readback(args.decision_readback, queue_dir=queue,
                                        index_path=args.decisions_index)

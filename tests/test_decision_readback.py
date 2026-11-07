@@ -216,6 +216,116 @@ class TestReadbackCli(unittest.TestCase):
                 "--acknowledge-decision", "D-20260731-010"]), 0)
 
 
+class TestReadbackRelativePaths(unittest.TestCase):
+    """T-20261107-456970984: Mit RELATIVEM Ticketpfad meldete --decision-readback
+    'ABSENT, index: -', obwohl der Index neben der Queue lag. Path('ACTIONABLE/T.txt')
+    .parent.parent ist '.', und '.'.parent bleibt '.' -- gesucht wurde dann unter
+    <Queue>/_CONTROL statt <control-center>/_CONTROL. Ein falsches 'absent' ist
+    genau das 'nicht gefunden', das als 'offen' gelesen wird."""
+
+    def _run_cli(self, cwd: Path, ticket_arg: str) -> tuple[int, str]:
+        import contextlib
+        import io
+        import os
+        old = os.getcwd()
+        out = io.StringIO()
+        try:
+            os.chdir(cwd)
+            with contextlib.redirect_stdout(out):
+                code = ticket_mover._cli(["--decision-readback", ticket_arg])
+        finally:
+            os.chdir(old)
+        return code, out.getvalue()
+
+    def _setup(self, tmp: Path) -> tuple[Path, Path]:
+        queue = _queue(tmp)
+        _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+            "key": "D-20260731-010", "id": "D-20260731-010",
+            "status_class": "DONE", "title": "Entschieden",
+            "source_file": "DECIDED-AND-DONE.md",
+        }])
+        ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt",
+                         "Bezug D-20260731-010.")
+        return queue, ticket
+
+    def test_relative_ticket_path_from_the_queue_finds_the_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp))
+            code, out = self._run_cli(queue, "ACTIONABLE/" + ticket.name)
+            self.assertEqual(code, 0)
+            self.assertIn("DECISION READBACK CHECKED", out)
+            self.assertIn("[BLOCKING] D-20260731-010", out)
+
+    def test_relative_ticket_path_from_the_lifecycle_folder_finds_the_index(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp))
+            code, out = self._run_cli(queue / "ACTIONABLE", ticket.name)
+            self.assertEqual(code, 0)
+            self.assertIn("DECISION READBACK CHECKED", out)
+            self.assertIn("[BLOCKING] D-20260731-010", out)
+
+    def test_a_ticket_in_the_queue_root_finds_the_index_too(self):
+        """INBOX-Alias: Tickets direkt in der Queue-Wurzel. parent.parent zeigte
+        dort schon mit absolutem Pfad ueber das Control-Center hinaus."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, _ = self._setup(Path(tmp))
+            root_ticket = _ticket(queue, ".", "T-20260913-000000002.txt", "Bezug D-20260731-010.")
+            code, out = self._run_cli(queue, root_ticket.name)
+            self.assertEqual(code, 0)
+            self.assertIn("[BLOCKING] D-20260731-010", out)
+
+    def test_relative_queue_dir_is_resolved_before_deriving_the_index(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, _ = self._setup(Path(tmp))
+            old = os.getcwd()
+            try:
+                os.chdir(queue)
+                path, _named = dr.find_decisions_index(".")
+            finally:
+                os.chdir(old)
+            self.assertIsNotNone(path)
+            self.assertTrue(path.is_file())
+
+    def test_negative_control_no_register_stays_absent(self):
+        """Ohne Register neben der Queue bleibt es 'absent' -- das oeffentliche
+        Werkzeug darf Nutzer ohne Register nicht blockieren."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt")
+            code, out = self._run_cli(queue, "ACTIONABLE/" + ticket.name)
+            self.assertEqual(code, 0)
+            self.assertIn("DECISION READBACK ABSENT", out)
+
+    def test_register_present_but_index_missing_is_unavailable_not_absent(self):
+        """Haertung: Liegt neben der Queue ein Register (_CONTROL/_DECISIONS),
+        fehlt aber dessen Index, ist das ein kaputtes Register, kein fehlendes.
+        Dann 'unavailable' (Exit 1, Eskalation verweigert), nie still 'absent'."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            (queue.parent / dr.INDEX_RELATIVE_PATH.parent.parent).mkdir(parents=True)
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt")
+            code, out = self._run_cli(queue, "ACTIONABLE/" + ticket.name)
+            self.assertEqual(code, 1)
+            self.assertIn("DECISION READBACK UNAVAILABLE", out)
+            with self.assertRaises(ticket_mover.DecisionReadbackError):
+                ticket_mover.move_ticket(ticket, queue / "USER")
+            self.assertTrue(ticket.exists())
+
+    def test_move_gate_with_relative_destination_finds_the_index(self):
+        import os
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp))
+            old = os.getcwd()
+            try:
+                os.chdir(queue / "ACTIONABLE")
+                with self.assertRaises(ticket_mover.DecisionReadbackError):
+                    ticket_mover.move_ticket(Path(ticket.name), Path("..") / "USER")
+            finally:
+                os.chdir(old)
+            self.assertTrue(ticket.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
 

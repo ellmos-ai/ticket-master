@@ -85,8 +85,13 @@ def find_decisions_index(queue_dir: Path | str | None = None,
     """Locate the decision index. Returns ``(path, was_named)``.
 
     ``was_named`` is True when the path came from the caller or the
-    environment -- that is what turns an unreadable index into a refusal
+    environment, or when the queue sits next to a decision register whose
+    index is missing -- that is what turns an unreadable index into a refusal
     instead of a shrug.
+
+    ``queue_dir`` is made absolute first (T-20261107-456970984): a relative
+    queue such as ``.`` has ``.`` as its parent, so the index was looked up
+    under the queue itself and a present register was reported as absent.
     """
     if explicit:
         return Path(explicit).expanduser(), True
@@ -95,8 +100,17 @@ def find_decisions_index(queue_dir: Path | str | None = None,
         return Path(from_env).expanduser(), True
     if queue_dir is None:
         return None, False
-    candidate = Path(queue_dir).parent / INDEX_RELATIVE_PATH
-    return (candidate, False) if candidate.is_file() else (None, False)
+    root = Path(os.path.abspath(queue_dir)).parent
+    candidate = root / INDEX_RELATIVE_PATH
+    if candidate.is_file():
+        return candidate, False
+    # A register next to the queue without its index is a broken register,
+    # not a missing one: report it as expected, so the reader says
+    # "unavailable" instead of a silent "absent" that reads as "open".
+    # Without any register (public users of the tool) it stays absent.
+    if (root / INDEX_RELATIVE_PATH.parent.parent).is_dir():
+        return candidate, True
+    return None, False
 
 
 def _keys_from_ticket(text: str, ticket_name: str) -> list[str]:
