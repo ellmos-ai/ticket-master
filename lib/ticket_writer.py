@@ -21,8 +21,10 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import platform
 import random
 import re
+import uuid
 from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -105,7 +107,10 @@ def _default_systems_registry() -> Path | None:
 
 
 _QUEUE_MARKER = ".ticket-master-queue"
-_QUEUE_MARKER_VALUE = "ticket-master-queue-v1"
+_QUEUE_MARKER_VALUE = "ticket-master-queue-v1"  # legacy marker of existing queues
+_QUEUE_MARKER_V2 = "ticket-master-queue-v2"  # written by init_queue(): carries a queue_id
+_QUEUE_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
+_INIT_QUEUE_SCRIPT = Path(__file__).resolve().parent.parent / "bin" / "ticket_master.py"
 
 # T-20261107-847936256: a folder inside a module/mirror tree is never a live queue, marker or not.
 # On 2026-09-09 the fixture `tickets/` of the ticket-master OneDrive mirror got the marker by hand and
@@ -140,6 +145,72 @@ def queue_location_problem(base: Path | str) -> str | None:
     return None
 
 
+def _marker_is_valid(marker: Path) -> bool:
+    """v1 (exact legacy value, existing queues) or v2 (written by init_queue(), valid queue_id)."""
+    try:
+        text = marker.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    if text in {_QUEUE_MARKER_VALUE, _QUEUE_MARKER_VALUE + "\n"}:
+        return True
+    lines = text.splitlines()
+    if not lines or lines[0] != _QUEUE_MARKER_V2:
+        return False
+    fields = {key.strip(): value.strip() for key, sep, value in (line.partition(": ") for line in lines[1:]) if sep}
+    return bool(_QUEUE_ID_RE.fullmatch(fields.get("queue_id", "")))
+
+
+def _has_legacy_contract(base: Path) -> bool:
+    """Queues that predate the marker: root README and _templates/TICKET.txt name the ticket/INBOX contract."""
+    try:
+        readme_text = (base / "README.md").read_text(encoding="utf-8")
+        template_text = (base / "_templates" / "TICKET.txt").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return False
+    return (
+        base.is_dir()
+        and "TICKET" in readme_text.upper()
+        and "INBOX" in readme_text.upper()
+        and "TICKET" in template_text.upper()
+        and "STATUS:" in template_text.upper()
+    )
+
+
+def init_queue(tickets_dir: Path | str) -> Path:
+    """Create (or confirm) a verified ticket-queue root. The only way the queue marker comes into being.
+
+    Refuses module/mirror locations (see queue_location_problem). An existing valid queue -- v1/v2 marker or
+    the legacy README contract -- is left exactly as it is; an existing but invalid marker is an error, not
+    something to overwrite silently. The v2 marker records a queue_id plus creation time, host and root.
+    """
+    base = resolve_queue_alias(Path(os.path.abspath(tickets_dir)))
+    problem = queue_location_problem(base)
+    if problem:
+        raise ValueError(f"cannot initialise a ticket queue here: {problem}.")
+    marker = base / _QUEUE_MARKER
+    if marker.is_file() and _marker_is_valid(marker):
+        return base
+    if _has_legacy_contract(base):
+        return base
+    if marker.exists():
+        raise ValueError(f"{marker} exists but is not a valid queue marker; remove it deliberately, then re-run.")
+    base.mkdir(parents=True, exist_ok=True)
+    content = "\n".join([
+        _QUEUE_MARKER_V2,
+        f"queue_id: {uuid.uuid4()}",
+        f"created: {datetime.now().astimezone().isoformat(timespec='seconds')}",
+        f"host: {platform.node() or 'unknown'}",
+        f"root: {base}",
+    ]) + "\n"
+    try:
+        with open(marker, "x", encoding="utf-8") as handle:  # exclusive: never overwrite
+            handle.write(content)
+    except FileExistsError:
+        if not _marker_is_valid(marker):
+            raise ValueError(f"{marker} appeared concurrently and is not a valid queue marker.") from None
+    return base
+
+
 def require_verified_queue_root(tickets_dir: Path) -> Path:
     """Return *tickets_dir* only when it identifies an intentional queue.
 
@@ -163,36 +234,19 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
             "(\"tickets_dir\" in config/ticket-master.config.json) instead."
         )
     marker = base / _QUEUE_MARKER
-    if marker.is_file():
-        try:
-            marker_text = marker.read_text(encoding="utf-8")
-            if marker_text in {_QUEUE_MARKER_VALUE, _QUEUE_MARKER_VALUE + "\n"}:
-                return base
-        except (OSError, UnicodeError):
-            pass
+    if marker.is_file() and _marker_is_valid(marker):
+        return base
 
-    readme = base / "README.md"
-    template = base / "_templates" / "TICKET.txt"
-    try:
-        readme_text = readme.read_text(encoding="utf-8")
-        template_text = template.read_text(encoding="utf-8")
-    except (OSError, UnicodeError):
-        readme_text = ""
-        template_text = ""
-    legacy_contract = (
-        "TICKET" in readme_text.upper()
-        and "INBOX" in readme_text.upper()
-        and "TICKET" in template_text.upper()
-        and "STATUS:" in template_text.upper()
-    )
-    if base.is_dir() and legacy_contract:
+    if _has_legacy_contract(base):
         return base
 
     raise ValueError(
         f"tickets_dir is not a verified ticket queue: {base}. "
-        f"Refusing to create queue directories. Add {_QUEUE_MARKER} containing "
-        f"'{_QUEUE_MARKER_VALUE}', or provide a queue with README.md and "
-        "_templates/TICKET.txt that identify the ticket/INBOX contract."
+        "Refusing to create queue directories. A queue root is created only by the command "
+        f'python "{_INIT_QUEUE_SCRIPT}" --init-queue "{base}" '
+        "-- never by writing the marker file by hand (a hand-made marker once turned a fixture folder "
+        "into a second live queue). A queue that predates the marker is recognised by its root README.md "
+        "and _templates/TICKET.txt."
     )
 
 _TICKET_TEMPLATE = """\

@@ -31,7 +31,7 @@ SUPPORTED_PROVIDERS = ("claude", "codex", "agy", "kimi")
 if str(LIB_ROOT) not in sys.path:
     sys.path.insert(0, str(LIB_ROOT))
 
-from ticket_writer import create as create_ticket  # noqa: E402
+from ticket_writer import create as create_ticket, init_queue  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
 from config_paths import QueueAliasError, expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
 from ticket_inventory import capture_inventory  # noqa: E402
@@ -576,6 +576,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="create one exclusive INBOX intake ticket; DESCRIPTION may also come from --body",
     )
     mode.add_argument("--print-prompt", action="store_true", help="resolve and print the prompt path")
+    mode.add_argument(
+        "--init-queue",
+        metavar="PATH",
+        help="create a verified ticket-queue root at PATH; the only way the queue marker is created",
+    )
     mode.add_argument("--ticket-inventory", "--ticketinventur", action="store_true",
                       help="capture a read-only Ticketinventur matrix as JSON; no provider starts")
     mode.add_argument(
@@ -627,6 +632,9 @@ def main(argv: list[str] | None = None) -> int:
             raise ConfigError("--json is only valid with --list, --ticket-inventory or --messages-line")
         if args.inventory_content and not args.ticket_inventory:
             raise ConfigError("--inventory-content requires --ticket-inventory")
+        if args.init_queue is not None:
+            print(f"INITIALIZED: {init_queue(args.init_queue)}")
+            return 0
         if args.messages_line:
             return run_messages_line(args)
         if args.ticket_inventory:

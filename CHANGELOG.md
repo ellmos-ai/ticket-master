@@ -4,6 +4,17 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Queue hardening after the shadow-queue incident (T-20261107-847936256)
+
+- The queue marker is created only by the command `python bin/ticket_master.py --init-queue <path>`. It writes a
+  `ticket-master-queue-v2` marker with a `queue_id`, creation time, host and root; a hand-written `v2` marker without a
+  valid `queue_id` is rejected. The error of the queue check now names the command instead of explaining how to write
+  the marker by hand (that advice turned the mirror's fixture folder into a second live queue on 2026-09-09).
+  Existing queues keep working unchanged: the legacy `v1` marker and the README + `_templates/TICKET.txt` contract.
+- A folder inside a module/mirror tree is never a queue, with or without marker: the folder or its parent carries
+  `ellmos-module.v2.json` or `REPO.pointer.json`, or a path component is `.MODULES`
+  (`ticket_writer.queue_location_problem()`, applied by every writer and by `--init-queue`).
+
 ### Pfad B: Bilingual sequence documentation (original PR48, 2026-11-01)
 
 - Preserve the original bilingual sequence diagrams with separate complete Mermaid fences and stage names bound to the canonical workflow prompt.
