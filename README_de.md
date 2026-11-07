@@ -550,7 +550,10 @@ Arbeiten mehrere Systeme oder Umgebungen auf geteilten Queues, empfiehlt sich di
 python bin/ticket_master.py --list                 # Übersicht aller offenen Tickets nach Lebenszyklus
 python bin/ticket_master.py --list --json          # Maschinenlesbare JSON-Übersicht
 python bin/ticket_master.py --intake "Login-Fix"   # Strukturiertes Ticket via CLI anlegen
+python bin/ticket_master.py --init-queue <pfad>    # Geprüfte Ticket-Queue-Wurzel anlegen (einziger Weg, die Queue-Marke zu erzeugen)
 ```
+
+Das Ticket-Verzeichnis ist Pflicht: `--tickets-dir` übergeben oder `"tickets_dir"` in der Konfiguration setzen. Einen Fallback auf `<repo>/tickets` gibt es nicht; das ist die Test-Fixture, keine Queue. Ein Ordner im Modul- oder Spiegelbaum (neben `ellmos-module.v2.json` oder `REPO.pointer.json` oder unter `.MODULES`) wird nie als Queue akzeptiert, auch nicht mit Marke.
 
 #### Öffentlicher Producer-Vertrag (`--title` / `--body`)
 

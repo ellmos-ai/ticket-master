@@ -574,7 +574,10 @@ At runtime, `bin/ticket_master.py` replaces `<HOME>` with the current user's hom
 python bin/ticket_master.py --list                 # Summary of open tickets across lifecycles
 python bin/ticket_master.py --list --json          # Machine-readable JSON summary
 python bin/ticket_master.py --intake "Fix login"   # Create a structured ticket from command line
+python bin/ticket_master.py --init-queue <path>    # Create a verified ticket-queue root (the only way the queue marker is made)
 ```
+
+The ticket directory is mandatory: pass `--tickets-dir` or set `"tickets_dir"` in the config. There is no fallback to `<repo>/tickets`, which is the test fixture and not a queue. A folder inside a module or mirror tree (next to `ellmos-module.v2.json` or `REPO.pointer.json`, or under `.MODULES`) is never accepted as a queue, even with a marker.
 
 #### The public producer contract (`--title` / `--body`)
 
