@@ -33,7 +33,13 @@ if str(LIB_ROOT) not in sys.path:
 
 from ticket_writer import create as create_ticket, init_queue  # noqa: E402
 from routing_contract import RoutingContractError, load_contract, parse_ticket_name  # noqa: E402
-from config_paths import QueueAliasError, expand_placeholders, resolve_config_path, resolve_queue_alias  # noqa: E402
+from config_paths import (  # noqa: E402
+    TICKETS_DIR_ENV,
+    QueueAliasError,
+    expand_placeholders,
+    resolve_config_path,
+    resolve_queue_alias,
+)
 from ticket_inventory import capture_inventory  # noqa: E402
 from messages_line import (  # noqa: E402
     DELIVERY_MODES,
@@ -135,12 +141,14 @@ def resolve_tickets_dir(
     *, preserve_links: bool = False,
 ) -> Path:
     cfg = load_config(config)
-    raw = override if override is not None else cfg.get("tickets_dir")
+    # Same order as lib/config_paths.resolve_tickets_dir: argument > environment > config.
+    raw = override if override is not None else (os.environ.get(TICKETS_DIR_ENV) or cfg.get("tickets_dir"))
     if raw is None:
         # T-20261107-847936256: the old default "tickets" was <repo>/tickets -- the test fixture, which in the
         # OneDrive mirror of the module silently became a second live queue.
         raise ConfigError(
-            "tickets_dir is required: pass --tickets-dir or set \"tickets_dir\" in the config "
+            "tickets_dir is required: pass --tickets-dir, set the "
+            f"{TICKETS_DIR_ENV} environment variable, or set \"tickets_dir\" in the config "
             f"({_config_path(config)[0]}). There is no fallback to <repo>/tickets: that folder is the test "
             "fixture, not a queue."
         )

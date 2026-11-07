@@ -123,8 +123,14 @@ def queue_location_problem(base: Path | str) -> str | None:
 
     A queue home is neither a module/mirror root nor inside a module tree: the folder itself or its
     parent carries ``ellmos-module.v2.json`` / ``REPO.pointer.json`` (the repository's own ``tickets/``
-    fixture and its mirrors), or a path component is a ``.MODULES`` tree. Checked on the path as given
+    fixture and its mirrors), or a path component is a ``.MODULES`` tree. A folder directly below a
+    ``tickets/`` folder counts as well when that ``tickets/``'s parent is such a root
+    (``<module root>/tickets/<sub>``, T-20261107-165954775). Checked on the path as given
     and on its resolved target, so a link cannot smuggle a fixture in.
+
+    Deliberately NOT checked: every other ancestor. A queue may legitimately live somewhere below a
+    project folder, and the repository's own tests run in ``.pytest_temp`` inside the checkout, i.e.
+    below a module root. The guard targets the known failure (the fixture), not module trees in general.
     """
     given = Path(os.path.abspath(base))
     candidates = [given]
@@ -137,7 +143,10 @@ def queue_location_problem(base: Path | str) -> str | None:
     for path in candidates:
         if any(part.casefold() == ".modules" for part in path.parts):
             return f"{path} lies inside a .MODULES tree (module/mirror), not a queue home"
-        for folder in (path, path.parent):
+        folders = [path, path.parent]
+        if path.parent.name.casefold() == "tickets":
+            folders.append(path.parent.parent)  # <module root>/tickets/<sub>: still inside the fixture folder
+        for folder in folders:
             for name in _MODULE_ROOT_FILES:
                 if (folder / name).is_file():
                     return (f"{folder} carries {name}, so it is a module/mirror root and its tickets/ "
@@ -248,6 +257,23 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
         "into a second live queue). A queue that predates the marker is recognised by its root README.md "
         "and _templates/TICKET.txt."
     )
+
+
+def queue_root_of(ticket: Path | str) -> Path:
+    """The queue root a ticket path implies: the parent of its lifecycle folder, else its own folder."""
+    parent = Path(os.path.abspath(ticket)).parent
+    return parent.parent if parent.name in _LIFECYCLE_SUBDIRS else parent
+
+
+def require_ticket_in_verified_queue(ticket: Path | str) -> Path:
+    """Verified queue root of an EXISTING ticket, or ValueError.
+
+    The one check every writer that changes, moves or claims a ticket calls. Without it a shadow queue that
+    already exists (a folder that merely looks like INBOX/ACTIONABLE/...) could still be triaged, because
+    only the writers that create tickets verified their root (T-20261107-165954775).
+    """
+    return require_verified_queue_root(queue_root_of(ticket))
+
 
 _TICKET_TEMPLATE = """\
 ==============================================================
@@ -672,7 +698,8 @@ def formalize_informal_entry(
     no second ticket is created -- the existing ticket's path is returned and
     the source is (re-)archived.
     """
-    tickets_dir = require_tickets_dir(tickets_dir)
+    # Verified up front: the idempotent branch below archives the source without ever reaching create().
+    tickets_dir = require_verified_queue_root(require_tickets_dir(tickets_dir))
     source = Path(source)
     text = source.read_text(encoding="utf-8")
     marker = source.name

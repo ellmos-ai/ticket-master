@@ -4,6 +4,27 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Follow-ups of the queue hardening (T-20261107-165954775, review of #53)
+
+- The queue check now guards every writer that changes an EXISTING ticket, through one helper
+  (`ticket_writer.require_ticket_in_verified_queue()`, root rule `ticket_writer.queue_root_of()`): `ticket_mover`
+  (`move_ticket`, `release_claim`, `release_claims`, `mark_delegated`, therefore also `--claim-current-host` and the
+  routing-v2 claim/release), `ticket_note`, `ticket_freigabe` (`stamp_freigabe_id`, `mark_freigabe`) and the
+  idempotent branch of `formalize_informal_entry`. Before, only the writers that create tickets verified their root,
+  so a shadow queue that already existed could still be triaged. `ticket_audit` has no write path. The accepted queue
+  kinds are unchanged (v1 marker, v2 marker from `--init-queue`, README + `_templates/TICKET.txt` contract; the live
+  queue is recognised by the README contract). Tests that build their tickets straight below a temp folder now use
+  `QueueTemporaryDirectory` / `verified_queue()` from `tests/queue_helpers.py`.
+- `bin/ticket_master.py` reads `TICKET_MASTER_TICKETS_DIR` as well; all writers resolve the queue root in the same
+  order: argument, then environment variable, then config.
+- `config/ticket-master.config.example.json` and both READMEs no longer teach writing the marker by hand; they name
+  `--init-queue`. Two stale README claims are corrected: the config key is `tickets_dir` (the documented `ticket_dir`
+  was never read, and its example value `./tickets` is the refused fixture) and there is no config-level `queue_id`
+  gate (the `queue_id` lives in the v2 marker).
+- `queue_location_problem()` also refuses `<module root>/tickets/<sub>`. Other ancestors are deliberately not checked:
+  a queue may live anywhere below a project folder, and the repository's own tests run in `.pytest_temp` inside the
+  checkout, i.e. below a module root.
+
 ### Queue hardening after the shadow-queue incident (T-20261107-847936256)
 
 - The queue marker is created only by the command `python bin/ticket_master.py --init-queue <path>`. It writes a

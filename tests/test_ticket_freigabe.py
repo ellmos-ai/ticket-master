@@ -6,7 +6,6 @@ Messen am Live-Bestand sichtbar wurden (Platzhalter, Altbestand).
 """
 
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -16,6 +15,7 @@ if str(LIB) not in sys.path:
 
 import ticket_freigabe as tf  # noqa: E402
 import ticket_mover  # noqa: E402
+from queue_helpers import QueueTemporaryDirectory, verified_queue  # noqa: E402
 
 
 RULE = "-" * 62
@@ -59,7 +59,7 @@ class TestFreigabeId(unittest.TestCase):
 
 class TestFreigabeLifecycle(unittest.TestCase):
     def test_the_four_cases_the_ticket_asks_for(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt",
                            "Repo dev-bricks/beispiel auf public schalten.")
             self.assertEqual(tf.freigabe_state(path)["state"], "unstamped")
@@ -98,7 +98,7 @@ class TestFreigabeLifecycle(unittest.TestCase):
     def test_a_text_changed_after_approval_no_longer_counts_as_approved(self):
         """Der eigentliche Zweck der Hashbindung: eine spaetere Textaenderung
         darf nicht stillschweigend mitfreigegeben sein."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt",
                            "Nur Modul A veroeffentlichen.")
             stamped = tf.stamp_freigabe_id(path)
@@ -115,7 +115,7 @@ class TestFreigabeLifecycle(unittest.TestCase):
             self.assertNotIn(state["current_id"], state["granted"])
 
     def test_stamping_is_idempotent_but_never_silent_under_a_standing_approval(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt", "Freigabe X.")
             first = tf.stamp_freigabe_id(path)
             unchanged = path.read_bytes()
@@ -132,7 +132,7 @@ class TestLegacyAndPlaceholders(unittest.TestCase):
     def test_legacy_stock_is_not_retrofitted_and_says_so(self):
         """17 Tickets standen am 2026-09-13 formlos in USER/freigabe. Eine ID
         fuer sie zu berechnen wuerde eine Bindung vortaeuschen, die es nie gab."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260808-000000001.txt")  # ohne Sektion
             self.assertEqual(tf.freigabe_state(path)["state"], "legacy")
             before = path.read_bytes()
@@ -146,7 +146,9 @@ class TestLegacyAndPlaceholders(unittest.TestCase):
         """Sonst traegt jedes ungefuellte Ticket DIESELBE ID -- eine einzige
         geteilte 'Freigabe' fuer beliebige Inhalte. Gemessen: 9 von 17 Tickets
         in USER/freigabe tragen den AUFTRAG-Platzhalter woertlich."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
+            verified_queue(Path(tmp) / "a")  # each folder is its own flat queue
+            verified_queue(Path(tmp) / "b")
             a = _ticket(Path(tmp) / "a" / "T-20260913-000000001.txt",
                         "<Der genaue Wortlaut, den der Nutzer freigeben soll.>")
             b = _ticket(Path(tmp) / "b" / "T-20260913-000000002.txt",
@@ -157,12 +159,12 @@ class TestLegacyAndPlaceholders(unittest.TestCase):
                     tf.stamp_freigabe_id(path)
 
     def test_an_empty_section_states_nothing(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt", "   ")
             self.assertEqual(tf.freigabe_state(path)["state"], "legacy")
 
     def test_the_section_ends_at_the_next_section_not_at_the_file_end(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt", "Nur dies hier.")
             self.assertEqual(tf.freigabe_text(path.read_text(encoding="utf-8")),
                              "Nur dies hier.")
@@ -170,7 +172,7 @@ class TestLegacyAndPlaceholders(unittest.TestCase):
 
 class TestCli(unittest.TestCase):
     def test_cli_round_trip_and_fail_closed_exit_codes(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt", "CLI-Freigabe.")
             self.assertEqual(
                 ticket_mover._cli(["--freigabe-status", str(path)]), 0)
@@ -188,7 +190,7 @@ class TestCli(unittest.TestCase):
                 "--agent", "control1@ASUS-GEI"]), 1)
 
     def test_a_freigabe_operation_cannot_be_combined_with_a_move(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt", "X.")
             with self.assertRaises(SystemExit):
                 ticket_mover._cli([str(path), tmp, "--freigabe-status", str(path)])

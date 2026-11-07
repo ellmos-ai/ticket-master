@@ -4,7 +4,6 @@ Beleg, dass ein Verschieben auf ein belegtes Ziel scheitert, nicht nur eine
 Codeaenderung. test_move_onto_occupied_target_is_refused_and_survives ist
 dieser Beleg."""
 import sys
-import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
@@ -15,13 +14,14 @@ LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
 import ticket_mover  # noqa: E402
+from queue_helpers import QueueTemporaryDirectory  # noqa: E402
 
 
 class TestMoveTicket(unittest.TestCase):
     def test_cli_single_move_dry_run_reports_without_mutation(self):
         """T-20260822-797239249: --dry-run muss auch beim Einzelticket
         eine echte Vorschau sein und darf nicht einmal den Zielordner anlegen."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -45,7 +45,7 @@ class TestMoveTicket(unittest.TestCase):
     def test_cli_single_move_dry_run_refuses_collision_without_mutation(self):
         """Die Vorschau behält die fail-closed Kollisionsprüfung bei und
         verändert weder die Quelle noch ein bereits vorhandenes Ziel."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -70,7 +70,7 @@ class TestMoveTicket(unittest.TestCase):
             self.assertEqual(target.read_bytes(), target_before)
 
     def test_move_relocates_file(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260808-01.txt"
             source.write_text("CONTENT", encoding="utf-8")
@@ -85,7 +85,7 @@ class TestMoveTicket(unittest.TestCase):
         """Der Pflichtnachweis aus dem Ticket: ein Verschiebeversuch auf ein
         belegtes Ziel MUSS scheitern -- und zwar so, dass BEIDE Dateien
         unveraendert erhalten bleiben (kein Verlust, keine Vermischung)."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260808-02.txt"
             source.write_text("NEUER VORGANG - darf nicht verloren gehen", encoding="utf-8")
@@ -112,7 +112,7 @@ class TestMoveTicket(unittest.TestCase):
 
     def test_move_to_queued_refuses_same_id_in_another_lifecycle_folder(self):
         """A different suffix must not hide an already visible physical copy."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -133,7 +133,7 @@ class TestMoveTicket(unittest.TestCase):
 
     def test_move_to_queued_matches_legacy_and_v2_names_by_canonical_id(self):
         """Slug, host claim and routing-v2 axes are not part of the ticket ID."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = (
                 base / "INBOX" /
@@ -157,7 +157,7 @@ class TestMoveTicket(unittest.TestCase):
             self.assertFalse((base / "QUEUED").exists())
 
     def test_move_to_queued_succeeds_when_source_is_the_only_id_match(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -170,7 +170,7 @@ class TestMoveTicket(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "ONLY COPY")
 
     def test_duplicate_id_does_not_change_non_queued_moves(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -190,7 +190,7 @@ class TestMoveTicket(unittest.TestCase):
         import os
 
         real_open = os.open
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
             source.parent.mkdir()
@@ -221,13 +221,13 @@ class TestMoveTicket(unittest.TestCase):
             self.assertFalse(target.exists())
 
     def test_missing_source_raises(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             with self.assertRaises(FileNotFoundError):
                 ticket_mover.move_ticket(base / "does-not-exist.txt", base / "SOLVED")
 
     def test_dest_dir_created_if_missing(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260808-03.txt"
             source.write_text("x", encoding="utf-8")
@@ -244,7 +244,7 @@ class TestMoveTicket(unittest.TestCase):
         beobachtet bei einem USER->SOLVED-Move. move_ticket() muss das jetzt
         VOR jeder Schreibaktion erkennen und fail-closed ablehnen: kein
         Zielordner/-datei entsteht, die Quelle bleibt unangetastet."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260818-01.ASUS-GEI.txt"
             source.write_text("CONTENT", encoding="utf-8")
@@ -263,7 +263,7 @@ class TestMoveTicket(unittest.TestCase):
 
         # Der korrekte Aufruf (dest_dir = Ordner) muss weiterhin funktionieren --
         # der Guard darf legitime Ziele nicht mit-blockieren.
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260818-02.ASUS-GEI.txt"
             source.write_text("CONTENT", encoding="utf-8")
@@ -275,7 +275,7 @@ class TestMoveTicket(unittest.TestCase):
 
     def test_nested_lifecycle_subcategory_destination_is_refused(self):
         """T-20260822-116395676: USER/decision is STATUS metadata, not a folder."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source_dir = base / "ACTIONABLE"
             source_dir.mkdir()
@@ -297,7 +297,7 @@ class TestMoveTicket(unittest.TestCase):
 
         real_open = os.open
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260808-04.txt"
             source.write_text("ORIGINAL", encoding="utf-8")
@@ -331,7 +331,7 @@ class TestStatusMismatchWarning(unittest.TestCase):
     ticket_mover._status_mismatch_warning's docstring for why)."""
 
     def test_move_with_stale_status_warns_with_dated_replacement(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260830-000000001.txt"
             source.write_text(
@@ -348,7 +348,7 @@ class TestStatusMismatchWarning(unittest.TestCase):
             self.assertIn(f"STATUS:        SOLVED (seit {today}) - Freitext", warning)
 
     def test_move_with_matching_status_is_silent(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260830-000000002.txt"
             source.write_text(
@@ -366,7 +366,7 @@ class TestStatusMismatchWarning(unittest.TestCase):
         about the SOURCE cluster ('decision' is a way of needing USER
         input) -- carrying it onto the destination produced nonsense like
         'SOLVED/decision'. It must be dropped, not copied."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260830-000000003.txt"
             source.write_text(

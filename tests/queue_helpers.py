@@ -1,6 +1,7 @@
 """Test-only helpers for explicit ticket-queue setup."""
 
 import importlib.util
+import tempfile
 from pathlib import Path
 
 
@@ -12,6 +13,18 @@ def verified_queue(path: str | Path) -> Path:
         "ticket-master-queue-v1\n", encoding="utf-8",
     )
     return root
+
+
+class QueueTemporaryDirectory(tempfile.TemporaryDirectory):
+    """A TemporaryDirectory that is already an intentional queue root (v1 marker).
+
+    Writers that change an existing ticket refuse any root without a valid marker (T-20261107-165954775), so
+    tests that build their tickets straight below a temp folder say so explicitly by using this class.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        verified_queue(self.name)
 
 
 def write_file(path: str | Path, text: str) -> Path:

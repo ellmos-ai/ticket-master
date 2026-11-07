@@ -46,8 +46,10 @@ from pathlib import Path
 
 try:  # package import
     from .routing_contract import _atomic_rewrite, parse_fields, update_fields
+    from .ticket_writer import require_ticket_in_verified_queue
 except ImportError:  # direct import from lib on sys.path
     from routing_contract import _atomic_rewrite, parse_fields, update_fields
+    from ticket_writer import require_ticket_in_verified_queue
 
 
 ID_PREFIX = "frg_"
@@ -143,6 +145,7 @@ def stamp_freigabe_id(path: Path | str, *, now: datetime | None = None) -> str:
     what was approved.
     """
     path = Path(path)
+    require_ticket_in_verified_queue(path)
     text = path.read_text(encoding="utf-8")
     body = freigabe_text(text)
     if body is None:
@@ -176,6 +179,7 @@ def mark_freigabe(path: Path | str, *, freigabe_id_value: str,
     pasted), and when an approval already stands for that same text.
     """
     path = Path(path)
+    require_ticket_in_verified_queue(path)
     text = path.read_text(encoding="utf-8")
     body = freigabe_text(text)
     if body is None:

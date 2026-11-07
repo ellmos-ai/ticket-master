@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "lib"))
 
 import ticket_mover  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
 
 
 def make_self_slot(root: Path, *, snapshot_host="ASUS-GEI", manifest_host="ASUS-GEI"):
@@ -24,7 +25,7 @@ def make_self_slot(root: Path, *, snapshot_host="ASUS-GEI", manifest_host="ASUS-
 
 
 def make_ticket(root: Path, name="T-20260827-123456789.txt") -> Path:
-    folder = root / "tickets" / "ACTIONABLE"
+    folder = verified_queue(root / "tickets") / "ACTIONABLE"
     folder.mkdir(parents=True)
     path = folder / name
     path.write_text("unchanged\n", encoding="utf-8")

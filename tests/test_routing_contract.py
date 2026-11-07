@@ -754,6 +754,8 @@ def test_real_creation_time_drives_binding_expiry_when_today_is_not_injected(tmp
 
 
 def test_v2_release_helper_and_legacy_multi_host_release_stay_distinct(tmp_path):
+    verified_queue(tmp_path)
+    verified_queue(tmp_path / "v2")
     legacy = tmp_path / "ACTIONABLE" / "T-20260731-123456789.LAPTOP-WORKSTATION-LG.txt"
     legacy.parent.mkdir()
     legacy.write_text("legacy", encoding="utf-8")
@@ -803,6 +805,7 @@ def test_move_ticket_with_expected_hash_refuses_stale_content(tmp_path):
     """T-20260903-965930417 item 2: move_ticket's own re-read only guards
     its own call window; expected_hash guards the gap between the caller's
     earlier read (the decision to move) and this call."""
+    verified_queue(tmp_path)
     source = tmp_path / "T-20260903-000000003.txt"
     source.write_text("STATUS:        ACTIONABLE\n", encoding="utf-8")
     _, stale_hash = rc.read_for_update(source)
@@ -815,6 +818,7 @@ def test_move_ticket_with_expected_hash_refuses_stale_content(tmp_path):
 
 
 def test_move_ticket_with_expected_hash_proceeds_when_unchanged(tmp_path):
+    verified_queue(tmp_path)
     source = tmp_path / "T-20260903-000000004.txt"
     source.write_text("STATUS:        ACTIONABLE\n", encoding="utf-8")
     _, digest = rc.read_for_update(source)
