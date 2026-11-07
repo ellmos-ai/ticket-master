@@ -453,3 +453,100 @@ class TestAcknowledgeMessageNamesTheQuotableId(unittest.TestCase):
             text = moved.read_text(encoding="utf-8")
             self.assertIn("Entscheidungs-Readback: TREFFER", text)
             self.assertIn("D-20260916-004@DECIDED-AND-DONE", text)
+
+
+class TestUnreadableIndexNextToRegister(unittest.TestCase):
+    """T-20261107-456970984, Review r1: Liegt neben der Queue ein Register und ist dessen Index
+    VORHANDEN, aber UNLESBAR (halb geschrieben, weil decisions_index.py nicht atomar schreibt;
+    OneDrive-Platzhalter offline), blieb das Ergebnis still 'absent'. Dann lief die Eskalation
+    nach USER/ ungehindert durch -- das 'nicht gefunden', das als 'offen' gelesen wird.
+    Erwartet: das Register macht den Index zum erwarteten, also 'unavailable'."""
+
+    BROKEN = {
+        "abgeschnitten": '{"schema": "decisions.index/1", "entries": [{"key": "D-2026',
+        "leer": "",
+        "ohne entries": "{}",
+        "entries ist kein Array": '{"entries": "x"}',
+    }
+
+    def _setup(self, tmp: Path, text: str) -> tuple[Path, Path]:
+        queue = _queue(tmp)
+        index = queue.parent / dr.INDEX_RELATIVE_PATH
+        index.parent.mkdir(parents=True, exist_ok=True)
+        index.write_text(text, encoding="utf-8")
+        ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt", "Bezug D-20260731-010.")
+        return queue, ticket
+
+    def _cli(self, ticket: Path) -> tuple[int, str]:
+        import contextlib
+        import io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = ticket_mover._cli(["--decision-readback", str(ticket)])
+        return code, out.getvalue()
+
+    def test_a_present_but_broken_index_is_unavailable_not_absent(self):
+        for label, text in self.BROKEN.items():
+            with self.subTest(label), tempfile.TemporaryDirectory() as tmp:
+                queue, ticket = self._setup(Path(tmp), text)
+                path, expected = dr.find_decisions_index(queue)
+                self.assertTrue(expected, "ein Register neben der Queue macht den Index zum erwarteten")
+                self.assertEqual(dr.decision_readback(ticket, queue_dir=queue)["state"], "unavailable")
+                code, out = self._cli(ticket)
+                self.assertEqual(code, 1)
+                self.assertIn("DECISION READBACK UNAVAILABLE", out)
+                with self.assertRaises(ticket_mover.DecisionReadbackError):
+                    ticket_mover.move_ticket(ticket, queue / "USER")
+                self.assertTrue(ticket.exists(), "das Ticket bleibt liegen")
+
+    def test_an_index_the_os_cannot_read_is_unavailable_too(self):
+        from unittest import mock
+
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp), '{"entries": []}')
+            real = Path.read_text
+
+            def flaky(self, *args, **kwargs):
+                if self.name == "decisions.index.json":
+                    raise PermissionError("OneDrive-Platzhalter offline")
+                return real(self, *args, **kwargs)
+
+            with mock.patch.object(Path, "read_text", flaky):
+                self.assertEqual(dr.decision_readback(ticket, queue_dir=queue)["state"], "unavailable")
+                with self.assertRaises(ticket_mover.DecisionReadbackError):
+                    ticket_mover.move_ticket(ticket, queue / "USER")
+
+    def test_a_readable_index_still_passes_and_no_register_stays_absent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp), '{"entries": []}')
+            self.assertEqual(dr.decision_readback(ticket, queue_dir=queue)["state"], "checked")
+            self.assertTrue(ticket_mover.move_ticket(ticket, queue / "USER").exists())
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260913-000000001.txt")
+            self.assertEqual(dr.decision_readback(ticket, queue_dir=queue)["state"], "absent")
+
+    def test_the_refusal_names_the_rebuild_command_not_the_word_named(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp), self.BROKEN["abgeschnitten"])
+            tool = queue.parent / dr.INDEX_RELATIVE_PATH.parent / "decisions_index.py"
+            tool.write_text("# Platzhalter fuer den Test\n", encoding="utf-8")
+            with self.assertRaises(ticket_mover.DecisionReadbackError) as caught:
+                ticket_mover.move_ticket(ticket, queue / "USER")
+            message = str(caught.exception)
+            self.assertIn(str(tool), message, "der echte Pfad des Werkzeugs steht in der Meldung")
+            self.assertIn("python", message)
+            self.assertNotIn("named", message)
+            code, out = self._cli(ticket)
+            self.assertIn(str(tool), out)
+            result = dr.decision_readback(ticket, queue_dir=queue)
+            line = dr.readback_log_line(result, stamp="2026-11-07T21:00:00Z")
+            self.assertIn("decisions_index.py", line)
+            self.assertNotIn("benannter", line)
+
+    def test_without_the_tool_beside_the_index_the_hint_still_names_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue, ticket = self._setup(Path(tmp), "")
+            with self.assertRaises(ticket_mover.DecisionReadbackError) as caught:
+                ticket_mover.move_ticket(ticket, queue / "USER")
+            self.assertIn("decisions_index.py", str(caught.exception))
