@@ -14,6 +14,8 @@ All notable changes to ticket-master are documented here.
 - A folder inside a module/mirror tree is never a queue, with or without marker: the folder or its parent carries
   `ellmos-module.v2.json` or `REPO.pointer.json`, or a path component is `.MODULES`
   (`ticket_writer.queue_location_problem()`, applied by every writer and by `--init-queue`).
+- `bin/ticket_master.py` no longer falls back to `<repo>/tickets` (the test fixture) when `tickets_dir` is missing:
+  pass `--tickets-dir` or set `"tickets_dir"` in `config/ticket-master.config.json`.
 
 ### Pfad B: Bilingual sequence documentation (original PR48, 2026-11-01)
 

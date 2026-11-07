@@ -135,7 +135,15 @@ def resolve_tickets_dir(
     *, preserve_links: bool = False,
 ) -> Path:
     cfg = load_config(config)
-    raw = override if override is not None else cfg.get("tickets_dir", "tickets")
+    raw = override if override is not None else cfg.get("tickets_dir")
+    if raw is None:
+        # T-20261107-847936256: the old default "tickets" was <repo>/tickets -- the test fixture, which in the
+        # OneDrive mirror of the module silently became a second live queue.
+        raise ConfigError(
+            "tickets_dir is required: pass --tickets-dir or set \"tickets_dir\" in the config "
+            f"({_config_path(config)[0]}). There is no fallback to <repo>/tickets: that folder is the test "
+            "fixture, not a queue."
+        )
     if preserve_links:
         path = resolve_config_path(raw)
         if path is None:
