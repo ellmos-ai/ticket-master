@@ -28,9 +28,12 @@ So only two kinds of key are used, both unambiguous:
 FAIL-CLOSED, BUT ONLY WHERE IT CAN BE. Three states, deliberately distinct:
 
   ``checked``      the index was read; hits (if any) carry their status.
-  ``unavailable``  an index was *named* (flag or environment) and could not be
-                   read -> the caller refuses. Naming it means meaning it.
-  ``absent``       no index was named and none was found next to the queue ->
+  ``unavailable``  an index was expected and could not be read -> the caller
+                   refuses. Expected means: named (flag or environment), or a
+                   decision register sits next to the queue (``_CONTROL/
+                   _DECISIONS``) -- whether its index file is missing or
+                   present but unreadable (half written, offline placeholder).
+  ``absent``       no index was named and no register sits next to the queue ->
                    no gate, but the ticket gets a line saying the claim of
                    "open" is UNVERIFIED. That is the honest middle: this is a
                    public tool and a foreign user has no such register, so
@@ -57,6 +60,7 @@ __all__ = [
     "decision_readback",
     "find_decisions_index",
     "readback_log_line",
+    "rebuild_hint",
 ]
 
 DECISIONS_INDEX_ENV = "TICKET_MASTER_DECISIONS_INDEX"
@@ -85,9 +89,9 @@ def find_decisions_index(queue_dir: Path | str | None = None,
     """Locate the decision index. Returns ``(path, was_named)``.
 
     ``was_named`` is True when the path came from the caller or the
-    environment, or when the queue sits next to a decision register whose
-    index is missing -- that is what turns an unreadable index into a refusal
-    instead of a shrug.
+    environment, or when the queue sits next to a decision register (whether
+    its index is missing, truncated or an offline placeholder) -- that is what
+    turns an unreadable index into a refusal instead of a shrug.
 
     ``queue_dir`` is made absolute first (T-20261107-456970984): a relative
     queue such as ``.`` has ``.`` as its parent, so the index was looked up
@@ -102,15 +106,31 @@ def find_decisions_index(queue_dir: Path | str | None = None,
         return None, False
     root = Path(os.path.abspath(queue_dir)).parent
     candidate = root / INDEX_RELATIVE_PATH
-    if candidate.is_file():
-        return candidate, False
-    # A register next to the queue without its index is a broken register,
-    # not a missing one: report it as expected, so the reader says
-    # "unavailable" instead of a silent "absent" that reads as "open".
+    # A register next to the queue makes its index EXPECTED, whatever state the
+    # file is in: missing, truncated (decisions_index.py does not write
+    # atomically) or an offline OneDrive placeholder. All of these must read as
+    # "unavailable", never as a silent "absent" that reads as "open".
     # Without any register (public users of the tool) it stays absent.
     if (root / INDEX_RELATIVE_PATH.parent.parent).is_dir():
         return candidate, True
-    return None, False
+    return (candidate, False) if candidate.is_file() else (None, False)
+
+
+REBUILD_TOOL = "decisions_index.py"
+
+
+def rebuild_hint(index: Path | str | None) -> str:
+    """The command that rebuilds the index, for an error message.
+
+    Checked against the tool itself (``decisions_index.py --help``): it needs no
+    arguments -- the default root is the register it lives in and the default
+    output folder is its own ``_tools`` folder -- and writes ``decisions.index.json``
+    next to itself. It reads the register and writes nothing else.
+    """
+    tool = Path(index).parent / REBUILD_TOOL if index else None
+    where = f'"{tool}"' if tool is not None and tool.is_file() else f"{REBUILD_TOOL} from the register's _tools folder"
+    return (f"Rebuild the index with: PYTHONIOENCODING=utf-8 python {where} "
+            "(no arguments needed; it rewrites decisions.index.json next to itself), then run the check again.")
 
 
 def _keys_from_ticket(text: str, ticket_name: str) -> list[str]:
@@ -216,8 +236,9 @@ def readback_log_line(result: dict[str, Any], *, stamp: str,
                 f"erreichbar. Gesucht waere: {keys}. 'Offen' ist hier eine "
                 "unbelegte Annahme, kein Befund.")
     if result["state"] == "unavailable":
-        return (f"{stamp}  Entscheidungs-Readback FEHLGESCHLAGEN: benannter Index "
-                f"{result['index']} nicht lesbar ({result.get('error', '?')}).")
+        return (f"{stamp}  Entscheidungs-Readback FEHLGESCHLAGEN: erwarteter Index "
+                f"{result['index']} nicht lesbar ({result.get('error', '?')}). "
+                f"{rebuild_hint(result['index'])}")
     if not result["hits"]:
         return (f"{stamp}  Entscheidungs-Readback: NICHT GEFUNDEN. Gesucht: {keys}. "
                 f"Index: {result['index']}.")
