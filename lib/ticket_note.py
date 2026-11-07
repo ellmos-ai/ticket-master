@@ -28,10 +28,12 @@ from typing import Any
 try:
     from .ticket_audit import _STATUS_LINE_RE
     from .routing_contract import StaleContentError, content_hash
+    from .ticket_writer import require_ticket_in_verified_queue
 except ImportError:
     # Fallback when running directly or from lib/
     from ticket_audit import _STATUS_LINE_RE
     from routing_contract import StaleContentError, content_hash
+    from ticket_writer import require_ticket_in_verified_queue
 
 __all__ = [
     "append_ticket_note",
@@ -73,6 +75,7 @@ def update_ticket_note(
     ticket_path = Path(path)
     if not ticket_path.is_file():
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket_path}")
+    require_ticket_in_verified_queue(ticket_path)  # also for dry_run: the same checks as the real write
 
     if status is None and verlauf is None:
         raise ValueError("at least one of status or verlauf must be provided")

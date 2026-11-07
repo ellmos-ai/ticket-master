@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 
 from lib import session_provenance, ticket_mover, ticket_writer
+from queue_helpers import verified_queue
 
 
 def _queue(root: Path) -> Path:
@@ -46,6 +47,7 @@ def test_writer_adds_ticket_session_header_from_explicit_value(tmp_path):
 
 
 def test_mark_delegated_adds_header_and_history_stamp_without_duplicates(tmp_path):
+    verified_queue(tmp_path)
     ticket = tmp_path / "T-20260909-123456789.txt"
     ticket.write_text(
         "ID: T-20260909-123456789\nPRIORITAET: mittel\n", encoding="utf-8")

@@ -725,7 +725,23 @@ def canonical_contract_name(ticket_id: str, metadata: Mapping[str, Any], *, clai
     return _render_name(ticket_id, target, via, claim)
 
 
+def _require_verified_queue(path: Path | str) -> None:
+    """Refuse to write a ticket that does not live in a verified queue (review of ticket-master#54).
+
+    Every contract writer (record_receipt, release_contract, complete_contract, normalize_expired_binding,
+    refresh_resolution), ticket_freigabe and status_drift_fixer end in the three write functions below, so the
+    check sits there once and runs BEFORE anything is written: no rewrite, no half state, no stray temp file.
+    Imported late because ticket_writer imports this module.
+    """
+    try:
+        from .ticket_writer import require_ticket_in_verified_queue
+    except ImportError:
+        from ticket_writer import require_ticket_in_verified_queue
+    require_ticket_in_verified_queue(path)
+
+
 def _atomic_rewrite(path: Path, text: str) -> None:
+    _require_verified_queue(path)
     fd, raw_tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
     tmp = Path(raw_tmp)
     try:
@@ -769,6 +785,7 @@ def atomic_rewrite_if_unchanged(path: Path | str, new_text: str, expected_hash: 
     content -- an mtime check would have reported "unchanged" right there.
     """
     path = Path(path)
+    _require_verified_queue(path)  # before the read, so a shadow queue is refused rather than "stale"
     current_text = path.read_text(encoding="utf-8")
     if content_hash(current_text) != expected_hash:
         raise StaleContentError(path, current_text)
@@ -777,6 +794,7 @@ def atomic_rewrite_if_unchanged(path: Path | str, new_text: str, expected_hash: 
 
 def _exclusive_rewrite_move(source: Path, target: Path, text: str) -> Path:
     """Create transformed target exclusively, verify, then remove source."""
+    _require_verified_queue(source)
     original = source.read_bytes()
     data = text.encode("utf-8")
     flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)

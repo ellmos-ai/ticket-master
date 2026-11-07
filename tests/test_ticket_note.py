@@ -8,7 +8,6 @@ behavior, and CLI ergonomics.
 
 import json
 import sys
-import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import date
@@ -19,6 +18,7 @@ LIB_DIR = Path(__file__).resolve().parent.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
 import ticket_note  # noqa: E402
+from queue_helpers import QueueTemporaryDirectory  # noqa: E402
 from routing_contract import StaleContentError, content_hash  # noqa: E402
 
 SAMPLE_TICKET_LF = """==============================================================
@@ -48,7 +48,7 @@ SAMPLE_TICKET_CRLF = SAMPLE_TICKET_LF.replace("\n", "\r\n")
 
 class TestTicketNote(unittest.TestCase):
     def test_update_status_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -67,7 +67,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertIn("2026-09-06  Triage: BLOCKED/dependency\n\n--------------------------------------------------------------\nLOESUNG", content)
 
     def test_append_verlauf_only(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -88,7 +88,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertLess(pos_entry, pos_loesung)
 
     def test_verlauf_with_explicit_date_in_text(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -104,7 +104,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertNotIn(f"{date.today().isoformat()}  2026-09-15", content)
 
     def test_update_status_and_verlauf_together(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -122,7 +122,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertIn("2026-09-17  Entblockt wegen Beseitigung der Abhaengigkeit.", content)
 
     def test_preserves_crlf_line_endings(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_bytes(SAMPLE_TICKET_CRLF.encode("utf-8"))
 
@@ -140,7 +140,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertNotIn(b"\n", normalized)
 
     def test_preserves_lf_line_endings(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_bytes(SAMPLE_TICKET_LF.encode("utf-8"))
 
@@ -155,7 +155,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertIn(b"\n", raw)
 
     def test_preserves_utf8_and_umlauts(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             ticket_text = SAMPLE_TICKET_LF.replace("Sample ticket", "Änderungswunsch Überprüfung Straße")
             p.write_text(ticket_text, encoding="utf-8")
@@ -173,7 +173,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertIn("Rücksprache mit Entwicklerteam — Freigabe erteilt.", readback)
 
     def test_dry_run_does_not_mutate(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             original_bytes = SAMPLE_TICKET_LF.encode("utf-8")
             p.write_bytes(original_bytes)
@@ -188,7 +188,7 @@ class TestTicketNote(unittest.TestCase):
             self.assertEqual(p.read_bytes(), original_bytes)
 
     def test_stale_content_check(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -218,7 +218,7 @@ VERLAUF / LOG
 2026-09-06  Init.
 ==============================================================
 """
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(ticket_without_loesung, encoding="utf-8")
 
@@ -232,7 +232,7 @@ VERLAUF / LOG
             self.assertLess(pos_entry, pos_end)
 
     def test_cli_dry_run_and_execution(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 
@@ -275,7 +275,7 @@ VERLAUF / LOG
             self.assertIn("2026-09-17  Delegiert an Agent.", final_content)
 
     def test_cli_errors(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             p = Path(tmp) / "T-test.txt"
             p.write_text(SAMPLE_TICKET_LF, encoding="utf-8")
 

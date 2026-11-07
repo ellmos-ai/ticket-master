@@ -37,7 +37,10 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 
 try:  # package import
-    from .ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from .ticket_writer import (
+        TICKET_FILENAME_RE, iter_lifecycle_files, queue_root_of,
+        require_ticket_in_verified_queue, require_verified_queue_root,
+    )
     from .config_paths import resolve_queue_alias
     from .session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
@@ -69,7 +72,10 @@ try:  # package import
         _STATUS_LINE_RE,
     )
 except ImportError:  # direct import from lib on sys.path
-    from ticket_writer import TICKET_FILENAME_RE, iter_lifecycle_files
+    from ticket_writer import (
+        TICKET_FILENAME_RE, iter_lifecycle_files, queue_root_of,
+        require_ticket_in_verified_queue, require_verified_queue_root,
+    )
     from config_paths import resolve_queue_alias
     from session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
@@ -267,14 +273,10 @@ def queue_root(source: Path) -> Path:
 
     Liegt das Ticket in einem Lebenszyklus-Ordner, ist die Wurzel dessen
     Elternordner; liegt es direkt in der Wurzel (INBOX-Alias), ist sie der
-    eigene Elternordner.
+    eigene Elternordner. Die Regel steht in ``ticket_writer.queue_root_of``,
+    damit Mover und Queue-Pruefung nie auseinanderlaufen.
     """
-    try:
-        from .ticket_writer import _LIFECYCLE_SUBDIRS
-    except ImportError:
-        from ticket_writer import _LIFECYCLE_SUBDIRS
-    parent = source.parent
-    return parent.parent if parent.name in _LIFECYCLE_SUBDIRS else parent
+    return queue_root_of(source)
 
 
 def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
@@ -632,6 +634,7 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"move source does not exist or is not a file: {source}")
+    require_ticket_in_verified_queue(source)  # auch im dry_run: dieselben Pruefungen wie beim Schreiben
     # Blosser Clustername ("SOLVED") wird gegen die Queue-Wurzel der Quelle
     # aufgeloest, statt still einen Ordner im Arbeitsverzeichnis anzulegen.
     dest_dir = resolve_dest_dir(source, dest_dir)
@@ -779,6 +782,7 @@ def release_claim(ticket: Path | str) -> Path:
     ticket = Path(ticket)
     if not ticket.is_file():
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
+    require_ticket_in_verified_queue(ticket)
 
     try:
         parsed = parse_ticket_name(ticket.name)
@@ -835,6 +839,7 @@ def mark_delegated(ticket: Path | str, agent: str, *,
     ticket = Path(ticket)
     if not ticket.is_file():
         raise FileNotFoundError(f"ticket does not exist or is not a file: {ticket}")
+    require_ticket_in_verified_queue(ticket)
     text = ticket.read_text(encoding="utf-8", errors="replace")
     marker = f"DELEGIERT_AN: {agent}"
     provenance = resolve_session_provenance(
@@ -911,7 +916,7 @@ def release_claims(base: Path | str, *, host: str,
     report_refused=True kommt (freigegeben, verweigert, gehalten) zurueck,
     sonst nur die Liste der freigegebenen Pfade.
     """
-    base = Path(base)
+    base = require_verified_queue_root(Path(base))
     freed: list[Path] = []
     refused: list[tuple[Path, str]] = []
     held: list[tuple[Path, str]] = []

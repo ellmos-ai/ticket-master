@@ -518,16 +518,15 @@ Die Konfiguration liegt in `config/ticket-master.config.json` (Vorlage: `config/
 | Feld | Beschreibung | Beispiel |
 |---|---|---|
 | `project_roots` | Verzeichnisse der vom Agenten betreuten Projekte | `["/home/user/projects", "/home/user/work"]` |
-| `ticket_dir` | Verzeichnis der Ticket-Dateien | `"./tickets"` |
+| `tickets_dir` | Pflicht: Wurzel der Live-Ticket-Queue (Argument `--tickets-dir`, dann Umgebungsvariable `TICKET_MASTER_TICKETS_DIR`, dann dieses Feld) | `"<HOME>/ticket-master-data/tickets"` |
 | `default_language` | Standardsprache des Prompts | `"de"` |
 | `providers` | Befehle zum Aufruf der CLI-Agenten | `{"claude": "claude", "codex": "codex", "agy": "agy"}` |
 | `router_command` | Optionaler externer Router-Befehl | `["clutch", "route"]` |
 | `task_db_command` | Optionales Task-Management-Ziel für Später/Backlog | `["todo-cli", "add"]` |
-| `queue_id` | Eindeutige Queue-Kennung (erzwingt Fail-Closed Gate) | `"tm-primary-queue"` |
 
 ### Queue-Root-Identität (Fail Closed)
 
-Arbeiten mehrere Systeme oder Umgebungen auf geteilten Queues, empfiehlt sich die Konfiguration von `queue_id`. `ticket-master` prüft diese Identität vor jeder Schreiboperation: Stimmt die Queue-Kennung nicht überein, wird die Operation kontrolliert abgebrochen.
+Eine Queue-Wurzel entsteht einmalig mit `python bin/ticket_master.py --init-queue <pfad>`. Der Befehl schreibt die Marke `.ticket-master-queue` (Format `ticket-master-queue-v2`, mit `queue_id`, Erstellzeit, Host und Wurzel); nur so entsteht die Marke, sie wird also nie von Hand geschrieben. Jeder Schreibvorgang (anlegen, verschieben, Vermerk, Claim und Freigabe des Claims, Delegation, Freigabe) verweigert eine Wurzel ohne gültige Marke. Ausnahme: Eine Queue, die älter ist als die Marke, gilt weiter, wenn ihre Wurzel-`README.md` und `_templates/TICKET.txt` den Ticket-/INBOX-Vertrag nennen; ebenso eine `ticket-master-queue-v1`-Marke. Ein Ordner im Modul- oder Spiegelbaum wird auch mit Marke abgelehnt (neben `ellmos-module.v2.json` oder `REPO.pointer.json`, direkt unterhalb der `tickets/`-Fixture einer solchen Wurzel oder unter `.MODULES`).
 
 ### Beispiel `project_roots` mit Platzhaltern
 
@@ -537,7 +536,7 @@ Arbeiten mehrere Systeme oder Umgebungen auf geteilten Queues, empfiehlt sich di
     "<HOME>/_Local_DEV/repos",
     "<HOME>/Projekte"
   ],
-  "ticket_dir": "./tickets",
+  "tickets_dir": "<HOME>/ticket-master-data/tickets",
   "default_language": "de"
 }
 ```
@@ -553,7 +552,7 @@ python bin/ticket_master.py --intake "Login-Fix"   # Strukturiertes Ticket via C
 python bin/ticket_master.py --init-queue <pfad>    # Geprüfte Ticket-Queue-Wurzel anlegen (einziger Weg, die Queue-Marke zu erzeugen)
 ```
 
-Das Ticket-Verzeichnis ist Pflicht: `--tickets-dir` übergeben oder `"tickets_dir"` in der Konfiguration setzen. Einen Fallback auf `<repo>/tickets` gibt es nicht; das ist die Test-Fixture, keine Queue. Ein Ordner im Modul- oder Spiegelbaum (neben `ellmos-module.v2.json` oder `REPO.pointer.json` oder unter `.MODULES`) wird nie als Queue akzeptiert, auch nicht mit Marke.
+Das Ticket-Verzeichnis ist Pflicht: `--tickets-dir` übergeben, die Umgebungsvariable `TICKET_MASTER_TICKETS_DIR` setzen oder `"tickets_dir"` in der Konfiguration setzen (in dieser Rangfolge; `bin/ticket_master.py` und die `lib/`-Schreiber lösen es gleich auf). Die Konfiguration ist vorzuziehen: Ein Prozess, der beim Setzen der Variablen schon lief, erbt sie nie. Einen Fallback auf `<repo>/tickets` gibt es nicht; das ist die Test-Fixture, keine Queue. Ein Ordner im Modul- oder Spiegelbaum (neben `ellmos-module.v2.json` oder `REPO.pointer.json` oder unter `.MODULES`) wird nie als Queue akzeptiert, auch nicht mit Marke.
 
 #### Öffentlicher Producer-Vertrag (`--title` / `--body`)
 

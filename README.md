@@ -527,16 +527,15 @@ Configuration lives in `config/ticket-master.config.json` (copy from `config/tic
 | Field | Description | Example |
 |---|---|---|
 | `project_roots` | Directories containing projects the agent manages | `["/home/user/projects", "/home/user/work"]` |
-| `ticket_dir` | Where ticket files live | `"./tickets"` |
+| `tickets_dir` | Mandatory: root of the live ticket queue (argument `--tickets-dir`, then the environment variable `TICKET_MASTER_TICKETS_DIR`, then this field) | `"<HOME>/ticket-master-data/tickets"` |
 | `default_language` | Default prompt language if `TM_LANG` is unset | `"en"` |
 | `providers` | Commands to launch each CLI agent | `{"claude": "claude", "codex": "codex", "agy": "agy"}` |
 | `router_command` | Optional external model router command (replaces score formula) | `["clutch", "route"]` |
 | `task_db_command` | Optional project task management sink for later/backlog tickets | `["todo-cli", "add"]` |
-| `queue_id` | Optional unique queue identifier (enforces fail-closed gate) | `"tm-primary-queue"` |
 
 ### Queue Root Identity (Fail Closed)
 
-If multiple development environments or multi-host nodes share queue definitions, configure `queue_id` in your local configuration. `ticket-master` enforces a fail-closed queue identity check: if a queue directory does not match the configured queue identity, write operations abort immediately to prevent accidental queue contamination.
+A queue root is created once with `python bin/ticket_master.py --init-queue <path>`. The command writes the marker `.ticket-master-queue` (format `ticket-master-queue-v2`, with a `queue_id`, creation time, host and root); it is the only way the marker comes into being, so never write it by hand. Every writer (create, move, note, claim and release, delegation, approval) refuses a root without a valid marker, with one exception: a queue that predates the marker is still accepted when its root `README.md` and `_templates/TICKET.txt` name the ticket/INBOX contract, and so is a `ticket-master-queue-v1` marker. A folder inside a module or mirror tree is refused even with a marker (next to `ellmos-module.v2.json` or `REPO.pointer.json`, directly below the `tickets/` fixture of such a root, or under `.MODULES`).
 
 ### Example `project_roots` Entry
 
@@ -546,7 +545,7 @@ If multiple development environments or multi-host nodes share queue definitions
     "C:/_Local_DEV/repos",
     "C:/Users/<USER>/OneDrive/Projects"
   ],
-  "ticket_dir": "./tickets",
+  "tickets_dir": "<HOME>/ticket-master-data/tickets",
   "default_language": "en"
 }
 ```
@@ -577,7 +576,7 @@ python bin/ticket_master.py --intake "Fix login"   # Create a structured ticket 
 python bin/ticket_master.py --init-queue <path>    # Create a verified ticket-queue root (the only way the queue marker is made)
 ```
 
-The ticket directory is mandatory: pass `--tickets-dir` or set `"tickets_dir"` in the config. There is no fallback to `<repo>/tickets`, which is the test fixture and not a queue. A folder inside a module or mirror tree (next to `ellmos-module.v2.json` or `REPO.pointer.json`, or under `.MODULES`) is never accepted as a queue, even with a marker.
+The ticket directory is mandatory: pass `--tickets-dir`, set the `TICKET_MASTER_TICKETS_DIR` environment variable, or set `"tickets_dir"` in the config (in that order of precedence; `bin/ticket_master.py` and the `lib/` writers resolve it the same way). Prefer the config: a process that was already running when the variable was set never inherits it. There is no fallback to `<repo>/tickets`, which is the test fixture and not a queue. A folder inside a module or mirror tree (next to `ellmos-module.v2.json` or `REPO.pointer.json`, or under `.MODULES`) is never accepted as a queue, even with a marker.
 
 #### The public producer contract (`--title` / `--body`)
 

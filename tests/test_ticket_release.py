@@ -13,7 +13,6 @@ Die Tests unten halten beide Haelften fest: die Nummer gilt als belegt
 (Slug hin oder her), aber der Slug ist NICHT Teil der kanonischen ID.
 """
 import sys
-import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,7 +21,7 @@ sys.path.insert(0, str(LIB_DIR))
 
 import ticket_mover  # noqa: E402
 import ticket_writer  # noqa: E402
-from queue_helpers import verified_queue  # noqa: E402
+from queue_helpers import QueueTemporaryDirectory, verified_queue  # noqa: E402
 
 
 class TestFilenameGrammar(unittest.TestCase):
@@ -76,7 +75,7 @@ class TestFilenameGrammar(unittest.TestCase):
         """Kern des Defekts: eine per Slug benannte Nummer muss als vergeben
         gelten, sonst kann sie ein zweites Mal gezogen werden. Der RNG liefert
         hier absichtlich zuerst genau die belegte Zahl."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             verified_queue(base)
             (base / "SOLVED").mkdir()
@@ -99,7 +98,7 @@ class TestFilenameGrammar(unittest.TestCase):
         """Der Slug belegt die Nummer, gehoert aber nicht zur ID -- sonst
         waeren zwei Dateien mit gleicher Nummer und verschiedenem Slug
         faelschlich zwei verschiedene Vorgaenge."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "SOLVED").mkdir()
             (base / "SOLVED" / "T-20260612-07_alpha.txt").write_text("a", encoding="utf-8")
@@ -112,7 +111,7 @@ class TestFilenameGrammar(unittest.TestCase):
 
 class TestReleaseSingleClaim(unittest.TestCase):
     def test_release_drops_host_suffix(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             claimed = base / "T-20260815-01.ASUS-GEI.txt"
             claimed.write_text("INHALT", encoding="utf-8")
@@ -123,7 +122,7 @@ class TestReleaseSingleClaim(unittest.TestCase):
 
     def test_release_keeps_the_slug(self):
         """Nur der Claim faellt, die beschreibende Benennung bleibt."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             claimed = base / "T-20260620-29_taa-zenodo.ASUS-GEI.txt"
             claimed.write_text("x", encoding="utf-8")
@@ -131,7 +130,7 @@ class TestReleaseSingleClaim(unittest.TestCase):
             self.assertEqual(freed.name, "T-20260620-29_taa-zenodo.txt")
 
     def test_release_of_unclaimed_ticket_is_a_noop(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             plain = base / "T-20260815-02.txt"
             plain.write_text("x", encoding="utf-8")
@@ -142,7 +141,7 @@ class TestReleaseSingleClaim(unittest.TestCase):
         """Auch die Rueckgabe ist fail-closed: liegt die unclaimed Fassung
         schon da (anderer Vorgang, gleiche Nummer), darf nichts ueberschrieben
         werden."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             claimed = base / "T-20260815-03.ASUS-GEI.txt"
             claimed.write_text("MEINER", encoding="utf-8")
@@ -179,7 +178,7 @@ class TestReleaseSessionClaims(unittest.TestCase):
         nur ACTIONABLE wird bedingungslos freigegeben. QUEUED bleibt
         geclaimed und wird nur gemeldet (siehe test_queued_is_held_by_default
         weiter unten), sonst wuerde eine aktive Delegation blind freigegeben."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             freed = ticket_mover.release_claims(base, host="ASUS-GEI")
@@ -198,7 +197,7 @@ class TestReleaseSessionClaims(unittest.TestCase):
         es ist zwar historisch dieselbe Maschine wie ASUS-GEI, aber eine
         Normalisierung veralteter Identitaeten ist ein separater, benannter
         Vorgang und darf nicht still in der Rueckgabe passieren."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             ticket_mover.release_claims(base, host="ASUS-GEI")
@@ -211,7 +210,7 @@ class TestReleaseSessionClaims(unittest.TestCase):
         """In SOLVED/USER/BLOCKED/WAITING/PARKED ist der Host-Suffix kein
         'in Arbeit', sondern Herkunft: wer hat geloest, wer wartet auf wessen
         Receipt. Eine pauschale Rueckgabe wuerde diese Information loeschen."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             ticket_mover.release_claims(base, host="ASUS-GEI")
@@ -228,11 +227,11 @@ class TestReleaseSessionClaims(unittest.TestCase):
     def test_host_argument_is_required(self):
         """Kein stiller COMPUTERNAME-Default: wer freigibt, benennt den Host.
         Sonst gibt eine falsch konfigurierte Umgebung fremde Claims frei."""
-        with tempfile.TemporaryDirectory() as tmp, self.assertRaises(TypeError):
+        with QueueTemporaryDirectory() as tmp, self.assertRaises(TypeError):
             ticket_mover.release_claims(Path(tmp))  # type: ignore[call-arg]
 
     def test_dry_run_reports_without_changing_anything(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             planned = ticket_mover.release_claims(base, host="ASUS-GEI", dry_run=True)
@@ -245,7 +244,7 @@ class TestReleaseSessionClaims(unittest.TestCase):
         verhindern -- sonst bleibt eine ganze Session geclaimed, weil ein
         einziger Name belegt war. include_queued=True, damit das blockierte
         QUEUED-Ticket ueberhaupt einen Freigabeversuch erlebt."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._queue(base)
             (base / "QUEUED" / "T-20260815-01.txt").write_text("blockiert", encoding="utf-8")
@@ -274,7 +273,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
         return ticket
 
     def test_queued_is_held_by_default(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             ticket = self._one_queued(base)
             freed, refused, held = ticket_mover.release_claims(
@@ -289,7 +288,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
     def test_include_queued_releases_orphaned_queued_ticket(self):
         """Kein DELEGIERT_AN-Vermerk -> gilt als verwaist (Worker/Session ist
         weg) -> darf mit --include-queued freigegeben werden."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._one_queued(base)
             freed, refused, held = ticket_mover.release_claims(
@@ -301,7 +300,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
         """Der eigentliche Kernfall aus dem Ticket: ein frischer
         DELEGIERT_AN-Vermerk schuetzt das Ticket, SELBST mit
         include_queued=True."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             ticket = self._one_queued(base)
             ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
@@ -321,7 +320,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
         aktualisiert) darf einen Claim nicht fuer immer schuetzen."""
         import os
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             ticket = self._one_queued(base)
             ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
@@ -336,7 +335,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
             self.assertEqual(held, [])
 
     def test_dry_run_reports_queued_candidate_without_touching_it(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             ticket = self._one_queued(base)
             freed, refused, held = ticket_mover.release_claims(
@@ -346,7 +345,7 @@ class TestQueuedIsHeldNotBlindlyReleased(unittest.TestCase):
             self.assertTrue(ticket.is_file())
 
     def test_foreign_host_queued_ticket_is_never_touched(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             self._one_queued(base, host="WORKSTATION-LG")
             freed, refused, held = ticket_mover.release_claims(
@@ -362,7 +361,7 @@ class TestDelegationMarker(unittest.TestCase):
     Bausteine, unabhaengig von release_claims()."""
 
     def test_mark_then_check_roundtrip(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             ticket.write_text("VORGANG\n", encoding="utf-8")
             self.assertFalse(ticket_mover.is_actively_delegated(ticket))
@@ -370,7 +369,7 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertTrue(ticket_mover.is_actively_delegated(ticket))
 
     def test_repeated_marking_does_not_duplicate_the_line(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             ticket.write_text("VORGANG\n", encoding="utf-8")
             ticket_mover.mark_delegated(ticket, "claude-code@ASUS-GEI")
@@ -379,7 +378,7 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertEqual(text.count("DELEGIERT_AN:"), 1)
 
     def test_indented_historical_quote_is_not_an_active_marker(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             ticket.write_text(
                 "VERLAUF\n"
@@ -391,7 +390,7 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertFalse(ticket_mover.is_actively_delegated(ticket))
 
     def test_marking_preserves_indented_historical_quote_byte_exactly(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             quoted = "    DELEGIERT_AN: old-worker@ASUS-GEI -- alter Beleg"
             ticket.write_text(f"VERLAUF\n{quoted}\n", encoding="utf-8")
@@ -406,7 +405,7 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertTrue(ticket_mover.is_actively_delegated(ticket))
 
     def test_mixed_history_and_live_marker_updates_only_live_marker(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             quoted = "    DELEGIERT_AN: historical-worker@ASUS-GEI"
             ticket.write_text(
@@ -426,7 +425,7 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertEqual(text.count("DELEGIERT_AN:"), 2)
 
     def test_dated_history_marker_remains_supported_and_is_updated_in_place(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             ticket = Path(tmp) / "T-20260815-01.ASUS-GEI.txt"
             ticket.write_text(
                 "VERLAUF\n"
@@ -444,12 +443,12 @@ class TestDelegationMarker(unittest.TestCase):
             self.assertEqual(text.count("DELEGIERT_AN:"), 1)
 
     def test_marking_missing_ticket_raises(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             with self.assertRaises(FileNotFoundError):
                 ticket_mover.mark_delegated(Path(tmp) / "nope.txt", "x")
 
     def test_missing_ticket_is_not_actively_delegated(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             self.assertFalse(
                 ticket_mover.is_actively_delegated(Path(tmp) / "nope.txt"))
 
@@ -459,7 +458,7 @@ class TestRenameForRenumbering(unittest.TestCase):
     dieselbe fail-closed-Garantie hat wie das Verschieben."""
 
     def test_rename_within_same_folder(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260731-02.WORKSTATION-LG.txt"
             source.write_text("VORGANG", encoding="utf-8")
@@ -470,7 +469,7 @@ class TestRenameForRenumbering(unittest.TestCase):
             self.assertEqual(target.read_text(encoding="utf-8"), "VORGANG")
 
     def test_rename_onto_occupied_name_is_refused(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260731-02.WORKSTATION-LG.txt"
             source.write_text("MEINER", encoding="utf-8")
@@ -484,7 +483,7 @@ class TestRenameForRenumbering(unittest.TestCase):
     def test_new_name_wins_over_reactivation_release(self):
         """Sonst wuerde ein Umnummerieren aus einem Wartezustand heraus den
         uebergebenen Namen still verkuerzen."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             src_dir = base / "BLOCKED"
             src_dir.mkdir()
@@ -504,7 +503,7 @@ class TestBareClusterNameAsDestination(unittest.TestCase):
     Fehlablage, die dieses Modul verhindern soll."""
 
     def test_bare_cluster_name_resolves_against_the_queue_root(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "QUEUED").mkdir()
             source = base / "QUEUED" / "T-20260815-111111111.ASUS-GEI.txt"
@@ -520,7 +519,7 @@ class TestBareClusterNameAsDestination(unittest.TestCase):
     def test_bare_cluster_name_works_from_the_queue_root_too(self):
         """Liegt die Quelle direkt in der Wurzel (INBOX-Alias), ist die Wurzel
         ihr eigener Elternordner."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             source = base / "T-20260815-222222222.txt"
             source.write_text("x", encoding="utf-8")
@@ -531,7 +530,7 @@ class TestBareClusterNameAsDestination(unittest.TestCase):
         """Nur BEKANNTE Clusternamen werden aufgeloest. Ein beliebiger
         relativer Pfad bleibt relativ -- sonst wuerde die Bequemlichkeit zur
         Magie und ueberraeschte an anderer Stelle."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "QUEUED").mkdir()
             source = base / "QUEUED" / "T-20260815-333333333.txt"
@@ -540,7 +539,7 @@ class TestBareClusterNameAsDestination(unittest.TestCase):
             self.assertEqual(target.parent, base / "irgendwas-eigenes")
 
     def test_absolute_paths_are_unaffected(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             (base / "QUEUED").mkdir()
             source = base / "QUEUED" / "T-20260815-444444444.txt"
@@ -554,7 +553,7 @@ class TestReleaseOnReactivation(unittest.TestCase):
     werden, SOBALD sie wieder aktuell sind -- nicht schon im Wartezustand."""
 
     def test_blocked_to_actionable_drops_the_claim(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             src_dir = base / "BLOCKED"
             src_dir.mkdir()
@@ -569,7 +568,7 @@ class TestReleaseOnReactivation(unittest.TestCase):
 
     def test_waiting_user_parked_to_actionable_also_release(self):
         for cluster in ("WAITING", "USER", "PARKED"):
-            with tempfile.TemporaryDirectory() as tmp:
+            with QueueTemporaryDirectory() as tmp:
                 base = Path(tmp)
                 src_dir = base / cluster
                 src_dir.mkdir()
@@ -588,7 +587,7 @@ class TestReleaseOnReactivation(unittest.TestCase):
             ("ACTIONABLE", "BLOCKED"),
             ("INBOX", "ACTIONABLE"),
         ):
-            with tempfile.TemporaryDirectory() as tmp:
+            with QueueTemporaryDirectory() as tmp:
                 base = Path(tmp)
                 src_dir = base / src_cluster
                 src_dir.mkdir()
@@ -599,7 +598,7 @@ class TestReleaseOnReactivation(unittest.TestCase):
                                  f"{src_cluster}->{dest_cluster}")
 
     def test_reactivation_release_can_be_overridden(self):
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             src_dir = base / "BLOCKED"
             src_dir.mkdir()
@@ -613,7 +612,7 @@ class TestReleaseOnReactivation(unittest.TestCase):
         """Liegt die unclaimed Fassung im Ziel schon, darf die Reaktivierung
         nicht scheitern und auch nichts ueberschreiben: das Ticket wandert
         dann unter seinem geclaimten Namen und bleibt sichtbar."""
-        with tempfile.TemporaryDirectory() as tmp:
+        with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
             src_dir = base / "BLOCKED"
             src_dir.mkdir()
