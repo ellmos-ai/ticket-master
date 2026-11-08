@@ -71,6 +71,55 @@ class TestReadback(unittest.TestCase):
             self.assertEqual(ticket.read_bytes(), before)
             self.assertFalse((queue / "USER" / ticket.name).exists())
 
+    def test_lowercase_user_target_triggers_readback_gate(self):
+        """T-20261107-711141176: Ziel 'user' oder path / 'user' muss das Gate ebenso triggern."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _queue(Path(tmp))
+            _index(queue.parent / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260731-010", "id": "D-20260731-010",
+                "status_class": "DONE", "title": "Entschieden",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            ticket = _ticket(queue, "ACTIONABLE", "T-20260824-857836410.txt",
+                             "Offen laut Analyse: siehe D-20260731-010.")
+            before = ticket.read_bytes()
+            with self.assertRaises(ticket_mover.DecisionReadbackError):
+                ticket_mover.move_ticket(ticket, queue / "user")
+            self.assertEqual(ticket.read_bytes(), before)
+
+            with self.assertRaises(ticket_mover.DecisionReadbackError):
+                ticket_mover.move_ticket(ticket, "user")
+            self.assertEqual(ticket.read_bytes(), before)
+
+    def test_junction_queue_finds_index_via_resolve_fallback(self):
+        """T-20261107-711141176: Queue hinter Junction/Symlink findet den Index."""
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            cc = tmp_path / "control-center"
+            queue = cc / "_TICKETS"
+            queue.mkdir(parents=True, exist_ok=True)
+            verified_queue(queue)
+            _index(cc / dr.INDEX_RELATIVE_PATH, [{
+                "key": "D-20260731-010", "id": "D-20260731-010",
+                "status_class": "DONE", "title": "Entschieden",
+                "source_file": "DECIDED-AND-DONE.md",
+            }])
+            junction = tmp_path / "junction_queue"
+            try:
+                import _winapi
+                _winapi.CreateJunction(str(queue), str(junction))
+            except (ImportError, OSError):
+                try:
+                    import os
+                    os.symlink(queue, junction, target_is_directory=True)
+                except OSError:
+                    self.skipTest("weder Junction noch Symlink verfuegbar")
+
+            path, expected = dr.find_decisions_index(junction)
+            self.assertIsNotNone(path, "Index muss ueber aufgeloeste Junction gefunden werden")
+            self.assertTrue(expected)
+            self.assertEqual(path.resolve(), (cc / dr.INDEX_RELATIVE_PATH).resolve())
+
     def test_an_acknowledged_hit_lets_the_move_through_and_is_recorded(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _queue(Path(tmp))

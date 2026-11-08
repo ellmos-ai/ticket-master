@@ -264,8 +264,9 @@ def claim_suffix(filename: str) -> str | None:
 
 
 def _should_release_on_move(source: Path, dest_dir: Path) -> bool:
-    return (source.parent.name in REACTIVATION_SOURCES
-            and dest_dir.name == REACTIVATION_TARGET)
+    reactivation_sources = {s.upper() for s in REACTIVATION_SOURCES}
+    return (source.parent.name.upper() in reactivation_sources
+            and dest_dir.name.upper() == REACTIVATION_TARGET.upper())
 
 
 def queue_root(source: Path) -> Path:
@@ -304,9 +305,11 @@ def resolve_dest_dir(source: Path, dest_dir: Path | str) -> Path:
         from .ticket_writer import _LIFECYCLE_SUBDIRS
     except ImportError:
         from ticket_writer import _LIFECYCLE_SUBDIRS
-    if dest.name not in _LIFECYCLE_SUBDIRS:
+    lifecycle_map = {name.upper(): name for name in _LIFECYCLE_SUBDIRS if name}
+    canonical = lifecycle_map.get(dest.name.upper())
+    if canonical is None:
         return dest
-    return queue_root(source) / dest.name
+    return queue_root(source) / canonical
 
 
 def _ticket_identity(filename: str) -> tuple[str, int] | None:
@@ -461,7 +464,8 @@ def _dest_cluster_name(dest_dir: Path) -> str:
         from .ticket_writer import _LIFECYCLE_SUBDIRS
     except ImportError:
         from ticket_writer import _LIFECYCLE_SUBDIRS
-    return dest_dir.name if dest_dir.name in _LIFECYCLE_SUBDIRS else _ROOT_ALIAS
+    lifecycle_map = {name.upper(): name for name in _LIFECYCLE_SUBDIRS if name}
+    return lifecycle_map.get(dest_dir.name.upper(), _ROOT_ALIAS)
 
 
 def suggested_status_line(value: str, dest_cluster: str) -> str | None:
@@ -635,10 +639,22 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     source = Path(source)
     if not source.is_file():
         raise FileNotFoundError(f"move source does not exist or is not a file: {source}")
-    require_ticket_in_verified_queue(source)  # auch im dry_run: dieselben Pruefungen wie beim Schreiben
+    src_queue = require_ticket_in_verified_queue(source)  # auch im dry_run: dieselben Pruefungen wie beim Schreiben
     # Blosser Clustername ("SOLVED") wird gegen die Queue-Wurzel der Quelle
     # aufgeloest, statt still einen Ordner im Arbeitsverzeichnis anzulegen.
     dest_dir = resolve_dest_dir(source, dest_dir)
+
+    # Zielordner muss in einer verifizierten Queue liegen (T-20261107-907789834)
+    try:
+        dest_dir.resolve().relative_to(src_queue.resolve())
+    except ValueError:
+        try:
+            from .ticket_writer import _LIFECYCLE_SUBDIRS, require_verified_queue_root
+        except ImportError:
+            from ticket_writer import _LIFECYCLE_SUBDIRS, require_verified_queue_root
+        lifecycle_names = {sub.upper() for sub in _LIFECYCLE_SUBDIRS if sub}
+        dest_root = dest_dir.parent if dest_dir.name.upper() in lifecycle_names else dest_dir
+        require_verified_queue_root(dest_root)
 
     # Bedienfehler abfangen, BEVOR mkdir() ihn in eine echte Fehlablage
     # verwandelt: dest_dir ist die Zielordner, nicht die Zieldatei. Ein
@@ -694,11 +710,11 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
 
     target = dest_dir / target_name
     readback_line = None
-    if (dest_dir.name == USER_SUBDIR
+    if (dest_dir.name.upper() == USER_SUBDIR.upper()
             and dest_dir.resolve() != source.parent.resolve()):
         readback_line = _decision_readback_gate(
             source, dest_dir, acknowledged_decisions, decisions_index)
-    queued_id_gate = dest_dir.name == QUEUED_SUBDIR
+    queued_id_gate = dest_dir.name.upper() == QUEUED_SUBDIR.upper()
     if queued_id_gate:
         _assert_unique_id_for_queued_move(source, dest_dir.parent)
     if target.exists():

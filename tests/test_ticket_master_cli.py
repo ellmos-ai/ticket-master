@@ -2,6 +2,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -72,7 +73,10 @@ class TicketMasterCliTests(unittest.TestCase):
             (prompt_dir / "TICKET-MASTER.en.md").write_text("installed prompt", encoding="utf-8")
             config = root / "empty-config.json"
             config.write_text("{}", encoding="utf-8")
-            with patch.object(cli, "REPO_ROOT", root), patch.object(
+            env_without_tm_lang = {k: v for k, v in os.environ.items() if k != "TM_LANG"}
+            with patch.dict(os.environ, env_without_tm_lang, clear=True), patch.object(
+                cli, "REPO_ROOT", root
+            ), patch.object(
                 cli.sysconfig, "get_path", return_value=str(data_root)
             ):
                 lang, path, warnings = cli.resolve_prompt(config)

@@ -262,7 +262,8 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
 def queue_root_of(ticket: Path | str) -> Path:
     """The queue root a ticket path implies: the parent of its lifecycle folder, else its own folder."""
     parent = Path(os.path.abspath(ticket)).parent
-    return parent.parent if parent.name in _LIFECYCLE_SUBDIRS else parent
+    lifecycle_upper = {sub.upper() for sub in _LIFECYCLE_SUBDIRS if sub}
+    return parent.parent if parent.name.upper() in lifecycle_upper else parent
 
 
 def require_ticket_in_verified_queue(ticket: Path | str) -> Path:

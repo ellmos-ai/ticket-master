@@ -13,11 +13,13 @@ from lib.ticket_bundles import (
     BundlesRegistry,
     PreimageConflictError,
     TicketBundleError,
+    _write_ticket_bundle_pointer,
     normalize_ticket_id,
     parse_ticket_metadata,
     suggest_bundles,
     validate_bundles_registry,
 )
+from queue_helpers import verified_queue
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -31,8 +33,11 @@ def _write_ticket(
     pipeline: str = "umbruch",
     project_dir: str = "C:/Users/User/OneDrive/.TOPICS/.UMBRUCH",
     delegated_to: str = "",
+    verify_queue: bool = True,
 ) -> Path:
     folder.mkdir(parents=True, exist_ok=True)
+    if verify_queue:
+        verified_queue(folder.parent)
     path = folder / filename
     lines = [
         "==============================================================",
@@ -240,3 +245,18 @@ def test_partial_failure_and_completed_bundle_preserve_individual_ticket_status(
     # Individual ticket files keep their own canonical STATUS (not auto-marked SOLVED)
     assert parse_ticket_metadata(t1)["status"] == "ACTIONABLE"
     assert parse_ticket_metadata(t2)["status"] == "ACTIONABLE"
+
+
+def test_write_ticket_bundle_pointer_refuses_unverified_queue(tmp_path):
+    actionable = tmp_path / "ACTIONABLE"
+    ticket = _write_ticket(
+        actionable, "T-20261027-111111111.ASUS-GEI.txt", ticket_id="T-20261027-111111111", verify_queue=False
+    )
+    meta = parse_ticket_metadata(ticket)
+    with pytest.raises(ValueError, match="verified ticket queue"):
+        _write_ticket_bundle_pointer(
+            ticket,
+            bundle_id="B-20261031-001",
+            peer_ids=[],
+            expected_sha256=meta["preimage_sha256"],
+        )

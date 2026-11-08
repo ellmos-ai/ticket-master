@@ -113,7 +113,24 @@ def find_decisions_index(queue_dir: Path | str | None = None,
     # Without any register (public users of the tool) it stays absent.
     if (root / INDEX_RELATIVE_PATH.parent.parent).is_dir():
         return candidate, True
-    return (candidate, False) if candidate.is_file() else (None, False)
+    if candidate.is_file():
+        return candidate, False
+    # Fallback via resolve() for symlinks and Windows junctions (T-20261107-711141176):
+    resolved = Path(queue_dir).resolve()
+    if resolved.is_file():
+        try:
+            from .ticket_writer import queue_root_of
+        except ImportError:
+            from ticket_writer import queue_root_of
+        resolved = queue_root_of(resolved)
+    resolved_root = resolved.parent
+    if resolved_root != root:
+        resolved_candidate = resolved_root / INDEX_RELATIVE_PATH
+        if (resolved_root / INDEX_RELATIVE_PATH.parent.parent).is_dir():
+            return resolved_candidate, True
+        if resolved_candidate.is_file():
+            return resolved_candidate, False
+    return None, False
 
 
 REBUILD_TOOL = "decisions_index.py"

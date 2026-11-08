@@ -138,6 +138,16 @@ def test_helper_returns_the_queue_root_of_a_ticket(tmp_path):
     assert ticket_mover.queue_root(queue / "SOLVED" / TICKET_NAME) == queue
 
 
+def test_helper_returns_the_queue_root_of_a_ticket_with_lowercase_lifecycle(tmp_path):
+    queue = verified_queue(tmp_path / "queue")
+    for folder in ("inbox", "queued", "actionable", "solved", "user"):
+        sub = queue / folder
+        sub.mkdir()
+        ticket = sub / TICKET_NAME
+        assert ticket_writer.queue_root_of(ticket) == queue
+        assert ticket_mover.queue_root(ticket) == queue
+
+
 def test_note_refuses_a_ticket_in_an_unverified_queue(tmp_path):
     shadow = tmp_path / "shadow"
     ticket = ticket_in(shadow)
@@ -161,6 +171,24 @@ def test_move_refuses_a_ticket_in_an_unverified_queue(tmp_path):
 
     assert ticket.is_file()
     assert not (shadow / "SOLVED").exists()
+
+
+def test_move_refuses_destination_outside_verified_queue(tmp_path):
+    queue = verified_queue(tmp_path / "queue")
+    ticket = ticket_in(queue, "ACTIONABLE")
+    outside = tmp_path / "outside"
+    outside_solved = outside / "SOLVED"
+    before = ticket.read_bytes()
+
+    for dry_run in (True, False):
+        with pytest.raises(ValueError, match="verified ticket queue"):
+            ticket_mover.move_ticket(ticket, outside_solved, dry_run=dry_run)
+        with pytest.raises(ValueError, match="verified ticket queue"):
+            ticket_mover.move_ticket(ticket, outside, dry_run=dry_run)
+
+    assert ticket.is_file()
+    assert ticket.read_bytes() == before
+    assert not outside.exists()
 
 
 def test_mark_delegated_and_release_claim_refuse_an_unverified_queue(tmp_path):
