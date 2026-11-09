@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 import json
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -16,7 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "lib"))
 sys.path.insert(0, str(REPO_ROOT / "tools"))
 
-from report_claim_change import format_claim_ticket_body, format_claim_ticket_title, report_claim_change, main
+from report_claim_change import main, report_claim_change  # noqa: E402
 
 
 @pytest.fixture
