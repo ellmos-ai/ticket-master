@@ -568,7 +568,7 @@ combines their answers.
 
 | `action` | Behavior |
 |---|---|
-| `spawn` | Start a system-auditor run as a **supervised** sub-agent. "Supervised" means: collect the result, review the newly written `findings/*.md`, then run `python lib/auditor_bridge.py --findings-to-tickets --apply` so open findings land as INBOX tickets — never just fire-and-forget. |
+| `spawn` | Start a system-auditor run as a **supervised** sub-agent. "Supervised" means: collect the result, review the newly written `findings/*.md`, and then run the bridge sync (below) so open findings land as INBOX tickets — never just fire-and-forget. |
 | `skip` | Do nothing. The reason is in `reason`/`spar_gate` (nothing due, or sparmodus/notaus is active — an audit is a multi-agent run, exactly what sparmodus is meant to stop). |
 | `disabled` | `auditor_bridge.enabled` is `false` (the conservative default). Note it once, visibly, then move on — not an error. |
 | `absent` | `system-auditor` is not installed on this host. Note it once, visibly, then move on — not an error. |
@@ -576,6 +576,23 @@ combines their answers.
 
 Manual start via the codeword (see (c5)): `python lib/auditor_bridge.py --check --manual`
 — spawns even when `enabled: false` or nothing is due, but still respects the sparmodus gate.
+
+**Fixed Bridge Sync (Boot & Regular Loop Step):**
+Regardless of whether `spawn` was executed, an audit was run manually, or findings arrived from another host via file sink (`measure_sink: file` in `findings/`): syncing the file sink against the ticket system is a mandatory, regular step during boot as well as in every ticket-master run/loop (T-20261107-831316429):
+
+1. **Dry Run:**
+   ```
+   python lib/auditor_bridge.py --findings-to-tickets
+   ```
+2. **Review:** Inspect the result:
+   - `planned`: New findings without tickets. Will be turned into INBOX tickets via `--apply`.
+   - `needs_readback`: The finding is already linked, but lacks a current dated readback receipt. Duplicate creation suppressed; update existing ticket if needed.
+   - `skipped_existing`: Already linked with a current readback.
+3. **Apply:**
+   ```
+   python lib/auditor_bridge.py --findings-to-tickets --apply
+   ```
+   Atomically creates draft tickets in `INBOX/` for all remaining open (`planned`) measures.
 
 ### (c7) Informal entries
 

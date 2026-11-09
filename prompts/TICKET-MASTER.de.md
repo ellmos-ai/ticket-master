@@ -591,7 +591,7 @@ besitzt) und den bestehenden Sparmodus-Hook, und kombiniert deren Antworten.
 
 | `action` | Verhalten |
 |---|---|
-| `spawn` | Einen system-auditor-Lauf als **betreuten** Subagenten starten. "Betreuen" heißt: Ergebnis abholen, die neu entstandenen `findings/*.md` sichten, und danach `python lib/auditor_bridge.py --findings-to-tickets --apply` ausführen, damit offene Findings als INBOX-Tickets landen — nicht nur starten und vergessen. |
+| `spawn` | Einen system-auditor-Lauf als **betreuten** Subagenten starten. "Betreuen" heißt: Ergebnis abholen, die neu entstandenen `findings/*.md` sichten, und danach den Bridge-Abgleich (unten) ausführen, damit offene Findings als INBOX-Tickets landen — nicht nur starten und vergessen. |
 | `skip` | Nichts tun. Grund steht in `reason`/`spar_gate` (nichts fällig, oder Sparmodus/Notaus aktiv — ein Audit ist ein Mehr-Agenten-Lauf, genau das, was der Sparmodus stoppen soll). |
 | `disabled` | `auditor_bridge.enabled` ist `false` (Default, konservativ). Einmal sichtbar vermerken, dann weiter — kein Fehler. |
 | `absent` | `system-auditor` ist auf diesem Host nicht installiert. Einmal sichtbar vermerken, dann weiter — kein Fehler. |
@@ -599,6 +599,23 @@ besitzt) und den bestehenden Sparmodus-Hook, und kombiniert deren Antworten.
 
 Manueller Start über das Codewort (siehe (c5)): `python lib/auditor_bridge.py --check --manual`
 — spawnt auch bei `enabled: false` oder wenn nichts fällig ist, respektiert aber weiterhin den Sparmodus-Gate.
+
+**Fester Bridge-Abgleich (Boot & regulärer Loop-Schritt):**
+Unabhängig davon, ob `spawn` ausgeführt wurde, ein Audit manuell lief oder Befunde von einem anderen Host über die Datei-Senke (`measure_sink: file` in `findings/`) eingegangen sind: Der Abgleich der Datei-Senke gegen das Ticketsystem ist ein fester, regulärer Schritt beim Booten sowie in jedem Ticket-Master-Durchlauf (T-20261107-831316429):
+
+1. **Probelauf (Dry Run):**
+   ```
+   python lib/auditor_bridge.py --findings-to-tickets
+   ```
+2. **Sichtung:** Ergebnis analysieren:
+   - `planned`: Neue Findings ohne Ticket. Werden durch `--apply` zu INBOX-Tickets.
+   - `needs_readback`: Das Finding ist bereits verlinkt, trägt aber noch keinen aktuellen, datierten Rücklesebeleg. Duplicate creation bleibt unterdrückt; bei Bedarf bestehendes Ticket aktualisieren.
+   - `skipped_existing`: Bereits mit aktuellem Readback als Ticket verknüpft.
+3. **Anwenden:**
+   ```
+   python lib/auditor_bridge.py --findings-to-tickets --apply
+   ```
+   Erzeugt für alle noch offenen (`planned`) Maßnahmen atomar einen Ticket-Entwurf in `INBOX/`.
 
 ### (c7) Formlose Einträge
 
