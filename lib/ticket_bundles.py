@@ -23,9 +23,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .ticket_writer import ID_DIGITS, draw_id
+    from .ticket_writer import ID_DIGITS, draw_id, require_ticket_in_verified_queue
 except ImportError:
-    from ticket_writer import ID_DIGITS, draw_id
+    from ticket_writer import ID_DIGITS, draw_id, require_ticket_in_verified_queue
 
 
 BUNDLES_REGISTRY_SCHEMA = "ellmos.ticket.bundles-reg.v1"
@@ -506,6 +506,7 @@ def _write_ticket_bundle_pointer(
     peer_ids: list[str],
     expected_sha256: str,
 ) -> None:
+    require_ticket_in_verified_queue(ticket_path)
     raw = ticket_path.read_bytes()
     if hashlib.sha256(raw).hexdigest() != expected_sha256:
         raise PreimageConflictError(f"ticket file {ticket_path} changed before pointer write")
