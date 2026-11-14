@@ -860,9 +860,11 @@ def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | Non
 
     With ``dry_run=True`` every read-only gate still runs (contract validity,
     no active claim, the target ledger row is pending, and -- for a non-expired
-    binding -- that the execution binding is claimable). The path the claim
-    WOULD take is then returned without renaming the file or touching the
-    ledger, so callers can preview a claim fail-closed.
+    binding -- that the execution binding is claimable) plus the queue and
+    collision checks of ``move_ticket(dry_run=True)``. The final path the claim
+    WOULD take (without the ``.via`` segment of an expired binding) is then
+    returned without renaming the file or touching the ledger, so callers can
+    preview a claim fail-closed.
     """
     try:
         from .ticket_mover import move_ticket
@@ -909,7 +911,15 @@ def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | Non
             allowed, note = _binding_claimable(view, host, runner, resolver)
             if not allowed:
                 raise ClaimDeniedError(note.get("reason") or "execution binding is not claimable")
-        return path.parent / active_claim_name
+        # Same queue, lifecycle and collision gates as the real rename. An
+        # expired binding loses its ``.via`` segment in the real claim, so the
+        # preview reports (and collision-checks) that final name as well.
+        preview = move_ticket(path, path.parent, new_name=active_claim_name, dry_run=True)
+        if expired:
+            final_name = _render_name(view.name.stem, view.name.target, None, host)
+            if final_name != active_claim_name:
+                preview = move_ticket(path, path.parent, new_name=final_name, dry_run=True)
+        return preview
     claimed = move_ticket(path, path.parent, new_name=active_claim_name)
     view = load_contract(claimed)
 

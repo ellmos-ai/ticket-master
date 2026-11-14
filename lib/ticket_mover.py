@@ -1106,7 +1106,9 @@ def _cli(argv: list[str] | None = None) -> int:
     if sum(1 for value in freigabe_ops if value) > 1:
         parser.error("the freigabe operations are mutually exclusive")
     if any(freigabe_ops) and (args.source or args.dest_dir or args.release_session
-                              or args.claim_current_host or args.mark_delegated):
+                              or args.claim_current_host
+                              or args.claim_contract_current_host
+                              or args.mark_delegated):
         parser.error("a freigabe operation cannot be combined with another operation")
 
     if args.freigabe_status:
@@ -1145,7 +1147,8 @@ def _cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.verify_claim_host:
-        if (args.claim_current_host or args.mark_delegated or args.release_session
+        if (args.claim_current_host or args.claim_contract_current_host
+                or args.mark_delegated or args.release_session
                 or args.source or args.dest_dir or args.dry_run):
             parser.error("--verify-claim-host cannot be combined with another operation")
         if not args.sync_root:
@@ -1161,7 +1164,8 @@ def _cli(argv: list[str] | None = None) -> int:
         return 0
 
     if args.claim_current_host:
-        if args.mark_delegated or args.release_session or args.source or args.dest_dir:
+        if (args.claim_contract_current_host or args.mark_delegated
+                or args.release_session or args.source or args.dest_dir):
             parser.error("--claim-current-host cannot be combined with another operation")
         if not args.host or not args.sync_root:
             parser.error("--claim-current-host requires --host and --sync-root")
@@ -1171,7 +1175,7 @@ def _cli(argv: list[str] | None = None) -> int:
                 sync_root=args.sync_root, dry_run=args.dry_run,
             )
         except (HostIdentityError, TicketCollisionError, FileNotFoundError,
-                RuntimeError) as exc:
+                RuntimeError, ValueError) as exc:
             print(f"REFUSED: {exc}")
             return 1
         label = "WOULD CLAIM" if args.dry_run else "CLAIMED"
@@ -1190,7 +1194,7 @@ def _cli(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run,
             )
         except (HostIdentityError, RoutingContractError, TicketCollisionError,
-                FileNotFoundError, RuntimeError) as exc:
+                FileNotFoundError, RuntimeError, ValueError) as exc:
             print(f"REFUSED: {exc}")
             return 1
         label = "WOULD CLAIM" if args.dry_run else "CLAIMED"
