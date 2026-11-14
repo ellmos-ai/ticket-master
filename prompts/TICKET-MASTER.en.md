@@ -180,7 +180,10 @@ resides) — **not** a host subfolder like `<sync-root>/workstation`. `resolve_l
 slot from the snapshots (example: `snapshot=<sync-root>/_config-state/snapshots/<slot>.json`).
 Missing or conflicting evidence fails closed. Legacy claims can combine verification and rename with
 `python lib/ticket_mover.py --claim-current-host <ticket> --host <HOST> --sync-root <sync-root>`;
-routing v2 invokes `claim_contract()` directly after the universal preflight.
+routing v2 invokes `claim_contract()` directly after the universal preflight; from the command line use
+`python lib/ticket_mover.py --claim-contract-current-host <ticket> --host <HOST> --sync-root <sync-root> --agent <actor@HOST> [--runner <selector>] [--dry-run]`
+(same host and self-slot verification, fails closed on an existing claim; `--dry-run` only checks).
+`--claim-current-host` deliberately refuses routing-v2 tickets (T-20261114-252089335).
 Session context, model memory and environment variables are not host authorities.
 
 **REQUIRED (since T-20260808-03): never hand-copy or hand-overwrite.**
