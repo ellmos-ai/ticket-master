@@ -115,6 +115,7 @@ __all__ = [
     "NestedLifecycleDestinationError",
     "TicketCollisionError",
     "claim_contract",
+    "claim_contract_current_host",
     "claim_current_host",
     "verify_claim_host",
     "complete_contract",
@@ -455,6 +456,38 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
     slug = f"_{match.group('slug')}" if match.group("slug") else ""
     claimed_name = f"T-{match.group('date')}-{match.group('number')}{slug}.{host}.txt"
     return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
+
+
+def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
+                                sync_root: Path | str, actor: str,
+                                runner: str | None = None,
+                                dry_run: bool = False) -> Path:
+    """Fail-closed routing-v2 claim via claim_contract() after host verification.
+
+    The CLI counterpart that `claim_current_host` deliberately refuses for v2
+    tickets (which carry a ROUTING_SCHEMA/SYSTEM_LEDGER contract). Verifies the
+    asserted claim host and self-slot, requires a routing-v2 ticket name, then
+    delegates the target, binding and ledger gates to `claim_contract`. With
+    `dry_run=True` nothing is renamed and the path the claim would take is
+    returned.
+    """
+    source = Path(ticket)
+    if not source.is_file():
+        raise FileNotFoundError(f"ticket does not exist or is not a file: {source}")
+    if source.parent.name not in WORKING_SUBDIRS:
+        raise HostIdentityError(
+            f"current-host claims are allowed only in {WORKING_SUBDIRS}: {source}"
+        )
+    host, _slot, _snapshot = verify_claim_host(claim_host, sync_root=sync_root)
+    try:
+        parsed = parse_ticket_name(source.name)
+    except RoutingContractError as exc:
+        raise HostIdentityError(f"cannot claim invalid ticket name: {source.name}") from exc
+    if not parsed.is_v2:
+        raise HostIdentityError(
+            "legacy tickets must use --claim-current-host, not claim_contract()"
+        )
+    return claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
 
 
 def _dest_cluster_name(dest_dir: Path) -> str:
@@ -998,6 +1031,10 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("--claim-current-host", metavar="TICKET",
                         help=("Claim TICKET after live host + self-slot verification. "
                               "Requires --host and --sync-root."))
+    parser.add_argument("--claim-contract-current-host", metavar="TICKET",
+                        help=("Claim a routing-v2 TICKET via claim_contract() after live "
+                              "host + self-slot verification. Requires --host, --sync-root "
+                              "and --agent; optional --runner and --dry-run."))
     parser.add_argument("--verify-claim-host", metavar="HOST",
                         help=("Verify an asserted host before any legacy or routing-v2 "
                               "claim. Requires --sync-root."))
@@ -1005,6 +1042,8 @@ def _cli(argv: list[str] | None = None) -> int:
                         help="Canonical .SYNC root for --claim-current-host.")
     parser.add_argument("--agent",
                         help="Agent identity for --mark-delegated, e.g. claude-code@ASUS-GEI.")
+    parser.add_argument("--runner",
+                        help="Optional Clutch execution selector for --claim-contract-current-host.")
     parser.add_argument("--session",
                         help="Parent session ID for --mark-delegated; explicit value wins over provider runtime variables.")
     parser.add_argument("--session-host",
@@ -1133,6 +1172,25 @@ def _cli(argv: list[str] | None = None) -> int:
             )
         except (HostIdentityError, TicketCollisionError, FileNotFoundError,
                 RuntimeError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        label = "WOULD CLAIM" if args.dry_run else "CLAIMED"
+        print(f"{label}: {target}")
+        return 0
+
+    if args.claim_contract_current_host:
+        if args.mark_delegated or args.release_session or args.source or args.dest_dir:
+            parser.error("--claim-contract-current-host cannot be combined with another operation")
+        if not args.host or not args.sync_root or not args.agent:
+            parser.error("--claim-contract-current-host requires --host, --sync-root and --agent")
+        try:
+            target = claim_contract_current_host(
+                args.claim_contract_current_host, claim_host=args.host,
+                sync_root=args.sync_root, actor=args.agent, runner=args.runner,
+                dry_run=args.dry_run,
+            )
+        except (HostIdentityError, RoutingContractError, TicketCollisionError,
+                FileNotFoundError, RuntimeError) as exc:
             print(f"REFUSED: {exc}")
             return 1
         label = "WOULD CLAIM" if args.dry_run else "CLAIMED"
