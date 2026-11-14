@@ -938,3 +938,111 @@ def test_passing_the_removed_id_fails_loudly_not_silently():
             primary_ticket="T-20260913-100000001",
             original_owner="ASUS-GEI", receipt_to="T-20260913-100000001",
         )
+
+
+# --- Routing-v2 claim: dry-run preview and the ticket_mover CLI wrapper
+#     (claim_contract_current_host), the counterpart --claim-current-host
+#     deliberately refuses for v2 tickets. ---
+
+def _make_workstation_self_slot(root: Path) -> None:
+    """Minimal self-slot so verify_claim_host accepts WORKSTATION-LG."""
+    snapshots = root / "_config-state" / "snapshots"
+    snapshots.mkdir(parents=True)
+    (snapshots / "workstation.json").write_text(
+        json.dumps({"host": "WORKSTATION-LG", "slot": "workstation"}),
+        encoding="utf-8",
+    )
+    slot = root / "workstation"
+    slot.mkdir()
+    (slot / "repos.json").write_text(
+        json.dumps({"host": "WORKSTATION-LG", "slot": "workstation"}),
+        encoding="utf-8",
+    )
+
+
+def _actionable_v2_ticket(tmp_path: Path) -> Path:
+    """An unbound exact-target routing-v2 ticket sitting in ACTIONABLE."""
+    path = make_contract(
+        tmp_path, ticket_kind="transfer", target_kind="exact",
+        target="WORKSTATION-LG", via=None, binding_mode="required",
+    )
+    actionable = tmp_path / "ACTIONABLE"
+    actionable.mkdir(exist_ok=True)
+    moved = actionable / path.name
+    path.rename(moved)
+    return moved
+
+
+def test_claim_contract_dry_run_previews_without_mutation(tmp_path):
+    path = _actionable_v2_ticket(tmp_path)
+    before = path.read_text(encoding="utf-8")
+
+    preview = rc.claim_contract(
+        path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+        dry_run=True, now="2026-08-22T09:00:00Z",
+    )
+
+    assert preview.name.endswith(".to-WORKSTATION-LG.claim-WORKSTATION-LG.txt")
+    assert path.exists(), "dry run must not rename the ticket"
+    assert path.read_text(encoding="utf-8") == before
+    assert not list(path.parent.glob("*.claim-*")), "dry run must not create a claim file"
+
+    # A real claim after the preview still works and mutates exactly once.
+    claimed = rc.claim_contract(
+        path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+        now="2026-08-22T09:00:00Z",
+    )
+    assert claimed.name == preview.name
+    assert claimed.exists()
+    assert not path.exists()
+
+
+def test_claim_contract_current_host_claims_v2_after_verification(tmp_path, monkeypatch):
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
+    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    _make_workstation_self_slot(tmp_path)
+    path = _actionable_v2_ticket(tmp_path)
+
+    claimed = ticket_mover.claim_contract_current_host(
+        path, claim_host="WORKSTATION-LG", sync_root=tmp_path,
+        actor="ws-actionable@WORKSTATION-LG",
+    )
+
+    assert claimed.name.endswith(".to-WORKSTATION-LG.claim-WORKSTATION-LG.txt")
+    assert claimed.exists()
+    assert not path.exists()
+
+
+def test_claim_contract_current_host_dry_run_leaves_ticket_unclaimed(tmp_path, monkeypatch):
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
+    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    _make_workstation_self_slot(tmp_path)
+    path = _actionable_v2_ticket(tmp_path)
+
+    preview = ticket_mover.claim_contract_current_host(
+        path, claim_host="WORKSTATION-LG", sync_root=tmp_path,
+        actor="ws-actionable@WORKSTATION-LG", dry_run=True,
+    )
+
+    assert preview.name.endswith(".claim-WORKSTATION-LG.txt")
+    assert path.exists()
+    assert not list(path.parent.glob("*.claim-*"))
+
+
+def test_claim_contract_current_host_refuses_legacy_ticket(tmp_path, monkeypatch):
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
+    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    _make_workstation_self_slot(tmp_path)
+    verified_queue(tmp_path)
+    actionable = tmp_path / "ACTIONABLE"
+    actionable.mkdir(exist_ok=True)
+    legacy = actionable / "T-20260827-123456789.txt"
+    legacy.write_text("unchanged\n", encoding="utf-8")
+
+    with pytest.raises(ticket_mover.HostIdentityError, match="claim-current-host"):
+        ticket_mover.claim_contract_current_host(
+            legacy, claim_host="WORKSTATION-LG", sync_root=tmp_path,
+            actor="ws-actionable@WORKSTATION-LG",
+        )
+
+    assert legacy.read_text(encoding="utf-8") == "unchanged\n"

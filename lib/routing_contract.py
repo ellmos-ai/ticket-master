@@ -854,8 +854,16 @@ def _binding_claimable(view: ContractView, host: str, runner: str | None,
 
 def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | None = None,
                    resolver: Callable[..., Any] | None = None,
-                   now: datetime | str | None = None, lease_seconds: int = 3600) -> Path:
-    """Acquire a v2 write lease after target, binding and ledger checks."""
+                   now: datetime | str | None = None, lease_seconds: int = 3600,
+                   dry_run: bool = False) -> Path:
+    """Acquire a v2 write lease after target, binding and ledger checks.
+
+    With ``dry_run=True`` every read-only gate still runs (contract validity,
+    no active claim, the target ledger row is pending, and -- for a non-expired
+    binding -- that the execution binding is claimable). The path the claim
+    WOULD take is then returned without renaming the file or touching the
+    ledger, so callers can preview a claim fail-closed.
+    """
     try:
         from .ticket_mover import move_ticket
     except ImportError:
@@ -896,6 +904,12 @@ def claim_contract(path: Path | str, *, host: str, actor: str, runner: str | Non
     expired = bool(view.binding_expires_at and view.binding_expires_at != "never"
                    and _utc(view.binding_expires_at) <= instant)
     active_claim_name = _render_name(view.name.stem, view.name.target, view.name.via, host)
+    if dry_run:
+        if not expired:
+            allowed, note = _binding_claimable(view, host, runner, resolver)
+            if not allowed:
+                raise ClaimDeniedError(note.get("reason") or "execution binding is not claimable")
+        return path.parent / active_claim_name
     claimed = move_ticket(path, path.parent, new_name=active_claim_name)
     view = load_contract(claimed)
 
