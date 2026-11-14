@@ -755,6 +755,224 @@ def test_executed_failure_and_absence_are_real_observations(value, evidence):
     assert auditor_bridge._has_current_readback(finding_id, line)
 
 
+def test_commit_alone_is_not_independent_readback_evidence(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("commit-only")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md status=clear — commit deadbee"
+    )
+
+    assert not auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_commit_with_numeric_count_is_current_readback(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("commit-count")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_commit_with_separate_count_clause_is_current_readback(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("commit-count-clause")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md status=clear — commit deadbee; count=0"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_missing_resolvable_location_needs_readback_with_reason(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("missing-location")
+    make_finding(findings_dir, finding_id, "Missing local artifact")
+    link_ticket(
+        tickets_dir, "T-20261025-121212121.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=does-not-exist.md value=clear "
+        "— pytest tests/test_probe.py -q: 1 passed\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(
+        findings_dir, tickets_dir, dry_run=True, location_base=tmp_path,
+    )
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["reason"] == "location not found"
+
+
+def test_missing_location_reason_survives_commit_only_evidence(tmp_path):
+    findings_dir = tmp_path / "findings"
+    tickets_dir = tmp_path / "tickets"
+    finding_id = current_finding_id("missing-location-commit")
+    make_finding(findings_dir, finding_id, "Missing local artifact")
+    link_ticket(
+        tickets_dir, "T-20261025-141414141.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=does-not-exist.md status=clear — commit deadbee\n",
+    )
+
+    results = auditor_bridge.findings_to_tickets(
+        findings_dir, tickets_dir, dry_run=True, location_base=tmp_path,
+    )
+
+    assert results[0]["status"] == "needs_readback"
+    assert results[0]["reason"] == "location not found"
+
+
+def test_existing_resolvable_location_is_current_readback(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("existing-location")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md value=clear "
+        "— pytest tests/test_probe.py -q: 1 passed"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_location_base_defaults_to_invoking_working_directory(tmp_path, monkeypatch):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    finding_id = current_finding_id("cwd-location")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md value=clear "
+        "— pytest tests/test_probe.py -q: 1 passed"
+    )
+
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+def test_placeholder_location_remains_syntactically_checked(tmp_path):
+    finding_id = current_finding_id("placeholder-location")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=<OneDrive>/project/artifact.md value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_foreign_host_location_is_not_disproved_by_local_absence(tmp_path):
+    finding_id = current_finding_id("foreign-location")
+    line = (
+        f"{date.today()} | reviewer@remote-host | Finding {finding_id} "
+        "location=does-not-exist.md value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_unc_location_is_unresolved_without_filesystem_access(tmp_path, monkeypatch):
+    def unexpected_stat(_path):
+        raise AssertionError("UNC readback locations must not trigger filesystem access")
+
+    monkeypatch.setattr(auditor_bridge.Path, "stat", unexpected_stat)
+    finding_id = current_finding_id("unc-location")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        r"location=\\remote-host\share\artifact.md value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_foreign_absolute_path_flavor_is_unresolved_without_filesystem_access(
+    tmp_path, monkeypatch,
+):
+    def unexpected_stat(_path):
+        raise AssertionError("foreign path syntax must not trigger filesystem access")
+
+    monkeypatch.setattr(auditor_bridge.Path, "stat", unexpected_stat)
+    foreign_path = "/var/lib/artifact.md" if os.name == "nt" else r"C:\repo\artifact.md"
+    finding_id = current_finding_id("foreign-path-flavor")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        f"location={foreign_path} value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_existing_native_absolute_location_is_current_readback(tmp_path):
+    artifact = tmp_path / "artifact.md"
+    artifact.write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("native-absolute-existing")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        f"location={artifact.as_posix()} value=0 — commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+def test_missing_native_absolute_location_reports_reason(tmp_path):
+    finding_id = current_finding_id("native-absolute-missing")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        f"location={(tmp_path / 'missing.md').as_posix()} status=clear "
+        "— pytest tests/test_probe.py -q: 1 passed"
+    )
+
+    assert auditor_bridge._current_readback_status(finding_id, line) == (
+        False, "location not found",
+    )
+
+
+def test_commit_accepts_an_existing_independent_artifact_path(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    (tmp_path / "receipt.log").write_text("measured\n", encoding="utf-8")
+    finding_id = current_finding_id("commit-existing-path")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md status=clear — commit deadbee; report=receipt.log"
+    )
+
+    assert auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
+def test_commit_rejects_a_missing_independent_artifact_path(tmp_path):
+    (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
+    finding_id = current_finding_id("commit-missing-path")
+    line = (
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md status=clear — commit deadbee; report=missing.log"
+    )
+
+    assert not auditor_bridge._has_current_readback(
+        finding_id, line, location_base=tmp_path,
+    )
+
+
 @pytest.mark.parametrize(("statement", "evidence"), [
     ("location=lib/target.py value=clear", "command=probe exit_code=1 result=failed; log=probe.log"),
     ("location=lib/target.py value=clear", "API returned status=clear status=failed"),
@@ -810,6 +1028,35 @@ def test_readback_id_is_case_sensitive_and_cannot_be_rebound_in_evidence():
     assert not auditor_bridge._has_current_readback(
         finding_id, readback_line(other_id) + f"; Finding {finding_id}",
     )
+
+
+def test_cli_uses_configured_readback_location_base(tmp_path, monkeypatch, capsys):
+    base = tmp_path / "project"
+    base.mkdir()
+    (base / "artifact.md").write_text("present\n", encoding="utf-8")
+    findings = tmp_path / "findings"
+    tickets = tmp_path / "tickets"
+    finding_id = current_finding_id("configured-base")
+    make_finding(findings, finding_id, "Configured location base")
+    link_ticket(
+        tickets, "T-20261025-131313131.txt",
+        f"Finding: {finding_id}\n"
+        f"{date.today()} | reviewer@localhost | Finding {finding_id} "
+        "location=artifact.md value=0 — commit deadbee\n",
+    )
+    config = write_json(
+        tmp_path / "config.json",
+        {"auditor_bridge": {"location_base": str(base)}},
+    )
+    monkeypatch.setattr(auditor_bridge, "_resolve_system_auditor_config", lambda: None)
+
+    rc = auditor_bridge._cli([
+        "--findings-to-tickets", "--config", str(config),
+        "--findings-dir", str(findings), "--tickets-dir", str(tickets),
+    ])
+
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)[0]["status"] == "skipped_existing"
 
 
 def test_real_cli_apply_preserves_links_and_distinguishes_measurement(tmp_path):

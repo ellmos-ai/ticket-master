@@ -30,9 +30,10 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 from datetime import date
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 try:  # package import (``from lib import auditor_bridge``)
@@ -395,7 +396,8 @@ _READBACK_LOG_LINE_RE = re.compile(
 # Every clause must be consumed by an assertion or evidence production. Thus
 # an unrecognized qualification cannot borrow a neighbouring hash/path to
 # turn a non-measurement into a receipt. See docs/AUDITOR_READBACK.md.
-_READBACK_PATH = r"(?:[A-Za-z]:[\\/]|[./\\]|[\w.-]+[/\\])[\w./\\:-]+|[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)"
+_READBACK_PLACEHOLDER = r"<[A-Za-z][A-Za-z0-9_-]*>"
+_READBACK_PATH = rf"(?:{_READBACK_PLACEHOLDER}[\\/]|[A-Za-z]:[\\/]|[./\\]|[\w.-]+[/\\])[\w./\\:-]+|[\w.-]+\.(?:py|md|json|toml|ya?ml|ini|cfg|log|txt|pdf)"
 _READBACK_SCALAR = (
     r"(?:-?\d+(?:\.\d+)?|true|false|none|unknown|clear|locked|open|closed|"
     r"present|missing|available|unavailable|error|failed|pass|passed|fail|"
@@ -422,6 +424,17 @@ _READBACK_ARTIFACT_RE = re.compile(
     rf"(?:(?:log|receipt|report|Beleg|Protokoll)\s*[:=]\s*)?(?:{_READBACK_PATH}))",
     re.IGNORECASE,
 )
+_READBACK_COMMIT_RE = re.compile(r"commit\s+[0-9a-f]{7,40}", re.IGNORECASE)
+_READBACK_COUNT_RE = re.compile(
+    r"(?:value|wert|count|anzahl|files?|dateien|entries|einträge|tickets?|locks?|tests?)"
+    r"\s*[:=]\s*(?P<count>-?\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+_READBACK_PATH_ARTIFACT_RE = re.compile(
+    rf"(?:(?:log|receipt|report|Beleg|Protokoll)\s*[:=]\s*)?"
+    rf"(?P<path>{_READBACK_PATH})",
+    re.IGNORECASE,
+)
 _READBACK_TEST_RE = re.compile(
     # Arguments are flags/paths, not arbitrary prose that could hide a denial.
     rf"(?:python\s+-m\s+)?pytest(?:\s+(?:-[\w=-]+|(?:{_READBACK_PATH})))*\s*:\s*"
@@ -443,7 +456,7 @@ _READBACK_OUTPUT_RE = re.compile(
 )
 
 
-def _readback_assertion(finding_id: str, statement: str) -> str | None:
+def _readback_assertion(finding_id: str, statement: str) -> tuple[str, str] | None:
     """Bind one ID, an actual location and a value in one complete assertion."""
     prefix = re.match(
         rf"(?i:Finding|Readback|Messung)?\s*{re.escape(finding_id)}\s+", statement,
@@ -453,7 +466,7 @@ def _readback_assertion(finding_id: str, statement: str) -> str | None:
     body = statement[prefix.end():].strip()
     prose = _READBACK_PROSE_RE.fullmatch(body)
     if prose:
-        return prose.group("value").lower()
+        return prose.group("value").lower(), prose.group("location")
     fields: dict[str, str] = {}
     while body:
         field = _READBACK_FIELDS_RE.match(body)
@@ -470,17 +483,80 @@ def _readback_assertion(finding_id: str, statement: str) -> str | None:
             return None
         if key in fields:
             return None  # ambiguous, even if two spellings happen to agree
-        fields[key] = value.lower()
+        fields[key] = value if key == "location" else value.lower()
         body = body[field.end():].strip()
     if "location" not in fields:
         return None
     results = {fields[key] for key in ("value", "state", "status") if key in fields}
     if len(results) != 1:
         return None
-    return fields.get("value", fields.get("state", fields.get("status")))
+    observed = fields.get("value", fields.get("state", fields.get("status")))
+    return observed, fields["location"]
 
 
-def _readback_evidence(value: str, evidence: str) -> bool:
+def _local_host_names() -> set[str]:
+    """Return only host names that can identify this filesystem view."""
+    names = {"localhost", "127.0.0.1", "::1"}
+    for candidate in (
+        socket.gethostname(), os.environ.get("COMPUTERNAME"), os.environ.get("HOSTNAME"),
+    ):
+        if candidate and candidate.strip():
+            names.add(candidate.strip().casefold())
+    return names
+
+
+def _is_foreign_absolute_path(value: str) -> bool:
+    """Return whether *value* is absolute only in another OS path flavor."""
+    windows_absolute = PureWindowsPath(value).is_absolute()
+    posix_absolute = PurePosixPath(value).is_absolute()
+    if os.name == "nt":
+        return posix_absolute and not windows_absolute
+    return windows_absolute and not posix_absolute
+
+
+def _local_path_state(
+    location: str, actor: str, location_base: str | Path | None,
+) -> bool | None:
+    """Return True/False only when this host can prove path presence/absence.
+
+    ``None`` means unresolved: the receipt came from another host, contains a
+    portable placeholder, or the local filesystem refused a conclusive stat.
+    """
+    actor_host = actor.rsplit("@", 1)[-1].strip().casefold()
+    if (
+        actor_host not in _local_host_names()
+        or re.search(r"<[^<>]+>", location)
+        or location.startswith(("\\\\", "//"))
+        or _is_foreign_absolute_path(location)
+    ):
+        return None
+
+    try:
+        path = Path(location).expanduser()
+        if not path.is_absolute():
+            base = Path(location_base).expanduser() if location_base is not None else Path.cwd()
+            if (
+                re.search(r"<[^<>]+>", str(base))
+                or str(base).startswith(("\\\\", "//"))
+                or _is_foreign_absolute_path(str(base))
+            ):
+                return None
+            path = base / path
+        path.stat()
+    except FileNotFoundError:
+        return False
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return True
+
+
+def _readback_evidence(
+    value: str,
+    evidence: str,
+    *,
+    actor: str,
+    location_base: str | Path | None,
+) -> bool:
     """Recognize entire evidence clauses; unknown context stays observable.
 
     A failed command is an observation too. Its exit code need not be zero;
@@ -488,6 +564,8 @@ def _readback_evidence(value: str, evidence: str) -> bool:
     """
     measured = False
     concrete = False
+    commit = False
+    independent = re.fullmatch(r"-?\d+(?:\.\d+)?", value) is not None
     for clause in evidence.split(";"):
         clause = clause.strip()
         if not clause:
@@ -509,6 +587,7 @@ def _readback_evidence(value: str, evidence: str) -> bool:
                 return False
             measured = True
             concrete = True
+            independent = True
         elif _READBACK_TEST_RE.fullmatch(clause):
             failures = sum(int(count) for count in re.findall(r"(\d+)\s+(?:failed|errors?)", clause, re.I))
             if value in {"failed", "fail", "error"} and not failures:
@@ -517,15 +596,30 @@ def _readback_evidence(value: str, evidence: str) -> bool:
                 return False
             measured = True
             concrete = True
+            independent = True
+        elif _READBACK_COMMIT_RE.fullmatch(clause):
+            commit = True
+            concrete = True
+        elif count := _READBACK_COUNT_RE.fullmatch(clause):
+            if re.fullmatch(r"-?\d+(?:\.\d+)?", value) and count.group("count") != value:
+                return False
+            measured = True
+            concrete = True
+            independent = True
         elif _READBACK_ARTIFACT_RE.fullmatch(clause):
             concrete = True
+            path_artifact = _READBACK_PATH_ARTIFACT_RE.fullmatch(clause)
+            if path_artifact and _local_path_state(
+                path_artifact.group("path"), actor, location_base,
+            ) is True:
+                independent = True
         elif clause.lower() in {"no lock found", "kein lock gefunden"} and value in {"clear", "frei"}:
             pass  # observed absence of a lock, not absence of a measurement
         else:
             return False
     # Ambiguous failure/absence words require an execution result. A standalone
     # hash plus "unavailable" cannot establish whether anything was measured.
-    return concrete and (
+    return concrete and (not commit or independent) and (
         measured or value not in {"missing", "unavailable", "error", "failed", "fehlt", "fail"}
     )
 
@@ -550,7 +644,12 @@ def _contains_finding_id(text: str, finding_id: str) -> bool:
     ) is not None
 
 
-def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
+def _current_readback_status(
+    finding_id: str,
+    ticket_text: str,
+    *,
+    location_base: str | Path | None = None,
+) -> tuple[bool, str | None]:
     """Recognize bounded dated assertions, never infer truth from ID linkage.
 
     A receipt predating the finding is stale; future dates are not current.
@@ -559,8 +658,9 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
     """
     observation_date = _finding_observation_date(finding_id)
     if observation_date is None:
-        return False
+        return False, None
 
+    missing_location = False
     for line in ticket_text.splitlines():
         match = _READBACK_LOG_LINE_RE.match(line)
         if match is None:
@@ -572,14 +672,35 @@ def _has_current_readback(finding_id: str, ticket_text: str) -> bool:
         if readback_date < observation_date or readback_date > date.today():
             continue
 
-        value = _readback_assertion(finding_id, match.group("statement"))
-        if value is None:
+        assertion = _readback_assertion(finding_id, match.group("statement"))
+        if assertion is None:
+            continue
+        value, location = assertion
+        location_state = _local_path_state(
+            location, match.group("actor"), location_base,
+        )
+        if location_state is False:
+            missing_location = True
             continue
         evidence = match.group("evidence")
-        if not _readback_evidence(value, evidence):
+        if not _readback_evidence(
+            value, evidence, actor=match.group("actor"), location_base=location_base,
+        ):
             continue
-        return True
-    return False
+        return True, None
+    return False, "location not found" if missing_location else None
+
+
+def _has_current_readback(
+    finding_id: str,
+    ticket_text: str,
+    *,
+    location_base: str | Path | None = None,
+) -> bool:
+    """Compatibility wrapper returning only the current/not-current verdict."""
+    return _current_readback_status(
+        finding_id, ticket_text, location_base=location_base,
+    )[0]
 
 
 def _has_finding_line(text: str, finding_id: str) -> bool:
@@ -630,7 +751,11 @@ def _finding_to_ticket_text(path: Path, finding_id: str) -> tuple[str, str]:
 
 
 def findings_to_tickets(
-    findings_dir: str | Path, tickets_dir: str | Path, dry_run: bool = True,
+    findings_dir: str | Path,
+    tickets_dir: str | Path,
+    dry_run: bool = True,
+    *,
+    location_base: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Turn each undedicated system-auditor finding (``findings/M-*.md``) into
     a draft ticket-master INBOX ticket. Dedup key is the finding ID itself
@@ -651,9 +776,14 @@ def findings_to_tickets(
         finding_id = path.stem
         links = _finding_ticket_links(finding_id, tickets_dir)
         if links:
+            readbacks = [
+                (entry, *_current_readback_status(
+                    finding_id, ticket_text, location_base=location_base,
+                ))
+                for entry, ticket_text in links
+            ]
             current_links = [
-                entry for entry, ticket_text in links
-                if _has_current_readback(finding_id, ticket_text)
+                entry for entry, current, _reason in readbacks if current
             ]
             if current_links:
                 results.append({
@@ -665,7 +795,10 @@ def findings_to_tickets(
                     "finding_id": finding_id, "finding_path": str(path),
                     "status": "needs_readback", "ticket_path": None,
                     "existing_ticket_paths": [str(entry) for entry, _ in links],
-                    "reason": (
+                    "reason": "location not found" if any(
+                        reason == "location not found"
+                        for _entry, _current, reason in readbacks
+                    ) else (
                         "finding ID is linked, but no current dated location/value "
                         "readback receipt was recognized; duplicate creation suppressed"
                     ),
@@ -758,6 +891,10 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.findings_to_tickets:
         tm_config = _load_tm_config(args.config)
         sa_config = _resolve_system_auditor_config()
+        bridge_config = tm_config.get("auditor_bridge") or {}
+        location_base = config_paths.resolve_config_path(
+            bridge_config.get("location_base") if isinstance(bridge_config, dict) else None
+        )
         findings_dir = args.findings_dir or tm_config.get("findings_dir") or getattr(sa_config, "findings_dir", "")
         # Config values may carry <HOME>/<USER> (see config/*.example.json). Without
         # this, a placeholder path reaches the dedup check unexpanded: the lookup
@@ -777,7 +914,12 @@ def _cli(argv: list[str] | None = None) -> int:
                 "error": "findings_dir/tickets_dir not resolvable; pass --findings-dir/--tickets-dir",
             }))
             return 1
-        results = findings_to_tickets(findings_dir, tickets_dir, dry_run=not args.apply)
+        results = findings_to_tickets(
+            findings_dir,
+            tickets_dir,
+            dry_run=not args.apply,
+            location_base=location_base,
+        )
         print(json.dumps(results, indent=2, ensure_ascii=False))
         return 0
 
