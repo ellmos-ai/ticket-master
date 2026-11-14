@@ -1046,3 +1046,103 @@ def test_claim_contract_current_host_refuses_legacy_ticket(tmp_path, monkeypatch
         )
 
     assert legacy.read_text(encoding="utf-8") == "unchanged\n"
+
+
+# --- Follow-up to the review of #59: the dry run must take the same gates and
+#     report the same path as the real claim, and the CLI must refuse cleanly. ---
+
+def test_claim_contract_dry_run_reports_final_name_for_expired_binding(tmp_path):
+    path = make_contract(tmp_path, via="claude", binding_ttl=1)
+
+    preview = rc.claim_contract(
+        path, host="ASUS-GEI", actor="codex-after-expiry", runner="codex",
+        resolver=resolver, now="2026-08-24T00:00:00Z", dry_run=True,
+    )
+    assert path.exists()
+    assert ".via-" not in preview.name
+
+    claimed = rc.claim_contract(
+        path, host="ASUS-GEI", actor="codex-after-expiry", runner="codex",
+        resolver=resolver, now="2026-08-24T00:00:00Z",
+    )
+    assert claimed.name == preview.name
+
+
+def test_claim_contract_dry_run_refuses_a_name_collision_like_the_real_claim(tmp_path):
+    path = _actionable_v2_ticket(tmp_path)
+    blocker = path.with_name(
+        path.name.replace(".txt", ".claim-WORKSTATION-LG.txt"))
+    blocker.write_text("foreign file\n", encoding="utf-8")
+
+    for dry_run in (True, False):
+        with pytest.raises(ticket_mover.TicketCollisionError):
+            rc.claim_contract(
+                path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+                dry_run=dry_run, now="2026-08-22T09:00:00Z",
+            )
+    assert path.exists()
+    assert blocker.read_text(encoding="utf-8") == "foreign file\n"
+
+
+def test_claim_contract_dry_run_refuses_an_unverified_queue_like_the_real_claim(tmp_path):
+    path = _actionable_v2_ticket(tmp_path)
+    outside = tmp_path / "elsewhere" / "ACTIONABLE"
+    outside.mkdir(parents=True)
+    stray = outside / path.name
+    path.rename(stray)
+
+    for dry_run in (True, False):
+        with pytest.raises(ValueError, match="verified ticket queue|live ticket queue"):
+            rc.claim_contract(
+                stray, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+                dry_run=dry_run, now="2026-08-22T09:00:00Z",
+            )
+    assert stray.exists()
+
+
+@pytest.mark.parametrize("flag", ["--claim-contract-current-host", "--claim-current-host"])
+def test_claim_cli_refuses_an_unverified_queue_without_traceback(
+        tmp_path, monkeypatch, capsys, flag):
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
+    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    _make_workstation_self_slot(tmp_path)
+    if flag == "--claim-contract-current-host":
+        path = _actionable_v2_ticket(tmp_path)
+    else:
+        verified_queue(tmp_path)
+        (tmp_path / "ACTIONABLE").mkdir(exist_ok=True)
+        path = tmp_path / "ACTIONABLE" / "T-20260827-123456789.txt"
+        path.write_text("unchanged\n", encoding="utf-8")
+    outside = tmp_path / "elsewhere" / "ACTIONABLE"
+    outside.mkdir(parents=True)
+    stray = outside / path.name
+    path.rename(stray)
+
+    code = ticket_mover._cli([
+        flag, str(stray), "--host", "WORKSTATION-LG", "--sync-root", str(tmp_path),
+        "--agent", "ws-actionable@WORKSTATION-LG",
+    ])
+
+    assert code == 1
+    assert capsys.readouterr().out.startswith("REFUSED:")
+    assert stray.exists()
+
+
+@pytest.mark.parametrize("other", [
+    ["--verify-claim-host", "WORKSTATION-LG"],
+    ["--claim-current-host", "T-20260827-123456789.txt"],
+    ["--freigabe-status", "T-20260827-123456789.txt"],
+])
+def test_claim_contract_cli_cannot_be_combined_with_another_operation(tmp_path, other):
+    path = _actionable_v2_ticket(tmp_path)
+
+    with pytest.raises(SystemExit) as excinfo:
+        ticket_mover._cli([
+            "--claim-contract-current-host", str(path), "--host", "WORKSTATION-LG",
+            "--sync-root", str(tmp_path), "--agent", "ws-actionable@WORKSTATION-LG",
+            *other,
+        ])
+
+    assert excinfo.value.code == 2
+    assert path.exists()
+    assert not list(path.parent.glob("*.claim-*"))
