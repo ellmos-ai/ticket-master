@@ -260,10 +260,20 @@ def require_verified_queue_root(tickets_dir: Path) -> Path:
 
 
 def queue_root_of(ticket: Path | str) -> Path:
-    """The queue root a ticket path implies: the parent of its lifecycle folder, else its own folder."""
+    """The queue root a ticket path implies: the parent of its lifecycle folder, else its own folder.
+
+    A ticket in a subcategory folder (``USER/decision/<ticket>``) sits two levels below the root. That
+    level only counts when the folder name is a known subcategory of exactly the cluster above it, so an
+    arbitrary folder never widens the search (T-20261114-606316257).
+    """
     parent = Path(os.path.abspath(ticket)).parent
     lifecycle_upper = {sub.upper() for sub in _LIFECYCLE_SUBDIRS if sub}
-    return parent.parent if parent.name.upper() in lifecycle_upper else parent
+    if parent.name.upper() in lifecycle_upper:
+        return parent.parent
+    cluster = parent.parent
+    if parent.name.lower() in LIFECYCLE_SUBCATEGORIES.get(cluster.name.upper(), frozenset()):
+        return cluster.parent
+    return parent
 
 
 def require_ticket_in_verified_queue(ticket: Path | str) -> Path:

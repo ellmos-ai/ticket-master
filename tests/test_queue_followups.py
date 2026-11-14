@@ -148,6 +148,44 @@ def test_helper_returns_the_queue_root_of_a_ticket_with_lowercase_lifecycle(tmp_
         assert ticket_mover.queue_root(ticket) == queue
 
 
+def test_helper_returns_the_queue_root_of_a_ticket_in_a_subcategory_folder(tmp_path):
+    """USER/decision/<ticket> lies two levels below the root (T-20261114-606316257).
+
+    The live queue keeps user-gated tickets in USER/decision/. Taking the subcategory folder for the root
+    made ticket_note and ticket_mover refuse every such ticket, even in a dry run.
+    """
+    queue = verified_queue(tmp_path / "queue")
+    for cluster, subs in ticket_writer.LIFECYCLE_SUBCATEGORIES.items():
+        for sub in subs:
+            for cluster_name in (cluster, cluster.lower()):
+                ticket = queue / cluster_name / sub / TICKET_NAME
+                assert ticket_writer.queue_root_of(ticket) == queue, ticket
+                assert ticket_mover.queue_root(ticket) == queue, ticket
+
+
+def test_subcategory_rule_does_not_invent_a_root_for_unknown_folders(tmp_path):
+    """Only a known subcategory below its own cluster counts; anything else keeps the old one-level rule."""
+    queue = verified_queue(tmp_path / "queue")
+    # 'decision' belongs to USER, not to ACTIONABLE: ACTIONABLE/decision is no subcategory folder.
+    assert ticket_writer.queue_root_of(queue / "ACTIONABLE" / "decision" / TICKET_NAME) == (
+        queue / "ACTIONABLE" / "decision"
+    )
+    # An unknown folder name below USER is not a subcategory either.
+    assert ticket_writer.queue_root_of(queue / "USER" / "misc" / TICKET_NAME) == queue / "USER" / "misc"
+
+
+def test_note_appends_to_a_ticket_in_user_decision(tmp_path):
+    queue = verified_queue(tmp_path / "queue")
+    ticket = ticket_in(queue, "USER/decision")
+
+    preview = ticket_note.update_ticket_note(ticket, verlauf="dry probe", dry_run=True)
+    assert ticket.read_text(encoding="utf-8") == TICKET_TEXT
+    assert preview
+
+    ticket_note.update_ticket_note(ticket, verlauf="gate note")
+    assert "gate note" in ticket.read_text(encoding="utf-8")
+
+
 def test_note_refuses_a_ticket_in_an_unverified_queue(tmp_path):
     shadow = tmp_path / "shadow"
     ticket = ticket_in(shadow)
