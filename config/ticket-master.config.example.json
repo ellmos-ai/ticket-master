@@ -92,10 +92,12 @@
   },
   "auditor_bridge": {
     "_comment": "T-20260830-948243522: bridge to the sibling system-auditor module (lib/auditor_bridge.py). Only relevant if system-auditor is installed -- see prompts/TICKET-MASTER.<lang>.md step (c6). 'enabled' defaults to false so a session start never fires an unattended multi-agent audit run; 'min_interval' is informational cadence documentation only and is NOT consulted by decide() -- system-auditor's own time-grid/period already governs due-ness (asked via due_check()), so a second cadence store here would be exactly the parallel standard this ticket's investigation forbids.",
+    "_comment_location_base": "Optional base for resolving local relative location= paths in dated readback receipts. Null uses the invoking process's working directory. Foreign-host locations, foreign absolute path syntax, network paths and placeholders such as <OneDrive> remain unresolved and are only syntax-checked.",
     "enabled": false,
     "min_interval": "7d",
     "spar_gate": true,
-    "codeword": "audit!"
+    "codeword": "audit!",
+    "location_base": null
   },
   "reports_dir": null,
   "_comment_reports_dir": "Optional override for auditor_bridge's due_check(). Left null, lib/auditor_bridge.py resolves it from the installed system_auditor package's own resolved config (reports_dir, <HOME> already expanded) -- never guessed independently.",

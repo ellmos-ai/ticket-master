@@ -28,6 +28,12 @@ Unknown qualifications before or after a marker keep the entry observable. Thus
 `measurement never performed; SHA256 deadbeef` cannot become a measured receipt.
 Nor can `measurement failed` accompanying `value=clear`.
 
+A `commit <7-40 hex>` clause is provenance, not a measurement by itself. It is
+accepted only when the same receipt also carries an independent numeric
+value/count, test summary, command output, or artifact path that exists. A bare
+commit therefore remains `needs_readback`.
+A complete `sha256: <64 hex>` or `sha256=<64 hex>` clause, optionally prefixed by `receipt` or `Beleg`, is independent evidence; shorter hashes are not.
+
 This is deliberately a bounded text recognizer, **not natural-language truth
 verification**. It accepts the illustrated prose, English/German observation
 verbs, existing location/value aliases, numeric/Boolean/null values and common
@@ -35,7 +41,18 @@ state words. Other wordings, complex values, multiple assertions or ambiguous
 context remain `needs_readback`; that is a request for review, not a declaration
 that the author's measurement is false. No new mandatory field protocol is
 introduced. Concrete evidence is recognized as a reference; the bridge does not
-open it, execute its commands, or attest its contents.
+read referenced file contents, fetch URLs, execute commands or attest their
+contents. For receipts produced on the local host, however, `location=` is
+resolved against `auditor_bridge.location_base`
+when configured, otherwise against the invoking process's working directory. A
+conclusively missing location yields `needs_readback` with reason
+`location not found`. Foreign-host locations and portable placeholders such as
+`<OneDrive>` are not locally resolvable and retain the bounded syntactic check.
+UNC/network paths and absolute paths written in a foreign operating-system
+syntax are also left unresolved, so recognition never initiates a network
+filesystem access or reinterprets a foreign path locally. Filesystem errors other than proven non-existence
+likewise do not become a negative claim. Artifact paths used to make a commit
+clause independent must exist under the same resolution rules.
 
 `unknown`, `locked` and `clear` are legitimate measured results. Error and absence
 values (`failed`, `error`, `missing`, `unavailable`, `fehlt`) require an execution
@@ -63,11 +80,28 @@ unbestätigten oder nicht ausgeführten Messung keinen positiven Readback. Das g
 auch für Zusätze vor oder hinter dem Belegmarker. Mehrdeutige Texte bleiben zur
 Beobachtung sichtbar, ohne eine neue Ticketkopie auszulösen.
 
+Eine Klausel `commit <7-40 hex>` belegt allein nur Herkunft, keine Messung. Sie
+zählt erst zusammen mit einem unabhängigen numerischen Wert/einer Zählung, einer
+Testzusammenfassung, einer Kommandoausgabe oder einem existierenden Belegpfad.
+Ein alleiniger Commit bleibt daher `needs_readback`.
+Eine vollständige Klausel `sha256: <64 Hex-Zeichen>` oder `sha256=<64 Hex-Zeichen>`, optional mit Präfix `receipt` oder `Beleg`, ist ein unabhängiger Beleg; kürzere Hashes sind es nicht.
+
 Es handelt sich um begrenzte Texterkennung, keine vollständige semantische oder
 mehrsprachige Wahrheitsprüfung. Nicht erkannte Formulierungen sind kein Beweis
 gegen die Messung. Es gibt kein exklusives neues Pflichtfeldformat. Referenzierte
-Dateien und URLs werden nicht geöffnet, Kommandos nicht ausgeführt und ihre
-Inhalte nicht beglaubigt.
+Dateiinhalte werden nicht gelesen, URLs nicht abgerufen, Kommandos nicht
+ausgeführt und Inhalte nicht beglaubigt. Bei auf dem lokalen Host erzeugten
+Receipts wird `location=` jedoch gegen
+`auditor_bridge.location_base` aufgelöst, falls konfiguriert, sonst gegen das
+Arbeitsverzeichnis des Aufrufs. Ein sicher fehlender Ort ergibt
+`needs_readback` mit dem Grund `location not found`. Orte fremder Hosts und
+portable Platzhalter wie `<OneDrive>` bleiben lokal unauflösbar und werden wie
+bisher nur syntaktisch geprüft. Auch UNC-/Netzwerkpfade und absolute Pfade in
+einer fremden Betriebssystem-Syntax bleiben unaufgelöst, damit die Erkennung
+weder einen Netzwerk-Dateizugriff auslöst noch einen fremden Pfad lokal
+umdeutet. Andere
+Dateisystemfehler werden nicht als Nichtexistenz ausgelegt. Ein Belegpfad, der
+einen Commit unabhängig machen soll, muss nach denselben Regeln existieren.
 
 Ein gemessenes `unknown`, `locked` oder `clear` ist zulässig. Tatsächlich
 beobachtete Fehler und fehlende Zustände zählen mit konkretem Ausführungsbeleg
