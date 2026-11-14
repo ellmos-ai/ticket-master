@@ -424,6 +424,10 @@ _READBACK_ARTIFACT_RE = re.compile(
     rf"(?:(?:log|receipt|report|Beleg|Protokoll)\s*[:=]\s*)?(?:{_READBACK_PATH}))",
     re.IGNORECASE,
 )
+_READBACK_FULL_SHA256_RE = re.compile(
+    r"(?:(?:Beleg|receipt)\s*[:=]?\s*)?sha-?256\s*[:=]\s*[0-9a-f]{64}",
+    re.IGNORECASE,
+)
 _READBACK_COMMIT_RE = re.compile(r"commit\s+[0-9a-f]{7,40}", re.IGNORECASE)
 _READBACK_COUNT_RE = re.compile(
     r"(?:value|wert|count|anzahl|files?|dateien|entries|einträge|tickets?|locks?|tests?)"
@@ -604,6 +608,9 @@ def _readback_evidence(
             if re.fullmatch(r"-?\d+(?:\.\d+)?", value) and count.group("count") != value:
                 return False
             measured = True
+            concrete = True
+            independent = True
+        elif _READBACK_FULL_SHA256_RE.fullmatch(clause):
             concrete = True
             independent = True
         elif _READBACK_ARTIFACT_RE.fullmatch(clause):

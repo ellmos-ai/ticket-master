@@ -52,6 +52,7 @@ All notable changes to ticket-master are documented here.
 
 - `findings_to_tickets` links a finding to a ticket only through the exact `Finding: <id>` line that the bridge itself writes. A ticket that merely mentions the finding ID elsewhere (cross-reference) no longer suppresses creation of a never-delivered measure; this link-key rule remains separate from readback assessment.
 - Harden current-readback recognition: a commit hash alone is provenance rather than measurement evidence, while commits paired with an independent count, test, command output or existing artifact remain valid. Local `location=` paths are checked against the configurable `auditor_bridge.location_base` (default: caller working directory); proven missing paths return `needs_readback` with `location not found`, while foreign-host, placeholder, network and foreign-OS paths remain syntax-only.
+  A complete SHA-256 clause is independent evidence alongside a commit, while shortened hashes remain provenance only.
 
 ### Native session result window
 

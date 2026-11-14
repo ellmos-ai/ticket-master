@@ -32,6 +32,7 @@ A `commit <7-40 hex>` clause is provenance, not a measurement by itself. It is
 accepted only when the same receipt also carries an independent numeric
 value/count, test summary, command output, or artifact path that exists. A bare
 commit therefore remains `needs_readback`.
+A complete `sha256: <64 hex>` or `sha256=<64 hex>` clause, optionally prefixed by `receipt` or `Beleg`, is independent evidence; shorter hashes are not.
 
 This is deliberately a bounded text recognizer, **not natural-language truth
 verification**. It accepts the illustrated prose, English/German observation
@@ -83,6 +84,7 @@ Eine Klausel `commit <7-40 hex>` belegt allein nur Herkunft, keine Messung. Sie
 zählt erst zusammen mit einem unabhängigen numerischen Wert/einer Zählung, einer
 Testzusammenfassung, einer Kommandoausgabe oder einem existierenden Belegpfad.
 Ein alleiniger Commit bleibt daher `needs_readback`.
+Eine vollständige Klausel `sha256: <64 Hex-Zeichen>` oder `sha256=<64 Hex-Zeichen>`, optional mit Präfix `receipt` oder `Beleg`, ist ein unabhängiger Beleg; kürzere Hashes sind es nicht.
 
 Es handelt sich um begrenzte Texterkennung, keine vollständige semantische oder
 mehrsprachige Wahrheitsprüfung. Nicht erkannte Formulierungen sind kein Beweis

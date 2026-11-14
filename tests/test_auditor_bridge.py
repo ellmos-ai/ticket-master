@@ -768,6 +768,31 @@ def test_commit_alone_is_not_independent_readback_evidence(tmp_path):
     )
 
 
+@pytest.mark.parametrize("hash_clause", [
+    "sha256: " + "a" * 64,
+    "receipt sha256= " + "B" * 64,
+    "Beleg SHA256: " + "c" * 64,
+])
+def test_commit_with_full_sha256_is_current_readback(hash_clause):
+    finding_id = current_finding_id("commit-full-sha256")
+    line = (
+        f"{date.today()} | reviewer@remote-host | Finding {finding_id} "
+        f"location=lib/auditor_bridge.py status=clear — {hash_clause}; commit deadbee"
+    )
+
+    assert auditor_bridge._has_current_readback(finding_id, line)
+
+
+def test_commit_with_short_sha256_is_not_current_readback():
+    finding_id = current_finding_id("commit-short-sha256")
+    line = (
+        f"{date.today()} | reviewer@remote-host | Finding {finding_id} "
+        "location=lib/auditor_bridge.py status=clear — sha256: abc1234; commit deadbee"
+    )
+
+    assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
 def test_commit_with_numeric_count_is_current_readback(tmp_path):
     (tmp_path / "artifact.md").write_text("present\n", encoding="utf-8")
     finding_id = current_finding_id("commit-count")
