@@ -192,7 +192,10 @@ Bei fehlendem oder widersprüchlichem Beleg wird fail-closed abgebrochen. Legacy
 und Rename atomar mit
 `python lib/ticket_mover.py --claim-current-host <ticket> --host <HOST> --sync-root <sync-root>`
 ausführen; Routing-v2 ruft direkt nach dem Universal-Preflight seinen
-`claim_contract()`-Pfad auf. Sitzungsverlauf, Modell-Memory und
+`claim_contract()`-Pfad auf, auf der Kommandozeile mit
+`python lib/ticket_mover.py --claim-contract-current-host <ticket> --host <HOST> --sync-root <sync-root> --agent <akteur@HOST> [--runner <selector>] [--dry-run]`
+(dieselbe Host- und Self-Slot-Prüfung, fail-closed bei bestehendem Claim; `--dry-run` prüft nur).
+`--claim-current-host` lehnt Routing-v2-Tickets bewusst ab (T-20261114-252089335). Sitzungsverlauf, Modell-Memory und
 Umgebungsvariablen sind keine Host-Autorität.
 
 **PFLICHT (seit T-20260808-03): niemals von Hand kopieren/überschreiben.**
