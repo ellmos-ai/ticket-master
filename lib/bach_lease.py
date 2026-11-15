@@ -33,6 +33,7 @@ Design choices:
 from __future__ import annotations
 
 import contextlib
+import ipaddress
 import json
 import os
 import re
@@ -41,6 +42,7 @@ import sys
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from pathlib import Path
@@ -223,6 +225,44 @@ def _default_token(cfg: dict, host: str) -> str | None:
     return None
 
 
+_CGNAT = ipaddress.ip_network("100.64.0.0/10")  # Tailscale and other carrier-grade NAT overlays
+
+
+def _plaintext_lead_warning(lead: str) -> str | None:
+    """A warning when the bearer token would travel in clear text over an untrusted network.
+
+    http:// is accepted without a word for loopback and for the 100.64.0.0/10 overlay range
+    (Tailscale); any other http:// host gets a warning that recommends https. Never refuses:
+    the operator decides, the warning only makes the choice visible.
+    """
+    parsed = urllib.parse.urlparse(lead)
+    if parsed.scheme != "http":
+        return None
+    host = (parsed.hostname or "").lower()
+    if host == "localhost":
+        return None
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is not None and (address.is_loopback or address in _CGNAT):
+        return None
+    return (f"WARNING: bach_lease.lead_url uses http:// to {host or '?'}; the bearer token is sent in "
+            "clear text. Use https:// or a loopback/overlay (e.g. Tailscale) address.")
+
+
+def _valid_task_id(value: object) -> int | None:
+    """The task id from the lead's answer, or None. It ends up in a URL path, so only a
+    positive integer (or its decimal string) is accepted."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value > 0 else None
+    if isinstance(value, str) and value.isascii() and value.isdigit() and int(value) > 0:
+        return int(value)
+    return None
+
+
 def _holder_text(body: dict) -> str:
     """Human-readable holder from a 409 body (never lease_id or fence)."""
     holder = body.get("holder") or body.get("held_by") or body.get("worker_id")
@@ -247,6 +287,9 @@ class BachLeaseClient:
         if not re.match(r"^https?://", lead):
             raise LeaseUnavailableError("bach_lease.lead_url is missing or not an http(s) URL")
         self.lead = lead
+        warning = _plaintext_lead_warning(lead)
+        if warning:
+            print(warning, file=sys.stderr)
 
     @property
     def worker_id(self) -> str:
@@ -265,7 +308,7 @@ class BachLeaseClient:
         """Idempotent task + lease. Returns the cache entry; raises on 409 / unusable answer."""
         state = load_state(self.cfg)
         known = state.get(ticket_id)
-        if known and self._renew_entry(known, state):
+        if known and _valid_task_id(known.get("task_id")) is not None and self._renew_entry(known, state):
             return known
         status, body = self._call("POST", "/api/tasks", {
             "title": title,
@@ -274,10 +317,13 @@ class BachLeaseClient:
             "created_by": self.worker_id,
             "category": self.cfg.get("category") or "tickets",
         })
+        if status == 409:
+            # A conflict on the task itself is an answer, not an outage: never let fail_open skip it.
+            raise LeaseConflictError(f"{ticket_id}: task create refused by the lead: {_holder_text(body)}")
         task = body.get("task") if isinstance(body.get("task"), dict) else {}
-        task_id = body.get("id") or task.get("id")
-        if not 200 <= status < 300 or not task_id:
-            raise LeaseUnavailableError(f"task create/lookup failed (HTTP {status})")
+        task_id = _valid_task_id(body.get("id") or task.get("id"))
+        if not 200 <= status < 300 or task_id is None:
+            raise LeaseUnavailableError(f"task create/lookup failed (HTTP {status} or unusable task id)")
         status, body = self._call("POST", f"/api/tasks/{task_id}/lease", {
             "worker_id": self.worker_id,
             "host": self.host,
@@ -297,6 +343,8 @@ class BachLeaseClient:
         return entry
 
     def _renew_entry(self, entry: dict, state: dict) -> bool:
+        if _valid_task_id(entry.get("task_id")) is None:
+            return False
         status, body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/renew",
                                   {"lease_id": entry["lease_id"], "fence": entry["fence"]})
         if 200 <= status < 300:
@@ -316,6 +364,10 @@ class BachLeaseClient:
         entry = state.get(ticket_id)
         if not entry:
             return False
+        if _valid_task_id(entry.get("task_id")) is None:
+            state.pop(ticket_id, None)  # a corrupt cache entry must never reach a URL
+            save_state(self.cfg, state)
+            raise LeaseUnavailableError("lease cache entry has an unusable task id; dropped")
         status, _body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/release", {
             "lease_id": entry["lease_id"], "fence": entry["fence"],
             "outcome": outcome, "result_ref": result_ref, "note": self.worker_id,
