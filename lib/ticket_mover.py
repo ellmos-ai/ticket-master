@@ -42,6 +42,7 @@ try:  # package import
         require_ticket_in_verified_queue, require_verified_queue_root,
     )
     from .config_paths import resolve_queue_alias
+    from . import bach_lease
     from .session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
     )
@@ -77,6 +78,7 @@ except ImportError:  # direct import from lib on sys.path
         require_ticket_in_verified_queue, require_verified_queue_root,
     )
     from config_paths import resolve_queue_alias
+    import bach_lease
     from session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
     )
@@ -426,6 +428,22 @@ def verify_claim_host(claim_host: str, *, sync_root: Path | str) -> tuple[str, s
     return host, slot, snapshot
 
 
+def _lease_take(source: Path, host: str, dry_run: bool) -> bool:
+    """Take the optional BACH task lease BEFORE a claim rename (lib/bach_lease.py).
+
+    Off by default and a no-op for `dry_run`. Raises (a RuntimeError subclass, so the CLI
+    reports `REFUSED: ...`) on 409 or when enabled and the lead is unusable.
+    """
+    return not dry_run and bach_lease.claim_lease(source, host=host)
+
+
+def _lease_warn(ticket_name: str, outcome: str, result_ref: str = "") -> None:
+    """Best-effort lease release; a failure only warns, the file operation stays done."""
+    warning = bach_lease.release_lease(ticket_name, outcome, result_ref=result_ref)
+    if warning:
+        print(warning, file=sys.stderr)
+
+
 def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path | str,
                        dry_run: bool = False) -> Path:
     """Fail-closed legacy claim after verifying the asserted claim host."""
@@ -446,6 +464,7 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
     existing = claim_suffix(source.name)
     if existing:
         if existing.casefold() == host.casefold():
+            _lease_take(source, host, dry_run)  # idempotent: renews a lease this host already holds
             return source
         raise HostIdentityError(
             f"ticket is already claimed by {existing!r}; verified live host is {host!r}"
@@ -455,7 +474,13 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
         raise HostIdentityError(f"cannot build legacy claim name: {source.name}")
     slug = f"_{match.group('slug')}" if match.group("slug") else ""
     claimed_name = f"T-{match.group('date')}-{match.group('number')}{slug}.{host}.txt"
-    return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
+    leased = _lease_take(source, host, dry_run)
+    try:
+        return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
+    except BaseException:
+        if leased:
+            _lease_warn(source.name, "return")  # the claim did not happen: hand the lease back
+        raise
 
 
 def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
@@ -487,7 +512,13 @@ def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
         raise HostIdentityError(
             "legacy tickets must use --claim-current-host, not claim_contract()"
         )
-    return claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
+    leased = _lease_take(source, host, dry_run)
+    try:
+        return claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
+    except BaseException:
+        if leased:
+            _lease_warn(source.name, "return")
+        raise
 
 
 def _dest_cluster_name(dest_dir: Path) -> str:
@@ -817,6 +848,11 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
     warning = _status_mismatch_warning(target, _dest_cluster_name(dest_dir))
     if warning:
         print(warning, file=sys.stderr)
+    if dest_dir.resolve() != source.parent.resolve():
+        cluster = _dest_cluster_name(dest_dir)
+        outcome = bach_lease.outcome_for_cluster(cluster)
+        if outcome:  # a move that stays in QUEUED keeps the lease
+            _lease_warn(source.name, outcome, f"{cluster}/{target.name}")
     return target
 
 
@@ -839,7 +875,9 @@ def release_claim(ticket: Path | str) -> Path:
     except RoutingContractError:
         parsed = None
     if parsed and parsed.is_v2 and parsed.claim:
-        return release_contract(ticket, host=parsed.claim)
+        freed_v2 = release_contract(ticket, host=parsed.claim)
+        _lease_warn(ticket.name, "return")
+        return freed_v2
     freed = ticket.parent / unclaimed_name(ticket.name)
     if freed == ticket:
         return ticket
@@ -847,7 +885,9 @@ def release_claim(ticket: Path | str) -> Path:
         raise TicketCollisionError(
             f"unclaimed name already taken, refusing to overwrite: {freed}"
         )
-    return move_ticket(ticket, ticket.parent, release_claim=True)
+    released = move_ticket(ticket, ticket.parent, release_claim=True)
+    _lease_warn(ticket.name, "return")
+    return released
 
 
 def is_actively_delegated(ticket: Path | str, *,
@@ -1010,6 +1050,10 @@ def _cli(argv: list[str] | None = None) -> int:
                         help="Path to the ticket file to move.")
     parser.add_argument("dest_dir", nargs="?",
                         help="Destination lifecycle folder (e.g. .../SOLVED).")
+    parser.add_argument("--renew-leases", action="store_true",
+                        help=("Renew every BACH task lease this host holds (needs bach_lease.enabled "
+                              "in the config; see lib/bach_lease.py). Run it at least every 15 minutes "
+                              "while working on claimed tickets."))
     parser.add_argument("--release-session", action="store_true",
                         help=("Release this host's claims at regular session end. "
                               "ACTIONABLE always; QUEUED only reported unless "
@@ -1162,6 +1206,19 @@ def _cli(argv: list[str] | None = None) -> int:
             return 1
         print(f"VERIFIED CLAIM HOST: {host} (slot={slot}, snapshot={snapshot})")
         return 0
+
+    if args.renew_leases:
+        if (args.claim_current_host or args.claim_contract_current_host or args.mark_delegated
+                or args.release_session or args.source or args.dest_dir or args.dry_run):
+            parser.error("--renew-leases cannot be combined with another operation")
+        results = bach_lease.renew_leases()
+        if not bach_lease.load_config()["enabled"]:
+            print("bach_lease is not enabled; nothing to renew")
+            return 0
+        for ticket_id, ok, message in results:
+            print(f"{'RENEWED' if ok else 'NOT RENEWED'}: {ticket_id} -- {message}")
+        print(f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} lease(s) renewed")
+        return 1 if any(not ok for _, ok, _ in results) else 0
 
     if args.claim_current_host:
         if (args.claim_contract_current_host or args.mark_delegated

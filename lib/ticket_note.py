@@ -29,11 +29,13 @@ try:
     from .ticket_audit import _STATUS_LINE_RE
     from .routing_contract import StaleContentError, content_hash
     from .ticket_writer import require_ticket_in_verified_queue
+    from . import bach_lease
 except ImportError:
     # Fallback when running directly or from lib/
     from ticket_audit import _STATUS_LINE_RE
     from routing_contract import StaleContentError, content_hash
     from ticket_writer import require_ticket_in_verified_queue
+    import bach_lease
 
 __all__ = [
     "append_ticket_note",
@@ -48,6 +50,19 @@ _LOESUNG_BLOCK_RE = re.compile(
 _CLOSING_DELIM_RE = re.compile(r"(?m)^={10,}\s*$")
 
 _STATUS_PREFIX_STRIP_RE = re.compile(r"^(?:STATUS:|\*\*Status:\*\*)\s*", re.IGNORECASE)
+
+
+def _heartbeat_lease(ticket_name: str) -> None:
+    """A VERLAUF note proves somebody is still working: renew the BACH lease this host holds
+    for the ticket (T-20261115-427953604). No cache entry or feature off -> no network, no output.
+    Never raises: the note is already written."""
+    try:
+        ticket_id = bach_lease.ticket_id_of(ticket_name)
+        for _id, ok, message in bach_lease.renew_leases(only=ticket_id) if ticket_id else []:
+            if not ok:
+                print(f"WARNING: lease for {_id} not renewed: {message}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - heartbeat must never break note writing
+        print(f"WARNING: lease heartbeat skipped ({type(exc).__name__})", file=sys.stderr)
 
 
 def update_ticket_note(
@@ -170,6 +185,8 @@ def update_ticket_note(
         finally:
             if tmp_path.exists():
                 tmp_path.unlink()
+        if verlauf_appended:
+            _heartbeat_lease(ticket_path.name)
 
     return {
         "path": str(ticket_path),
