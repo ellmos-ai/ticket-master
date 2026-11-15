@@ -4,6 +4,18 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Review follow-ups for the BACH task-lease coupling (T-20261115-529774551)
+
+- `CONTRIBUTING.md`, both READMEs and `SECURITY.md` no longer state `INV-LOCAL-01` / `INV-CLAIM-04` without exception:
+  they name the opt-in `bach_lease` coupling (off by default).
+- `bach_lease.lead_url`: `http://` is accepted silently for loopback and the 100.64.0.0/10 overlay range (Tailscale);
+  any other `http://` host gets a one-line warning that the bearer token travels in clear text (use `https://`).
+  It never refuses - the operator decides.
+- The task id from the lead's answer (and from the local cache) is validated as a positive integer before it is put into
+  a URL path; anything else is "unusable task id" and refuses the claim.
+- 409 on the task create call is now a conflict (fail-closed, holder named) like 409 on the lease call; `fail_open` no
+  longer skips it.
+
 ### Optional BACH task-lease coupling for claims (T-20261115-427953604)
 
 - New `lib/bach_lease.py` (stdlib only) and config section `bach_lease` (`enabled` defaults to `false`; example in

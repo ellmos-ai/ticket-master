@@ -13,10 +13,10 @@ Thank you for your interest in contributing to **ticket-master**!
 
 `ticket-master` is a prompt-driven workflow and operating mode that turns an active AI coding agent session into a structured, reliable **Position 0** triage console across multi-provider environments (Claude Code, OpenAI Codex, agy/Gemini). All contributions must respect our foundational invariants:
 
-1. **100% Local-First & Zero-Egress (`INV-LOCAL-01`)**: All tickets, queues, lifecycles, and logs remain strictly on local disk; zero cloud telemetry or outbound network calls.
+1. **100% Local-First & Zero-Egress (`INV-LOCAL-01`)**: All tickets, queues, lifecycles, and logs remain strictly on local disk; zero cloud telemetry or outbound network calls. Exception: the opt-in `bach_lease` coupling (off by default, see CHANGELOG) talks to the lead you configure.
 2. **Agent-Native Workflow (`INV-WORKFLOW-02`)**: Transparent prompt-driven Position 0 triage mode; zero opaque background daemons.
 3. **5-Dimension Routing (`INV-ROUTING-03`)**: Deterministic scoring across Clarity, Complexity, Creativity, Context, and Criticality with a graceful fallback chain.
-4. **Multi-System Claims (`INV-CLAIM-04`)**: Atomic filesystem renames (`.claim-<host>-<ts>`) without external database servers or distributed locking daemons.
+4. **Multi-System Claims (`INV-CLAIM-04`)**: Atomic filesystem renames (`.claim-<host>-<ts>`) without external database servers or distributed locking daemons. Exception: the opt-in `bach_lease` coupling (off by default) additionally takes a lease on a central task DB before a claim.
 5. **Companion Pattern (`INV-COMPANION-05`)**: Domain-grouped tasks reuse companion sub-agents, amortizing orientation cost.
 6. **Informal Intake (`INV-INTAKE-06`)**: Raw text notes in `INBOX/` are formalized with byte-identical `ORIGINALTEXT` preservation.
 7. **Auditor Bridge (`INV-AUDITOR-07`)**: Seamless `system-auditor` bridge with fail-closed sparmodus token-budget gating.
@@ -49,10 +49,10 @@ Vielen Dank für Ihr Interesse an einer Mitarbeit an **ticket-master**!
 
 `ticket-master` ist ein prompt-gesteuerter Workflow und Betriebsmodus, der eine aktive KI-Coding-Agenten-Sitzung in eine strukturierte, zuverlässige **Position 0** Triage-Konsole für Multi-Provider-Umgebungen (Claude Code, OpenAI Codex, agy/Gemini) verwandelt. Alle Beiträge müssen unsere grundlegenden Invarianten einhalten:
 
-1. **100% Local-First & Zero-Egress (`INV-LOCAL-01`)**: Sämtliche Tickets, Warteschlangen, Lebenszyklen und Protokolle verbleiben strikt auf der lokalen Festplatte; keinerlei Telemetrie oder externe Netzwerkaufrufe.
+1. **100% Local-First & Zero-Egress (`INV-LOCAL-01`)**: Sämtliche Tickets, Warteschlangen, Lebenszyklen und Protokolle verbleiben strikt auf der lokalen Festplatte; keinerlei Telemetrie oder externe Netzwerkaufrufe. Ausnahme: die Opt-in-Kopplung `bach_lease` (standardmäßig aus, siehe CHANGELOG) spricht mit dem von dir konfigurierten Lead.
 2. **Agent-Nativer Workflow (`INV-WORKFLOW-02`)**: Transparenter prompt-gesteuerter Position 0 Triage-Modus; keine undurchsichtigen Hintergrund-Daemons.
 3. **5-Dimensionen-Routing (`INV-ROUTING-03`)**: Deterministische Bewertung über Klarheit, Komplexität, Kreativität, Kontext und Kritikalität mit ausfallsicherer Fallback-Kette.
-4. **Multi-System-Claims (`INV-CLAIM-04`)**: Atomare Dateisystem-Umbenennungen (`.claim-<host>-<ts>`) ohne externe Datenbankserver oder verteilte Sperrdienste.
+4. **Multi-System-Claims (`INV-CLAIM-04`)**: Atomare Dateisystem-Umbenennungen (`.claim-<host>-<ts>`) ohne externe Datenbankserver oder verteilte Sperrdienste. Ausnahme: die Opt-in-Kopplung `bach_lease` (standardmäßig aus) nimmt zusätzlich vor einem Claim eine Lease auf einer zentralen Task-DB.
 5. **Companion-Muster (`INV-COMPANION-05`)**: Domänen-gruppierte Aufgaben nutzen langlebige Begleit-Subagenten wieder und amortisieren Orientierungskosten.
 6. **Formlose Einreichung (`INV-INTAKE-06`)**: Rohe Notizen in `INBOX/` werden unter byte-identischer Erhaltung des `ORIGINALTEXT`-Blocks formalisiert.
 7. **Auditor-Brücke (`INV-AUDITOR-07`)**: Nahtlose `system-auditor`-Brücke mit fail-closed Sparmodus-Tokenbudget-Prüfung.

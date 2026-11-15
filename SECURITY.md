@@ -43,10 +43,10 @@ You can expect:
 
 | Invariant | Focus | Enforcement Mechanism |
 |---|---|---|
-| `INV-LOCAL-01` | Zero Egress | Pure local disk / user cloud sync; zero external telemetry. |
+| `INV-LOCAL-01` | Zero Egress | Pure local disk / user cloud sync; zero external telemetry (exception: opt-in `bach_lease`, off by default). |
 | `INV-WORKFLOW-02` | Agent Native | Transparent prompt-driven Position 0 triage; no background daemons. |
 | `INV-ROUTING-03` | 5D Scoring | 5-dimension deterministic scoring with provider fallback chains. |
-| `INV-CLAIM-04` | Multi-System | Atomic filesystem renames (`.claim-<host>-<ts>`); no database locks. |
+| `INV-CLAIM-04` | Multi-System | Atomic filesystem renames (`.claim-<host>-<ts>`); no database locks (exception: opt-in `bach_lease`, off by default). |
 | `INV-COMPANION-05` | Companion Pattern | Reusable companion sub-agents for batch orientation savings. |
 | `INV-INTAKE-06` | Informal Intake | Byte-identical formalization via `ticket_writer.py --from-file`. |
 | `INV-AUDITOR-07` | Auditor Bridge | Fail-closed sparmodus token budget gate for `system-auditor`. |
@@ -95,10 +95,10 @@ Bitte fügen Sie der Meldung Folgendes bei:
 
 | Invariante | Bereich | Durchsetzungsmechanismus |
 |---|---|---|
-| `INV-LOCAL-01` | Zero Egress | Rein lokale Datenhaltung / Nutzer-Cloud-Sync; keine Telemetrie. |
+| `INV-LOCAL-01` | Zero Egress | Rein lokale Datenhaltung / Nutzer-Cloud-Sync; keine Telemetrie (Ausnahme: Opt-in `bach_lease`, standardmäßig aus). |
 | `INV-WORKFLOW-02` | Agent Native | Transparenter, prompt-gesteuerter Position-0-Triage-Modus; keine Daemons. |
 | `INV-ROUTING-03` | 5D Scoring | 5-Dimensionen-Scoring mit deterministischer Fallback-Kette. |
-| `INV-CLAIM-04` | Multi-System | Atomares Filesystem-Rename (`.claim-<host>-<ts>`); keine DB-Locks. |
+| `INV-CLAIM-04` | Multi-System | Atomares Filesystem-Rename (`.claim-<host>-<ts>`); keine DB-Locks (Ausnahme: Opt-in `bach_lease`, standardmäßig aus). |
 | `INV-COMPANION-05` | Companion Pattern | Wiederverwendbare Companion-Sub-Agenten zur Orientierungs-Ersparnis. |
 | `INV-INTAKE-06` | Formloser Intake | Zeichengetreue Formalisierung via `ticket_writer.py --from-file`. |
 | `INV-AUDITOR-07` | Auditor-Brücke | Fail-Closed Token-Sparmodus-Gate für `system-auditor`. |

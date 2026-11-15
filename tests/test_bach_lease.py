@@ -237,3 +237,80 @@ def test_cli_renew_leases(tmp_path, lead, capsys):
 def test_lead_url_must_be_http():
     with pytest.raises(bach_lease.LeaseUnavailableError, match="http"):
         bach_lease.BachLeaseClient({"lead_url": "file:///etc/passwd"})
+
+
+# --- follow-ups of the review of #64 (T-20261115-529774551) -------------------------------
+
+
+def _scripted(monkeypatch, answers):
+    """Replace the transport by a script: answers is a list of (status, body); records the paths."""
+    seen = []
+    queue = list(answers)
+
+    def transport(method, url, headers, body, timeout):
+        seen.append(url.split("://", 1)[1].split("/", 1)[1])
+        return queue.pop(0)
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", transport)
+    return seen
+
+
+def test_409_on_task_create_is_fail_closed_even_with_fail_open(tmp_path, lead, monkeypatch):
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    seen = _scripted(monkeypatch, [(409, {"error": "task exists", "holder": "ticket-master@OTHER"})])
+    ticket = make_ticket(tmp_path)
+    with pytest.raises(bach_lease.LeaseConflictError, match="ticket-master@OTHER"):
+        claim(tmp_path, ticket)
+    assert seen == ["api/tasks"]  # no lease request after the refused create
+    assert ticket.is_file() and not (ticket.parent / f"{TID}.ASUS-GEI.txt").exists()
+
+
+@pytest.mark.parametrize("bad", ["../evil", "12/../x", "1 2", "", "-3", 0, -1, True, 1.5, None, [7], "٣"])
+def test_unusable_task_id_from_the_lead_never_reaches_a_url(tmp_path, lead, monkeypatch, bad):
+    seen = _scripted(monkeypatch, [(200, {"id": bad})])
+    with pytest.raises(bach_lease.LeaseUnavailableError):
+        claim(tmp_path, make_ticket(tmp_path))
+    assert seen == ["api/tasks"]
+
+
+def test_task_id_as_decimal_string_or_int_is_accepted(tmp_path, lead, monkeypatch):
+    for index, good in enumerate(("4144", 4144)):
+        sub = tmp_path / f"run{index}"
+        sub.mkdir()
+        (tmp_path / "state" / "leases.json").unlink(missing_ok=True)  # fresh cache: acquire, not renew
+        seen = _scripted(monkeypatch, [(200, {"id": good}), (200, {"lease_id": "l", "fence": 1})])
+        claim(sub, make_ticket(sub))
+        assert seen[-1] == "api/tasks/4144/lease"
+
+
+def test_corrupt_cache_entry_is_not_used_in_a_url(tmp_path, lead, monkeypatch):
+    state = tmp_path / "state" / "leases.json"
+    state.parent.mkdir(parents=True)
+    state.write_text(json.dumps({TID: {"task_id": "../x", "lease_id": "l", "fence": 1}}), encoding="utf-8")
+    seen = _scripted(monkeypatch, [])
+    assert bach_lease.renew_leases() == [(TID, False, "not renewed (no cache entry or lead refused)")]
+    warning = bach_lease.release_lease(f"{TID}.txt", "done")
+    assert "unusable task id" in warning and seen == []
+    assert TID not in json.loads(state.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000",
+                                 "http://100.64.0.1:8000", "http://100.119.69.90:8000",
+                                 "http://100.127.255.254", "https://lead.example.org"])
+def test_no_warning_for_loopback_overlay_or_https(url):
+    assert bach_lease._plaintext_lead_warning(url) is None
+
+
+@pytest.mark.parametrize("url", ["http://lead.example.org:8000", "http://192.168.1.5", "http://100.128.0.1",
+                                 "http://8.8.8.8", "http://100.63.255.255"])
+def test_warning_for_plain_http_over_other_networks(url):
+    assert "clear text" in bach_lease._plaintext_lead_warning(url)
+
+
+def test_client_prints_the_plaintext_warning_but_still_works(capsys):
+    client = bach_lease.BachLeaseClient({"lead_url": "http://lead.example.org:8000"})
+    assert client.lead == "http://lead.example.org:8000"
+    assert "clear text" in capsys.readouterr().err
+    bach_lease.BachLeaseClient({"lead_url": "http://127.0.0.1:8000"})
+    assert capsys.readouterr().err == ""
