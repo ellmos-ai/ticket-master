@@ -4,6 +4,23 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Optional BACH task-lease coupling for claims (T-20261115-427953604)
+
+- New `lib/bach_lease.py` (stdlib only) and config section `bach_lease` (`enabled` defaults to `false`; example in
+  `config/ticket-master.config.example.json`). With `enabled: true`, `ticket_mover --claim-current-host` /
+  `--claim-contract-current-host` take a lease on a task of a central task DB BEFORE the rename: 409 refuses the claim and
+  names the holder, an unreachable lead or a missing token refuses it too (fail-closed; `fail_open` is an explicit
+  opt-out that never overrides a 409). A failed rename hands the lease back.
+- `move_ticket` into SOLVED/BLOCKED/WAITING/PARKED/USER/ACTIONABLE/INBOX and `--release-session` / `release_claim`
+  release the lease (`done` / `blocked` / `return`); a move that stays in QUEUED keeps it. A failed release only warns:
+  the move stays and the lease expires on its TTL. No cached lease for a ticket means no network call at all.
+- `ticket_mover --renew-leases` and every VERLAUF entry written by `ticket_note` renew held leases.
+- Only a cache of `lease_id`/`fence` is kept locally (`state_file`, refused inside OneDrive); the task DB is the single
+  authority. The token never appears in output, logs or exception messages.
+- Note on the invariants: the feature is opt-in. With it disabled the package still makes no network calls
+  (INV-LOCAL-01) and uses no database for claims (INV-CLAIM-04); enabling it is a deliberate deviation by the operator.
+- `tests/conftest.py` pins `bach_lease.load_config` to "disabled" so a host's real config never leaks into the suite.
+
 ### Follow-ups of the queue hardening (T-20261107-165954775, review of #53)
 
 - The queue check now guards every writer that changes an EXISTING ticket, through one helper

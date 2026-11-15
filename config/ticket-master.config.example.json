@@ -9,6 +9,17 @@
   "_comment_prompts_dir": "Repository-local directory containing TICKET-MASTER.<lang>.md. All three starters resolve this field through bin/ticket_master.py; paths escaping the repository root are rejected.",
   "_comment_language": "Prompt language. Override at runtime with TM_LANG; invalid or missing language files fall back to 'en' with a warning.",
   "default_language": "en",
+  "_comment_bach_lease": "OPTIONAL and OFF by default: couple claims to a task lease on a central task DB, so that two ticket-master instances on different hosts can never work on the same ticket (the filename suffix alone cannot guarantee that when one host has no working sync). With enabled=true, ticket_mover --claim-current-host takes the lease BEFORE the rename (409 = refused, holder named; unreachable lead = refused unless fail_open), a move into SOLVED/BLOCKED/WAITING/USER/ACTIONABLE or --release-session releases it (done/blocked/return), and --renew-leases plus every ticket_note VERLAUF entry renew it. lead_url, keyring_service and keyring_entries are YOUR values (keep them in this local, git-ignored file); the token is read from the environment variable named in token_env or, if the optional 'keyring' package is installed, from keyring_service/keyring_entries ({host} is replaced by the host name). state_file caches lease_id/fence only and must NOT be inside a OneDrive tree. See lib/bach_lease.py.",
+  "bach_lease": {
+    "enabled": false,
+    "lead_url": "http://<lead-host>:<port>",
+    "ttl_profile": "M",
+    "fail_open": false,
+    "token_env": "TICKET_MASTER_BACH_TOKEN",
+    "keyring_service": "<keyring-service>",
+    "keyring_entries": ["<entry-prefix>_{host}"],
+    "state_file": "<HOME>/.ticket-master/bach_leases.json"
+  },
   "project_roots": [
     {
       "_comment": "Add your own project directories here.",

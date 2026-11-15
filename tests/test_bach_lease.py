@@ -1,0 +1,239 @@
+"""BACH task-lease coupling of ticket claims (T-20261115-427953604). No network: a fake lead."""
+
+import json
+import sys
+import uuid
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "lib"))
+
+import bach_lease  # noqa: E402
+import ticket_mover  # noqa: E402
+import ticket_note  # noqa: E402
+from queue_helpers import verified_queue  # noqa: E402
+
+SECRET = "tok-SECRET-do-not-print"
+TID = "T-20261115-111111111"
+
+
+class FakeLead:
+    """In-memory stand-in for the task DB: idempotent create, 409 on a foreign lease, renew, release."""
+
+    def __init__(self):
+        self.tasks = {}  # source -> id
+        self.leases = {}  # task_id -> {"worker_id", "lease_id", "fence"}
+        self.calls = []
+        self.down = False
+        self.release_status = 200
+
+    def __call__(self, method, url, headers, body, timeout):
+        assert headers["Authorization"] == "Bearer " + SECRET
+        if self.down:
+            raise bach_lease.LeaseUnavailableError("lead not reachable (TimeoutError)")
+        path = url.split("://", 1)[1].split("/", 1)[1]
+        data = json.loads(body) if body else {}
+        self.calls.append((method, "/" + path, data))
+        if path == "api/tasks":
+            task_id = self.tasks.setdefault(data["source"], 4000 + len(self.tasks))
+            return 200, {"id": task_id, "already_present": True}
+        parts = path.split("/")  # api tasks <id> lease [action]
+        task_id = int(parts[2])
+        action = parts[4] if len(parts) > 4 else "acquire"
+        held = self.leases.get(task_id)
+        if action == "acquire":
+            if held and held["worker_id"] != data["worker_id"]:
+                return 409, {"error": "leased", "holder": held["worker_id"], "lease_id": "x", "fence": 1}
+            lease = held or {"worker_id": data["worker_id"], "lease_id": str(uuid.uuid4()), "fence": 7}
+            self.leases[task_id] = lease
+            return 200, dict(lease)
+        if not held or held["lease_id"] != data["lease_id"]:
+            return 409, {"error": "not holder"}
+        if action == "renew":
+            return 200, {"fence": held["fence"] + 1}
+        if action == "release":
+            if self.release_status == 200:
+                del self.leases[task_id]
+            return self.release_status, {}
+        raise AssertionError(path)
+
+    def outcomes(self):
+        return [c[2]["outcome"] for c in self.calls if c[1].endswith("/release")]
+
+
+@pytest.fixture
+def lead(monkeypatch, tmp_path):
+    fake = FakeLead()
+    cfg = {"bach_lease": {"enabled": True, "lead_url": "http://lead.invalid:1", "state_file": str(tmp_path / "state" / "leases.json")}}
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _o=bach_lease.load_config: _o(cfg if config is None else config))
+    monkeypatch.setattr(bach_lease, "_urllib_transport", fake)
+    monkeypatch.setenv("TICKET_MASTER_BACH_TOKEN", SECRET)
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "ASUS-GEI")
+    return fake
+
+
+def make_slot(root: Path):
+    (root / "_config-state" / "snapshots").mkdir(parents=True)
+    (root / "_config-state" / "snapshots" / "laptop.json").write_text(json.dumps({"host": "ASUS-GEI", "slot": "laptop"}), encoding="utf-8")
+    (root / "laptop").mkdir()
+    (root / "laptop" / "repos.json").write_text(json.dumps({"host": "ASUS-GEI", "slot": "laptop"}), encoding="utf-8")
+
+
+def make_ticket(root: Path, folder="ACTIONABLE", name=f"{TID}.txt") -> Path:
+    queue = verified_queue(root / "tickets")
+    (queue / folder).mkdir(parents=True, exist_ok=True)
+    path = queue / folder / name
+    path.write_text("TICKET\nTITEL:         Beispiel\nSTATUS: ACTIONABLE\n", encoding="utf-8")
+    return path
+
+
+def claim(tmp_path, ticket):
+    make_slot(tmp_path) if not (tmp_path / "laptop").exists() else None
+    return ticket_mover.claim_current_host(ticket, claim_host="ASUS-GEI", sync_root=tmp_path)
+
+
+def test_disabled_by_default_never_touches_network(tmp_path, monkeypatch):
+    def boom(*_a, **_k):
+        raise AssertionError("network used while disabled")
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", boom)
+    assert bach_lease.load_config({})["enabled"] is False
+    assert bach_lease.claim_lease(make_ticket(tmp_path), host="ASUS-GEI", config={}) is False
+    assert bach_lease.release_lease(f"{TID}.txt", "done", config={}) is None
+    assert bach_lease.renew_leases(config={}) == []
+
+
+def test_claim_takes_lease_then_renames_and_is_idempotent(tmp_path, lead):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    assert claimed.name == f"{TID}.ASUS-GEI.txt"
+    create = [c for c in lead.calls if c[1] == "/api/tasks"][0][2]
+    assert create["source"] == f"ticket:{TID}:ticket-master" and create["assigned_to"] == "TICKET-MASTER"
+    assert create["created_by"] == "ticket-master@ASUS-GEI" and create["title"].startswith(TID)
+    cache = json.loads((tmp_path / "state" / "leases.json").read_text(encoding="utf-8"))
+    assert set(cache[TID]) >= {"task_id", "lease_id", "fence"}
+    again = claim(tmp_path, claimed)  # same host, already claimed: renews instead of a second create
+    assert again == claimed
+    assert sum(1 for c in lead.calls if c[1] == "/api/tasks") == 1
+    assert lead.calls[-1][1].endswith("/lease/renew")
+
+
+def test_409_refuses_the_claim_and_names_the_holder(tmp_path, lead):
+    ticket = make_ticket(tmp_path)
+    lead.tasks[f"ticket:{TID}:ticket-master"] = 4000
+    lead.leases[4000] = {"worker_id": "ticket-master@WORKSTATION-LG", "lease_id": "other", "fence": 3}
+    with pytest.raises(bach_lease.LeaseConflictError) as err:
+        claim(tmp_path, ticket)
+    assert "ticket-master@WORKSTATION-LG" in str(err.value)
+    assert "other" not in str(err.value).replace("another", "")  # no lease_id in the message
+    assert ticket.is_file() and not (ticket.parent / f"{TID}.ASUS-GEI.txt").exists()
+
+
+def test_unreachable_lead_is_fail_closed_unless_fail_open(tmp_path, lead, monkeypatch, capsys):
+    ticket = make_ticket(tmp_path)
+    lead.down = True
+    with pytest.raises(bach_lease.LeaseUnavailableError):
+        claim(tmp_path, ticket)
+    assert ticket.is_file()
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    assert claim(tmp_path, ticket).name == f"{TID}.ASUS-GEI.txt"
+    assert "fail_open" in capsys.readouterr().err
+
+
+def test_fail_open_never_overrides_a_real_conflict(tmp_path, lead, monkeypatch):
+    lead.tasks[f"ticket:{TID}:ticket-master"] = 4000
+    lead.leases[4000] = {"worker_id": "ticket-master@OTHER", "lease_id": "o", "fence": 1}
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    with pytest.raises(bach_lease.LeaseConflictError):
+        claim(tmp_path, make_ticket(tmp_path))
+
+
+def test_missing_token_is_unavailable(tmp_path, lead, monkeypatch):
+    monkeypatch.delenv("TICKET_MASTER_BACH_TOKEN")
+    with pytest.raises(bach_lease.LeaseUnavailableError, match="no lease token"):
+        claim(tmp_path, make_ticket(tmp_path))
+
+
+def test_token_never_leaks_into_output_or_errors(tmp_path, lead, capsys):
+    lead.down = True
+    with pytest.raises(bach_lease.LeaseUnavailableError) as err:
+        claim(tmp_path, make_ticket(tmp_path))
+    out = capsys.readouterr()
+    assert SECRET not in str(err.value) and SECRET not in out.out + out.err
+
+
+def test_failed_rename_hands_the_lease_back(tmp_path, lead):
+    ticket = make_ticket(tmp_path)
+    (ticket.parent / f"{TID}.ASUS-GEI.txt").write_text("squatter", encoding="utf-8")
+    with pytest.raises(ticket_mover.TicketCollisionError):
+        claim(tmp_path, ticket)
+    assert lead.outcomes() == ["return"]
+    assert not (tmp_path / "state" / "leases.json").read_text(encoding="utf-8").count(TID)
+
+
+@pytest.mark.parametrize(("dest", "outcome"), [("SOLVED", "done"), ("BLOCKED", "blocked"), ("WAITING", "return")])
+def test_move_releases_with_matching_outcome(tmp_path, lead, dest, outcome):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    target = ticket_mover.move_ticket(claimed, dest)
+    assert target.parent.name == dest
+    assert lead.outcomes() == [outcome]
+    release = [c for c in lead.calls if c[1].endswith("/release")][0][2]
+    assert release["result_ref"] == f"{dest}/{target.name}"
+    assert TID not in json.loads((tmp_path / "state" / "leases.json").read_text(encoding="utf-8"))
+
+
+def test_move_inside_working_folders_keeps_the_lease(tmp_path, lead):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    ticket_mover.move_ticket(claimed, "QUEUED")
+    assert lead.outcomes() == []
+
+
+def test_release_session_returns_the_lease(tmp_path, lead):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    freed, refused, _held = ticket_mover.release_claims(claimed.parent.parent, host="ASUS-GEI", report_refused=True)
+    assert [p.name for p in freed] == [f"{TID}.txt"] and not refused
+    assert lead.outcomes() == ["return"]
+
+
+def test_release_failure_only_warns_and_keeps_the_move(tmp_path, lead, capsys):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    lead.down = True
+    target = ticket_mover.move_ticket(claimed, "SOLVED")
+    assert target.is_file()
+    assert "not released" in capsys.readouterr().err
+
+
+def test_ticket_without_cached_lease_causes_no_network_on_move(tmp_path, lead):
+    ticket = make_ticket(tmp_path, folder="QUEUED", name=f"{TID}.ASUS-GEI.txt")
+    ticket_mover.move_ticket(ticket, "SOLVED")
+    assert lead.calls == []
+
+
+def test_state_file_inside_onedrive_is_refused():
+    with pytest.raises(bach_lease.LeaseUnavailableError, match="OneDrive"):
+        bach_lease.state_path({"state_file": "<HOME>/OneDrive/x/leases.json"})
+
+
+def test_renew_leases_and_note_heartbeat(tmp_path, lead):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    assert bach_lease.renew_leases() == [(TID, True, "renewed")]
+    before = len(lead.calls)
+    ticket_note.update_ticket_note(claimed, verlauf="2026-11-15 | test | Notiz")
+    assert len(lead.calls) == before + 1 and lead.calls[-1][1].endswith("/lease/renew")
+    other = make_ticket(tmp_path, folder="QUEUED", name="T-20261115-222222222.ASUS-GEI.txt")
+    ticket_note.update_ticket_note(other, verlauf="2026-11-15 | test | ohne Lease")
+    assert len(lead.calls) == before + 1  # no cache entry -> no network
+
+
+def test_cli_renew_leases(tmp_path, lead, capsys):
+    claim(tmp_path, make_ticket(tmp_path))
+    assert ticket_mover._cli(["--renew-leases"]) == 0
+    assert "RENEWED" in capsys.readouterr().out
+
+
+def test_lead_url_must_be_http():
+    with pytest.raises(bach_lease.LeaseUnavailableError, match="http"):
+        bach_lease.BachLeaseClient({"lead_url": "file:///etc/passwd"})
