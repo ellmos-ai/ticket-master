@@ -28,6 +28,7 @@ class FakeLead:
         self.calls = []
         self.down = False
         self.release_status = 200
+        self.release_body = None
 
     def __call__(self, method, url, headers, body, timeout):
         assert headers["Authorization"] == "Bearer " + SECRET
@@ -56,7 +57,12 @@ class FakeLead:
         if action == "release":
             if self.release_status == 200:
                 del self.leases[task_id]
-            return self.release_status, {}
+            ack = {"released": True, "task_id": task_id, "fence": held["fence"],
+                   "outcome": data["outcome"], "status": bach_lease._RELEASE_STATUSES[data["outcome"]],
+                   "server_now": "2026-11-17T07:00:00Z"}
+            body = self.release_body if self.release_body is not None else (
+                ack if self.release_status == 200 else {})
+            return self.release_status, body
         raise AssertionError(path)
 
     def outcomes(self):
@@ -171,6 +177,7 @@ def test_failed_rename_hands_the_lease_back(tmp_path, lead):
     with pytest.raises(ticket_mover.TicketCollisionError):
         claim(tmp_path, ticket)
     assert lead.outcomes() == ["return"]
+    assert lead.calls[-1][2]["note"] == "ticket_claim_rollback"
     assert not (tmp_path / "state" / "leases.json").read_text(encoding="utf-8").count(TID)
 
 
@@ -182,6 +189,8 @@ def test_move_releases_with_matching_outcome(tmp_path, lead, dest, outcome):
     assert lead.outcomes() == [outcome]
     release = [c for c in lead.calls if c[1].endswith("/release")][0][2]
     assert release["result_ref"] == f"{dest}/{target.name}"
+    assert release["note"] == f"ticket_moved:{dest.lower()}"
+    assert "ticket-master@" not in release["note"]
     assert TID not in json.loads((tmp_path / "state" / "leases.json").read_text(encoding="utf-8"))
 
 
@@ -196,6 +205,7 @@ def test_release_session_returns_the_lease(tmp_path, lead):
     freed, refused, _held = ticket_mover.release_claims(claimed.parent.parent, host="ASUS-GEI", report_refused=True)
     assert [p.name for p in freed] == [f"{TID}.txt"] and not refused
     assert lead.outcomes() == ["return"]
+    assert lead.calls[-1][2]["note"] == "ticket_claim_released"
 
 
 def test_release_failure_only_warns_and_keeps_the_move(tmp_path, lead, capsys):
@@ -314,3 +324,78 @@ def test_client_prints_the_plaintext_warning_but_still_works(capsys):
     assert "clear text" in capsys.readouterr().err
     bach_lease.BachLeaseClient({"lead_url": "http://127.0.0.1:8000"})
     assert capsys.readouterr().err == ""
+
+
+def _cached(tmp_path):
+    return json.loads((tmp_path / "state" / "leases.json").read_text(encoding="utf-8"))
+
+
+def _native_denial(reason, **changes):
+    return {"granted": False, "task_id": 4000, "reason": reason,
+            "server_now": "2026-11-17T07:00:00Z", **changes}
+
+
+def test_release_without_context_records_missing_reason_and_confirms_ack(tmp_path, lead):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    assert bach_lease.release_lease(claimed.name, "return") is None
+    payload = lead.calls[-1][2]
+    assert payload["note"] == "reason_not_provided"
+    assert payload["outcome"] == "return"
+    assert TID not in _cached(tmp_path)
+
+
+@pytest.mark.parametrize("status, body", [
+    (409, _native_denial("completion_guard")),
+    (409, _native_denial("stale_task_version")),
+    (409, _native_denial(SECRET, detail=SECRET)),
+    (409, _native_denial("expired", task_id=4001)),
+    (409, _native_denial("expired", server_now="invalid")),
+    (409, {"reason": "expired"}),
+    (404, {"detail": SECRET}),
+    (410, {}),
+    (200, {}),
+])
+def test_unconfirmed_release_preserves_capability_and_redacts_warning(tmp_path, lead, status, body):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    before = _cached(tmp_path)
+    lead.release_status, lead.release_body = status, body
+    warning = bach_lease.release_lease(claimed.name, "return", reason_code="ticket_claim_released")
+    assert warning and "not released" in warning and SECRET not in warning
+    assert _cached(tmp_path) == before
+
+
+@pytest.mark.parametrize("change", [
+    {"task_id": 4001}, {"fence": 8}, {"fence": True}, {"released": False},
+    {"outcome": "done"}, {"status": "done"}, {"server_now": "2026-11-17T07:00:00"},
+])
+def test_success_ack_must_match_requested_release(tmp_path, lead, change):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    before = _cached(tmp_path)
+    lead.release_body = {"released": True, "task_id": 4000, "fence": 7,
+                         "outcome": "return", "status": "pending",
+                         "server_now": "2026-11-17T07:00:00Z", **change}
+    assert bach_lease.release_lease(claimed.name, "return")
+    assert _cached(tmp_path) == before
+
+
+@pytest.mark.parametrize("reason", ["expired", "stale_fence"])
+def test_confirmed_native_invalidation_clears_old_capability_without_claiming_release(tmp_path, lead, reason):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    lead.release_status, lead.release_body = 409, _native_denial(reason)
+    warning = bach_lease.release_lease(claimed.name, "return")
+    assert warning and "no longer valid" in warning and "outcome was not applied" in warning
+    assert TID not in _cached(tmp_path)
+
+
+@pytest.mark.parametrize("kwargs", [
+    {"reason_code": SECRET},
+    {"reason_code": "ticket_moved", "reason_detail": SECRET},
+    {"reason_code": "ticket_claim_released", "reason_detail": "PARKED"},
+])
+def test_release_reason_metadata_is_closed_before_http(tmp_path, lead, kwargs):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    before = _cached(tmp_path)
+    count = len(lead.calls)
+    warning = bach_lease.release_lease(claimed.name, "return", **kwargs)
+    assert warning and SECRET not in warning
+    assert len(lead.calls) == count and _cached(tmp_path) == before

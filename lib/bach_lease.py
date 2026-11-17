@@ -45,6 +45,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -273,6 +274,39 @@ def _holder_text(body: dict) -> str:
     return ", ".join(parts) or "unknown holder"
 
 
+_RELEASE_REASONS = frozenset({
+    "reason_not_provided", "ticket_claim_rollback", "ticket_claim_released", "ticket_moved",
+})
+_RELEASE_STATUSES = {"return": "pending", "blocked": "blocked", "done": "done", "review": "review"}
+_INVALID_LEASE_REASONS = frozenset({"expired", "stale_fence"})
+_SAFE_RELEASE_DENIALS = _INVALID_LEASE_REASONS | {"completion_guard", "stale_task_version", "conflict"}
+
+
+def _release_note(reason_code: str | None, reason_detail: str | None) -> str:
+    """Closed caller context only; no actor, exception text, path or token."""
+    code = reason_code if reason_code not in (None, "") else "reason_not_provided"
+    if type(code) is not str or code not in _RELEASE_REASONS:
+        raise LeaseUnavailableError("unsupported release reason code")
+    if reason_detail not in (None, ""):
+        if type(reason_detail) is not str or code != "ticket_moved" or reason_detail not in _OUTCOME_BY_CLUSTER:
+            raise LeaseUnavailableError("unsupported release reason detail")
+        return f"{code}:{reason_detail.lower()}"
+    return code
+
+
+def _native_response_matches(body: object, task_id: int) -> bool:
+    """Correlate the lead's finite ACK/denial shape without trusting error text."""
+    if not isinstance(body, dict) or type(body.get("task_id")) is not int or body["task_id"] != task_id:
+        return False
+    stamp = body.get("server_now")
+    if type(stamp) is not str or len(stamp) > 40:
+        return False
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).utcoffset() == timedelta(0)
+    except ValueError:
+        return False
+
+
 class BachLeaseClient:
     """Task + lease calls against the lead. All network access goes through `transport`."""
 
@@ -359,7 +393,11 @@ class BachLeaseClient:
         entry = state.get(ticket_id)
         return bool(entry) and self._renew_entry(entry, state)
 
-    def release(self, ticket_id: str, outcome: str, result_ref: str = "") -> bool:
+    def release(self, ticket_id: str, outcome: str, result_ref: str = "", *,
+                reason_code: str | None = None, reason_detail: str | None = None) -> bool:
+        note = _release_note(reason_code, reason_detail)
+        if type(outcome) is not str or outcome not in _RELEASE_STATUSES:
+            raise LeaseUnavailableError("unsupported lease release outcome")
         state = load_state(self.cfg)
         entry = state.get(ticket_id)
         if not entry:
@@ -368,16 +406,25 @@ class BachLeaseClient:
             state.pop(ticket_id, None)  # a corrupt cache entry must never reach a URL
             save_state(self.cfg, state)
             raise LeaseUnavailableError("lease cache entry has an unusable task id; dropped")
-        status, _body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/release", {
+        status, body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/release", {
             "lease_id": entry["lease_id"], "fence": entry["fence"],
-            "outcome": outcome, "result_ref": result_ref, "note": self.worker_id,
+            "outcome": outcome, "result_ref": result_ref, "note": note,
         })
-        # 404/409/410: the lease is already gone on the lead's side; forget the cache either way.
-        if 200 <= status < 300 or status in (404, 409, 410):
+        if type(status) is not int:
+            raise LeaseUnavailableError("lease release response is invalid")
+        correlated = _native_response_matches(body, _valid_task_id(entry["task_id"]))
+        released = (200 <= status < 300 and correlated and body.get("released") is True
+                    and type(body.get("fence")) is int and body["fence"] == entry["fence"]
+                    and body.get("outcome") == outcome and body.get("status") == _RELEASE_STATUSES[outcome])
+        invalidated = (status == 409 and correlated and body.get("granted") is False
+                       and type(body.get("reason")) is str and body["reason"] in _INVALID_LEASE_REASONS)
+        if released or invalidated:
             state.pop(ticket_id, None)
             save_state(self.cfg, state)
-            return 200 <= status < 300
-        raise LeaseUnavailableError(f"lease release failed (HTTP {status})")
+            return released
+        reason = body.get("reason") if isinstance(body, dict) else None
+        safe_reason = reason if type(reason) is str and reason in _SAFE_RELEASE_DENIALS else "reason_unavailable"
+        raise LeaseUnavailableError(f"lease release not confirmed (HTTP {status}; {safe_reason}); capability retained")
 
 
 # --- high-level hooks used by ticket_mover / ticket_note ----------------------
@@ -414,6 +461,7 @@ def claim_lease(ticket: Path | str, *, host: str, config: dict | None = None,
 
 
 def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
+                  reason_code: str | None = None, reason_detail: str | None = None,
                   config: dict | None = None, client: BachLeaseClient | None = None) -> str | None:
     """Best-effort release. Never raises; returns a warning text or None.
 
@@ -424,7 +472,10 @@ def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
         cfg = load_config(config)
         if not cfg["enabled"] or ticket_id is None or ticket_id not in load_state(cfg):
             return None
-        _client(cfg, client, None).release(ticket_id, outcome, result_ref)
+        released = _client(cfg, client, None).release(
+            ticket_id, outcome, result_ref, reason_code=reason_code, reason_detail=reason_detail)
+        if not released:
+            return f"WARNING: lease for {ticket_id} is no longer valid; requested release outcome was not applied"
     except LeaseError as exc:
         return f"WARNING: lease for {ticket_id} not released ({exc}); it expires on its TTL"
     return None

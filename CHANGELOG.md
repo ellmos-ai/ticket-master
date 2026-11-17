@@ -4,6 +4,17 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Confirmed BACH lease releases and explicit reasons (BACH #4221)
+
+- Ticket moves, claim releases and failed claim renames now pass a closed reason code to the BACH lease release.
+  The actor stays in the lease's worker identity. Missing context is recorded as `reason_not_provided`;
+  the only optional detail is a validated destination cluster, never raw paths, exceptions or credentials.
+- A cached capability is cleared only after a matching native release ACK or a correlated native
+  `expired` / `stale_fence` denial. Completion guards, unknown 409 responses and malformed success replies keep
+  the capability and report a redacted warning. A confirmed invalid lease is not reported as a successful release.
+- Existing historical notes remain unchanged. Each host running the release producer must install this update.
+
+
 ### Review follow-ups for the BACH task-lease coupling (T-20261115-529774551)
 
 - `CONTRIBUTING.md`, both READMEs and `SECURITY.md` no longer state `INV-LOCAL-01` / `INV-CLAIM-04` without exception:
