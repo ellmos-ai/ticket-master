@@ -45,6 +45,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -167,10 +168,57 @@ def load_state(cfg: dict) -> dict[str, dict]:
     return data if isinstance(data, dict) else {}
 
 
-def save_state(cfg: dict, state: dict[str, dict]) -> None:
+@contextlib.contextmanager
+def _state_write_lock(cfg: dict):
+    """Coordinate short cache transactions across processes; never hold across HTTP."""
     path = state_path(cfg)
-    payload = json.dumps(state, indent=1, ensure_ascii=False)  # encode first, then replace
-    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(str(path) + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        with os.fdopen(fd, "a+b") as lock:
+            if os.name == "nt":
+                import msvcrt
+                if os.fstat(lock.fileno()).st_size == 0:
+                    lock.write(b"\0")
+                    lock.flush()
+
+                def take():
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_NBLCK, 1)
+
+                def drop():
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+            else:
+                import fcntl
+
+                def take():
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+                def drop():
+                    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    take()
+                    break
+                except OSError:
+                    if time.monotonic() >= deadline:
+                        raise LeaseUnavailableError("lease cache busy; capability retained") from None
+                    time.sleep(0.01)
+            try:
+                yield
+            finally:
+                drop()
+    except OSError as exc:
+        raise LeaseUnavailableError(f"lease cache write failed: {type(exc).__name__}") from exc
+
+
+def _write_state(cfg: dict, state: dict[str, dict]) -> None:
+    """Atomic replace; caller must hold _state_write_lock."""
+    path = state_path(cfg)
+    payload = json.dumps(state, indent=1, ensure_ascii=False)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=path.name, suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -179,6 +227,37 @@ def save_state(cfg: dict, state: dict[str, dict]) -> None:
     finally:
         with contextlib.suppress(OSError):
             os.unlink(tmp)
+
+
+def save_state(cfg: dict, state: dict[str, dict]) -> None:
+    """Explicit whole-cache replacement, serialized with production transactions."""
+    with _state_write_lock(cfg):
+        _write_state(cfg, state)
+
+
+def _same_capability(current: object, expected: dict) -> bool:
+    if not isinstance(current, dict):
+        return False
+    return all(type(current.get(key)) is type(expected.get(key)) and current.get(key) == expected.get(key)
+               for key in ("task_id", "lease_id", "fence", "worker_id"))
+
+
+def _update_cache_entry(cfg: dict, ticket_id: str, expected: dict | None,
+                        replacement: dict | None) -> bool:
+    """Compare/update one exact capability in the current cache under a shared lock."""
+    with _state_write_lock(cfg):
+        current = load_state(cfg)
+        if expected is None:
+            if ticket_id in current:
+                return False
+        elif not _same_capability(current.get(ticket_id), expected):
+            return False
+        if replacement is None:
+            current.pop(ticket_id, None)
+        else:
+            current[ticket_id] = replacement
+        _write_state(cfg, current)
+        return True
 
 
 # --- HTTP client -------------------------------------------------------------
@@ -273,6 +352,39 @@ def _holder_text(body: dict) -> str:
     return ", ".join(parts) or "unknown holder"
 
 
+_RELEASE_REASONS = frozenset({
+    "reason_not_provided", "ticket_claim_rollback", "ticket_claim_released", "ticket_moved",
+})
+_RELEASE_STATUSES = {"return": "pending", "blocked": "blocked", "done": "done", "review": "review"}
+_INVALID_LEASE_REASONS = frozenset({"expired", "stale_fence"})
+_SAFE_RELEASE_DENIALS = _INVALID_LEASE_REASONS | {"completion_guard", "stale_task_version", "conflict"}
+
+
+def _release_note(reason_code: str | None, reason_detail: str | None) -> str:
+    """Closed caller context only; no actor, exception text, path or token."""
+    code = reason_code if reason_code not in (None, "") else "reason_not_provided"
+    if type(code) is not str or code not in _RELEASE_REASONS:
+        raise LeaseUnavailableError("unsupported release reason code")
+    if reason_detail not in (None, ""):
+        if type(reason_detail) is not str or code != "ticket_moved" or reason_detail not in _OUTCOME_BY_CLUSTER:
+            raise LeaseUnavailableError("unsupported release reason detail")
+        return f"{code}:{reason_detail.lower()}"
+    return code
+
+
+def _native_response_matches(body: object, task_id: int) -> bool:
+    """Correlate the lead's finite ACK/denial shape without trusting error text."""
+    if not isinstance(body, dict) or type(body.get("task_id")) is not int or body["task_id"] != task_id:
+        return False
+    stamp = body.get("server_now")
+    if type(stamp) is not str or len(stamp) > 40:
+        return False
+    try:
+        return datetime.fromisoformat(stamp.replace("Z", "+00:00")).utcoffset() == timedelta(0)
+    except ValueError:
+        return False
+
+
 class BachLeaseClient:
     """Task + lease calls against the lead. All network access goes through `transport`."""
 
@@ -308,7 +420,7 @@ class BachLeaseClient:
         """Idempotent task + lease. Returns the cache entry; raises on 409 / unusable answer."""
         state = load_state(self.cfg)
         known = state.get(ticket_id)
-        if known and _valid_task_id(known.get("task_id")) is not None and self._renew_entry(known, state):
+        if known and _valid_task_id(known.get("task_id")) is not None and self._renew_entry(ticket_id, known):
             return known
         status, body = self._call("POST", "/api/tasks", {
             "title": title,
@@ -338,46 +450,60 @@ class BachLeaseClient:
             raise LeaseUnavailableError(f"lease request failed (HTTP {status})")
         entry = {"task_id": task_id, "lease_id": body["lease_id"], "fence": body.get("fence"),
                  "worker_id": self.worker_id, "acquired": int(time.time())}
-        state[ticket_id] = entry
-        save_state(self.cfg, state)
+        if not _update_cache_entry(self.cfg, ticket_id, known, entry):
+            raise LeaseUnavailableError("lease cache changed during acquire; current capability retained")
         return entry
 
-    def _renew_entry(self, entry: dict, state: dict) -> bool:
+    def _renew_entry(self, ticket_id: str, entry: dict) -> bool:
         if _valid_task_id(entry.get("task_id")) is None:
             return False
         status, body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/renew",
                                   {"lease_id": entry["lease_id"], "fence": entry["fence"]})
         if 200 <= status < 300:
+            renewed = dict(entry)
             if body.get("fence") is not None:
-                entry["fence"] = body["fence"]
-                save_state(self.cfg, state)
+                renewed["fence"] = body["fence"]
+            if not _update_cache_entry(self.cfg, ticket_id, entry, renewed):
+                raise LeaseUnavailableError("lease cache changed during renew; current capability retained")
+            entry.update(renewed)
             return True
         return False
 
     def renew(self, ticket_id: str) -> bool:
         state = load_state(self.cfg)
         entry = state.get(ticket_id)
-        return bool(entry) and self._renew_entry(entry, state)
+        return bool(entry) and self._renew_entry(ticket_id, entry)
 
-    def release(self, ticket_id: str, outcome: str, result_ref: str = "") -> bool:
+    def release(self, ticket_id: str, outcome: str, result_ref: str = "", *,
+                reason_code: str | None = None, reason_detail: str | None = None) -> bool:
+        note = _release_note(reason_code, reason_detail)
+        if type(outcome) is not str or outcome not in _RELEASE_STATUSES:
+            raise LeaseUnavailableError("unsupported lease release outcome")
         state = load_state(self.cfg)
         entry = state.get(ticket_id)
         if not entry:
             return False
         if _valid_task_id(entry.get("task_id")) is None:
-            state.pop(ticket_id, None)  # a corrupt cache entry must never reach a URL
-            save_state(self.cfg, state)
+            _update_cache_entry(self.cfg, ticket_id, entry, None)  # never use a corrupt task id in a URL
             raise LeaseUnavailableError("lease cache entry has an unusable task id; dropped")
-        status, _body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/release", {
+        status, body = self._call("POST", f"/api/tasks/{entry['task_id']}/lease/release", {
             "lease_id": entry["lease_id"], "fence": entry["fence"],
-            "outcome": outcome, "result_ref": result_ref, "note": self.worker_id,
+            "outcome": outcome, "result_ref": result_ref, "note": note,
         })
-        # 404/409/410: the lease is already gone on the lead's side; forget the cache either way.
-        if 200 <= status < 300 or status in (404, 409, 410):
-            state.pop(ticket_id, None)
-            save_state(self.cfg, state)
-            return 200 <= status < 300
-        raise LeaseUnavailableError(f"lease release failed (HTTP {status})")
+        if type(status) is not int:
+            raise LeaseUnavailableError("lease release response is invalid")
+        correlated = _native_response_matches(body, _valid_task_id(entry["task_id"]))
+        released = (200 <= status < 300 and correlated and body.get("released") is True
+                    and type(body.get("fence")) is int and body["fence"] == entry["fence"]
+                    and body.get("outcome") == outcome and body.get("status") == _RELEASE_STATUSES[outcome])
+        invalidated = (status == 409 and correlated and body.get("granted") is False
+                       and type(body.get("reason")) is str and body["reason"] in _INVALID_LEASE_REASONS)
+        if released or invalidated:
+            _update_cache_entry(self.cfg, ticket_id, entry, None)
+            return released
+        reason = body.get("reason") if isinstance(body, dict) else None
+        safe_reason = reason if type(reason) is str and reason in _SAFE_RELEASE_DENIALS else "reason_unavailable"
+        raise LeaseUnavailableError(f"lease release not confirmed (HTTP {status}; {safe_reason}); capability retained")
 
 
 # --- high-level hooks used by ticket_mover / ticket_note ----------------------
@@ -414,6 +540,7 @@ def claim_lease(ticket: Path | str, *, host: str, config: dict | None = None,
 
 
 def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
+                  reason_code: str | None = None, reason_detail: str | None = None,
                   config: dict | None = None, client: BachLeaseClient | None = None) -> str | None:
     """Best-effort release. Never raises; returns a warning text or None.
 
@@ -424,7 +551,10 @@ def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
         cfg = load_config(config)
         if not cfg["enabled"] or ticket_id is None or ticket_id not in load_state(cfg):
             return None
-        _client(cfg, client, None).release(ticket_id, outcome, result_ref)
+        released = _client(cfg, client, None).release(
+            ticket_id, outcome, result_ref, reason_code=reason_code, reason_detail=reason_detail)
+        if not released:
+            return f"WARNING: lease for {ticket_id} is no longer valid; requested release outcome was not applied"
     except LeaseError as exc:
         return f"WARNING: lease for {ticket_id} not released ({exc}); it expires on its TTL"
     return None

@@ -437,9 +437,11 @@ def _lease_take(source: Path, host: str, dry_run: bool) -> bool:
     return not dry_run and bach_lease.claim_lease(source, host=host)
 
 
-def _lease_warn(ticket_name: str, outcome: str, result_ref: str = "") -> None:
+def _lease_warn(ticket_name: str, outcome: str, result_ref: str = "", *,
+                reason_code: str | None = None, reason_detail: str | None = None) -> None:
     """Best-effort lease release; a failure only warns, the file operation stays done."""
-    warning = bach_lease.release_lease(ticket_name, outcome, result_ref=result_ref)
+    warning = bach_lease.release_lease(
+        ticket_name, outcome, result_ref=result_ref, reason_code=reason_code, reason_detail=reason_detail)
     if warning:
         print(warning, file=sys.stderr)
 
@@ -479,7 +481,7 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
         return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
     except BaseException:
         if leased:
-            _lease_warn(source.name, "return")  # the claim did not happen: hand the lease back
+            _lease_warn(source.name, "return", reason_code="ticket_claim_rollback")  # the claim did not happen: hand the lease back
         raise
 
 
@@ -517,7 +519,7 @@ def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
         return claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
     except BaseException:
         if leased:
-            _lease_warn(source.name, "return")
+            _lease_warn(source.name, "return", reason_code="ticket_claim_rollback")
         raise
 
 
@@ -852,7 +854,8 @@ def move_ticket(source: Path | str, dest_dir: Path | str,
         cluster = _dest_cluster_name(dest_dir)
         outcome = bach_lease.outcome_for_cluster(cluster)
         if outcome:  # a move that stays in QUEUED keeps the lease
-            _lease_warn(source.name, outcome, f"{cluster}/{target.name}")
+            _lease_warn(source.name, outcome, f"{cluster}/{target.name}",
+                        reason_code="ticket_moved", reason_detail=cluster)
     return target
 
 
@@ -876,7 +879,7 @@ def release_claim(ticket: Path | str) -> Path:
         parsed = None
     if parsed and parsed.is_v2 and parsed.claim:
         freed_v2 = release_contract(ticket, host=parsed.claim)
-        _lease_warn(ticket.name, "return")
+        _lease_warn(ticket.name, "return", reason_code="ticket_claim_released")
         return freed_v2
     freed = ticket.parent / unclaimed_name(ticket.name)
     if freed == ticket:
@@ -886,7 +889,7 @@ def release_claim(ticket: Path | str) -> Path:
             f"unclaimed name already taken, refusing to overwrite: {freed}"
         )
     released = move_ticket(ticket, ticket.parent, release_claim=True)
-    _lease_warn(ticket.name, "return")
+    _lease_warn(ticket.name, "return", reason_code="ticket_claim_released")
     return released
 
 
