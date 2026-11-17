@@ -6,6 +6,8 @@ All notable changes to ticket-master are documented here.
 
 ### Confirmed BACH lease releases and explicit reasons (BACH #4221)
 
+- Coordinate all cache writers with a short process lock and compare the current exact capability before updating or removing it; delayed HTTP replies cannot erase a replacement lease or unrelated ticket changes.
+
 - Ticket moves, claim releases and failed claim renames now pass a closed reason code to the BACH lease release.
   The actor stays in the lease's worker identity. Missing context is recorded as `reason_not_provided`;
   the only optional detail is a validated destination cluster, never raw paths, exceptions or credentials.

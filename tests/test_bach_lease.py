@@ -1,6 +1,9 @@
 """BACH task-lease coupling of ticket claims (T-20261115-427953604). No network: a fake lead."""
 
 import json
+import subprocess
+import threading
+from concurrent.futures import ThreadPoolExecutor
 import sys
 import uuid
 from pathlib import Path
@@ -399,3 +402,141 @@ def test_release_reason_metadata_is_closed_before_http(tmp_path, lead, kwargs):
     warning = bach_lease.release_lease(claimed.name, "return", **kwargs)
     assert warning and SECRET not in warning
     assert len(lead.calls) == count and _cached(tmp_path) == before
+
+
+@pytest.mark.parametrize("response", ["success", "expired", "stale_fence"])
+@pytest.mark.parametrize("changed", [
+    {"fence": 8}, {"lease_id": "replacement-capability"},
+    {"task_id": 4999}, {"worker_id": "ticket-master@REPLACEMENT"},
+])
+def test_delayed_release_does_not_remove_replacement_capability(tmp_path, lead, monkeypatch, response, changed):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    expected = dict(_cached(tmp_path)[TID], **changed)
+    if response != "success":
+        lead.release_status, lead.release_body = 409, _native_denial(response)
+
+    def transport(*args):
+        reply = lead(*args)
+        current = _cached(tmp_path)
+        current[TID] = expected
+        bach_lease.save_state(bach_lease.load_config(), current)
+        return reply
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", transport)
+    warning = bach_lease.release_lease(claimed.name, "return")
+    assert (warning is None) == (response == "success")
+    assert _cached(tmp_path)[TID] == expected
+
+
+@pytest.mark.parametrize("response", ["success", "expired", "stale_fence"])
+def test_release_keeps_independent_cache_edits_during_http(tmp_path, lead, monkeypatch, response):
+    claimed = claim(tmp_path, make_ticket(tmp_path))
+    cfg = bach_lease.load_config()
+    old = _cached(tmp_path)[TID]
+    bach_lease.save_state(cfg, {TID: old, "removed": dict(old), "updated": dict(old)})
+    if response != "success":
+        lead.release_status, lead.release_body = 409, _native_denial(response)
+    edited = dict(old, fence=90)
+
+    def transport(*args):
+        reply = lead(*args)
+        bach_lease.save_state(cfg, {TID: old, "updated": edited, "added": edited})
+        return reply
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", transport)
+    bach_lease.release_lease(claimed.name, "return")
+    assert _cached(tmp_path) == {"updated": edited, "added": edited}
+
+
+@pytest.mark.parametrize("operation", ["acquire", "renew"])
+def test_delayed_acquire_or_renew_preserves_other_ticket_writes(tmp_path, lead, operation):
+    cfg = bach_lease.load_config()
+    client = bach_lease.BachLeaseClient(cfg, transport=lead)
+    if operation == "renew":
+        client.acquire(TID, "first")
+    other = "T-20261117-222222222"
+    other_client = bach_lease.BachLeaseClient(cfg, transport=lead)
+
+    def transport(*args):
+        reply = lead(*args)
+        if args[1].endswith("/lease") or args[1].endswith("/renew"):
+            other_client.acquire(other, "parallel")
+        return reply
+
+    client._transport = transport
+    if operation == "renew":
+        assert client.renew(TID)
+    else:
+        client.acquire(TID, "first")
+    assert set(_cached(tmp_path)) == {TID, other}
+
+
+@pytest.mark.parametrize("operation", ["acquire", "renew"])
+def test_delayed_acquire_or_renew_does_not_overwrite_replacement(tmp_path, lead, operation):
+    cfg = bach_lease.load_config()
+    client = bach_lease.BachLeaseClient(cfg, transport=lead)
+    if operation == "renew":
+        client.acquire(TID, "first")
+    replacement = {"task_id": 4000, "lease_id": "new-capability", "fence": 99, "worker_id": client.worker_id}
+
+    def transport(*args):
+        reply = lead(*args)
+        if args[1].endswith("/lease") or args[1].endswith("/renew"):
+            bach_lease.save_state(cfg, {TID: replacement})
+        return reply
+
+    client._transport = transport
+    with pytest.raises(bach_lease.LeaseUnavailableError, match="current capability retained"):
+        client.renew(TID) if operation == "renew" else client.acquire(TID, "first")
+    assert _cached(tmp_path) == {TID: replacement}
+
+
+def test_concurrent_acquires_merge_distinct_tickets(tmp_path, lead):
+    cfg = bach_lease.load_config()
+    tickets = [TID, "T-20261117-333333333"]
+    barrier = threading.Barrier(2)
+
+    def transport(method, url, headers, body, timeout):
+        data = json.loads(body)
+        if url.endswith("/api/tasks"):
+            index = tickets.index(data["source"].split(":")[1])
+            return 200, {"id": 4000 + index}
+        barrier.wait(timeout=3)
+        return 200, {"lease_id": "fake-" + url.rsplit("/", 2)[1], "fence": 7}
+
+    def acquire(ticket_id):
+        client = bach_lease.BachLeaseClient(cfg, transport=transport)
+        return client.acquire(ticket_id, "concurrent")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        assert len(list(executor.map(acquire, tickets))) == 2
+    assert set(_cached(tmp_path)) == set(tickets)
+
+
+def test_cache_writers_coordinate_across_processes(tmp_path, lead):
+    cfg = bach_lease.load_config()
+    script = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import bach_lease
+print("ready", flush=True)
+bach_lease.save_state(json.loads(sys.argv[2]), {"child": {"fence": 8}})
+print("written", flush=True)
+"""
+    process = None
+    try:
+        with bach_lease._state_write_lock(cfg):
+            process = subprocess.Popen(
+                [sys.executable, "-c", script, str(ROOT / "lib"), json.dumps(cfg)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            assert process.stdout.readline().strip() == "ready"
+            with pytest.raises(subprocess.TimeoutExpired):
+                process.wait(timeout=0.1)
+        output, errors = process.communicate(timeout=5)
+        assert process.returncode == 0, errors
+        assert output.strip() == "written"
+        assert _cached(tmp_path) == {"child": {"fence": 8}}
+    finally:
+        if process is not None and process.poll() is None:
+            process.kill()
+            process.communicate(timeout=5)
