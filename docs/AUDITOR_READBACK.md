@@ -9,6 +9,15 @@ readback is reported as `needs_readback`, with all existing ticket paths and a
 reason. `skipped_existing` means a dated readback was recognized, **not** that the
 finding is resolved or independently verified.
 
+### Closing Rule for `SOLVED` and Second-Actor Sampling
+
+Every ticket moved to `SOLVED` requires a **measured readback** stating an
+observed value/count and a concrete location (no bare formula line such as
+`status=clear — commit <hash>`). A second actor does **not** re-measure every
+closed ticket individually; instead, independent verification runs via
+**sampling through `system-auditor`**, and any ticket **reopened** after a
+contradicted closure must be re-measured in full before closing again.
+
 The existing log envelope remains `YYYY-MM-DD | actor@host | assertion — evidence`.
 The date must be on/after the date in `M-YYYYMMDD-slug` and not in the future. There
 is no new TTL. The assertion must bind that exact ID, a concrete location and an
@@ -67,6 +76,15 @@ erkennbarer aktueller Readback, liefert die Brücke `needs_readback` samt allen
 bestehenden Ticketpfaden und Grund. `skipped_existing` bedeutet ausschließlich,
 dass ein datierter Readback erkannt wurde, nicht dass das Finding erledigt oder
 unabhängig geprüft ist.
+
+### Abschlussregel für `SOLVED` und Zweitakteur-Stichprobe
+
+Jedes nach `SOLVED` geschlossene Ticket braucht einen **gemessenen Readback** mit
+beobachtetem Wert/Zählung und konkretem Fundort (keine bloße Formelzeile wie
+`status=clear — commit <hash>`). Ein zweiter Akteur misst dabei **nicht** jedes
+einzelne Ticket nach, sondern prüft **stichprobenartig über den `system-auditor`**;
+wird ein Abschluss widerlegt und das Ticket wieder geöffnet, wird vor einem erneuten
+Abschluss vollständig nachgemessen.
 
 Das vorhandene Format bleibt `YYYY-MM-DD | akteur@host | Aussage — Beleg`. Datum,
 exakte Finding-ID, konkreter Ort, Messwert und Beleg gehören zusammen. Das Datum
