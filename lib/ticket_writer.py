@@ -527,26 +527,33 @@ def iter_lifecycle_files(base: Path):
     """
     for sub in _LIFECYCLE_SUBDIRS:
         directory = base / sub if sub else base
-        if not directory.is_dir():
+        try:
+            scan_it = os.scandir(directory)
+        except OSError:
             continue
-        for entry in directory.iterdir():
-            if not entry.is_file():
-                continue
-            m = TICKET_FILENAME_RE.match(entry.name)
-            if m:
-                yield (entry, m.group("date"), int(m.group("number")),
-                       m.group("suffix"))
-                continue
-            # Schema v2 may carry three orthogonal suffix axes and exact
-            # selectors containing dots.  Its parser is deliberately kept
-            # separate from the legacy regex so ``T-ID.<HOST>`` never changes
-            # meaning for old callers.
-            try:
-                parsed = parse_ticket_name(entry.name)
-            except ValueError:
-                continue
-            if parsed.is_v2:
-                yield (entry, parsed.date, int(parsed.number), parsed.claim)
+        with scan_it as entries:
+            for dir_entry in entries:
+                try:
+                    if not dir_entry.is_file():
+                        continue
+                except OSError:
+                    continue
+                entry = Path(dir_entry.path)
+                m = TICKET_FILENAME_RE.match(dir_entry.name)
+                if m:
+                    yield (entry, m.group("date"), int(m.group("number")),
+                           m.group("suffix"))
+                    continue
+                # Schema v2 may carry three orthogonal suffix axes and exact
+                # selectors containing dots.  Its parser is deliberately kept
+                # separate from the legacy regex so ``T-ID.<HOST>`` never changes
+                # meaning for old callers.
+                try:
+                    parsed = parse_ticket_name(dir_entry.name)
+                except ValueError:
+                    continue
+                if parsed.is_v2:
+                    yield (entry, parsed.date, int(parsed.number), parsed.claim)
 
 
 # Stellenzahl der Zufallsnummer (Nutzerentscheid 2026-08-15).

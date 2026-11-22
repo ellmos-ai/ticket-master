@@ -742,7 +742,7 @@ def _index_ticket_entry(
             ticket_index.setdefault(finding_id, []).append((entry, text))
 
 
-_INDEX_READ_WORKERS = 32
+_INDEX_READ_WORKERS = 64
 
 
 def _read_ticket_entry(entry: Path) -> str | None:
