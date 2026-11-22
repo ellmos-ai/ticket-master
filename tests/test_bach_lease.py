@@ -56,7 +56,8 @@ class FakeLead:
         if not held or held["lease_id"] != data["lease_id"]:
             return 409, {"error": "not holder"}
         if action == "renew":
-            return 200, {"fence": held["fence"] + 1}
+            held["fence"] += 1
+            return 200, {"fence": held["fence"]}
         if action == "release":
             if self.release_status == 200:
                 del self.leases[task_id]
@@ -79,6 +80,7 @@ def lead(monkeypatch, tmp_path):
     monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _o=bach_lease.load_config: _o(cfg if config is None else config))
     monkeypatch.setattr(bach_lease, "_urllib_transport", fake)
     monkeypatch.setenv("TICKET_MASTER_BACH_TOKEN", SECRET)
+    monkeypatch.setenv("TICKET_MASTER_TICKETS_DIR", str(tmp_path / "tickets"))
     monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "ASUS-GEI")
     return fake
 
@@ -540,3 +542,227 @@ print("written", flush=True)
         if process is not None and process.poll() is None:
             process.kill()
             process.communicate(timeout=5)
+
+
+# --- server mode: fallback visibility, backfill, cache hygiene & fast lane -----------------
+
+
+def test_fail_open_fallback_writes_verlauf_note_and_pending_lease_without_secrets(tmp_path, lead, monkeypatch, capsys):
+    from datetime import date
+    import ticket_audit
+
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+
+    # 1) Unreachable lead (even if an exception message tried to leak URL + token)
+    def leaky_down(*_a, **_k):
+        raise bach_lease.LeaseUnavailableError(
+            f"lead http://lead.invalid:1 down with Bearer {SECRET} ({SECRET})"
+        )
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", leaky_down)
+    ticket = make_ticket(tmp_path)
+    ticket.write_text(
+        f"ID:            {TID}\n"
+        "TITEL:         Fallback-Sichtbarkeit\n"
+        "ERSTELLT:      2026-11-22\n"
+        "STATUS:        ACTIONABLE\n\n"
+        "VERLAUF / LOG\n"
+        "--------------------------------------------------------------\n\n"
+        "LOESUNG / ERGEBNIS\n"
+        "--------------------------------------------------------------\n",
+        encoding="utf-8",
+    )
+    claimed = claim(tmp_path, ticket)
+    out = capsys.readouterr()
+    text = claimed.read_text(encoding="utf-8")
+    today = date.today().isoformat()
+    expected_prefix = f"{today} | ticket-master@ASUS-GEI | Claim ohne Lease (Fallback Dateibetrieb): "
+    assert expected_prefix in text
+    assert SECRET not in text and "lead.invalid" not in text
+    assert SECRET not in out.out + out.err
+    assert ticket_audit.commentary_lint(tmp_path / "tickets") == []
+    cached = _cached(tmp_path)
+    assert bach_lease.is_pending_lease_entry(cached[TID])
+    assert cached[TID]["status"] == "pending_lease" and cached[TID]["pending_lease"] is True
+
+    # 2) Missing token also records fallback note + pending_lease
+    tid2 = "T-20261122-222222222"
+    monkeypatch.setattr(bach_lease, "_urllib_transport", lead)
+    monkeypatch.delenv("TICKET_MASTER_BACH_TOKEN")
+    claimed2 = claim(tmp_path, make_ticket(tmp_path, name=f"{tid2}.txt"))
+    text2 = claimed2.read_text(encoding="utf-8")
+    assert f"{today} | ticket-master@ASUS-GEI | Claim ohne Lease (Fallback Dateibetrieb): no lease token available" in text2
+    assert bach_lease.is_pending_lease_entry(_cached(tmp_path)[tid2])
+
+
+def test_fail_open_rollback_clears_pending_lease_when_rename_collides(tmp_path, lead, monkeypatch):
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    lead.down = True
+    ticket = make_ticket(tmp_path)
+    before_text = ticket.read_text(encoding="utf-8")
+    (ticket.parent / f"{TID}.ASUS-GEI.txt").write_text("squatter", encoding="utf-8")
+    with pytest.raises(ticket_mover.TicketCollisionError):
+        claim(tmp_path, ticket)
+    assert ticket.read_text(encoding="utf-8") == before_text
+    assert TID not in _cached(tmp_path)
+
+
+def test_409_is_never_treated_as_fallback_no_note_no_pending_lease(tmp_path, lead, monkeypatch):
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    lead.tasks[f"ticket:{TID}:ticket-master"] = 4000
+    lead.leases[4000] = {"worker_id": "ticket-master@WORKSTATION-LG", "lease_id": "foreign", "fence": 2}
+    ticket = make_ticket(tmp_path)
+    before_text = ticket.read_text(encoding="utf-8")
+    with pytest.raises(bach_lease.LeaseConflictError, match="ticket-master@WORKSTATION-LG"):
+        claim(tmp_path, ticket)
+    assert ticket.is_file()
+    assert not (ticket.parent / f"{TID}.ASUS-GEI.txt").exists()
+    assert ticket.read_text(encoding="utf-8") == before_text
+    assert not (tmp_path / "state" / "leases.json").exists() or TID not in _cached(tmp_path)
+
+
+def test_backfill_leases_leased_held_by_skipped_and_dry_run(tmp_path, lead, monkeypatch, capsys):
+    tid_pending = "T-20261122-100000001"
+    tid_uncached = "T-20261122-100000002"
+    tid_conflict = "T-20261122-100000003"
+    tid_already = "T-20261122-100000004"
+    tid_foreign = "T-20261122-100000005"
+
+    # Prepare pending_lease via fail_open while lead is down
+    cfg_open = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg_open: _c)
+    lead.down = True
+    claim(tmp_path, make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_pending}.txt"))
+    capsys.readouterr()
+
+    # Bring lead back up; create an uncached own claim in QUEUED, a foreign-held own claim,
+    # an already-leased own claim, and another host's file claim (ignored).
+    lead.down = False
+    make_ticket(tmp_path, folder="QUEUED", name=f"{tid_uncached}.ASUS-GEI.txt")
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_conflict}.ASUS-GEI.txt")
+    lead.tasks[f"ticket:{tid_conflict}:ticket-master"] = 4500
+    lead.leases[4500] = {"worker_id": "ticket-master@WORKSTATION-LG", "lease_id": "held-elsewhere", "fence": 3}
+    claim(tmp_path, make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_already}.txt"))
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_foreign}.WORKSTATION-LG.txt")
+    capsys.readouterr()
+
+    queue_dir = str(tmp_path / "tickets")
+
+    # Dry-run: previews via SKIPPED, zero HTTP calls, zero cache mutations
+    calls_before = len(lead.calls)
+    cache_before = _cached(tmp_path)
+    assert ticket_mover._cli(["--backfill-leases", "--host", "ASUS-GEI", "--tickets-dir", queue_dir, "--dry-run"]) == 0
+    dry_lines = capsys.readouterr().out.strip().splitlines()
+    assert len(lead.calls) == calls_before
+    assert _cached(tmp_path) == cache_before
+    assert any(line.startswith(f"{tid_pending}: SKIPPED dry-run") for line in dry_lines)
+    assert any(line.startswith(f"{tid_uncached}: SKIPPED dry-run") for line in dry_lines)
+    assert not any(tid_foreign in line for line in dry_lines)
+
+    # Real backfill: acquires pending + uncached, reports HELD-BY on 409 without mutating, skips valid
+    conflict_file = tmp_path / "tickets" / "ACTIONABLE" / f"{tid_conflict}.ASUS-GEI.txt"
+    conflict_before = conflict_file.read_bytes()
+    assert ticket_mover._cli(["--backfill-leases", "--host", "ASUS-GEI", "--tickets-dir", queue_dir]) == 0
+    lines = capsys.readouterr().out.strip().splitlines()
+    assert f"{tid_pending}: LEASED" in lines
+    assert f"{tid_uncached}: LEASED" in lines
+    assert f"{tid_conflict}: HELD-BY ticket-master@WORKSTATION-LG" in lines
+    assert any(line.startswith(f"{tid_already}: SKIPPED ") for line in lines)
+    assert not any(tid_foreign in line for line in lines)
+
+    # Verify cache & untouched conflict file
+    after = _cached(tmp_path)
+    assert bach_lease.has_lease_capability(after[tid_pending])
+    assert bach_lease.has_lease_capability(after[tid_uncached])
+    assert tid_conflict not in after
+    assert conflict_file.read_bytes() == conflict_before
+
+
+def test_backfill_leases_reports_failed_when_lead_down(tmp_path, lead, capsys):
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{TID}.ASUS-GEI.txt")
+    lead.down = True
+    rc = ticket_mover._cli([
+        "--backfill-leases", "--host", "ASUS-GEI", "--tickets-dir", str(tmp_path / "tickets")
+    ])
+    out = capsys.readouterr().out
+    assert rc == 1
+    assert f"{TID}: FAILED lead not reachable" in out
+
+
+def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
+    tid_solved_valid = "T-20261122-300000001"
+    tid_solved_invalid = "T-20261122-300000002"
+    tid_blocked_valid = "T-20261122-300000003"
+    tid_missing_invalid = "T-20261122-300000004"
+    tid_missing_valid = "T-20261122-300000005"
+    tid_active = "T-20261122-300000006"
+    tid_backfill = "T-20261122-300000007"
+
+    c_solved_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_solved_valid}.txt"))
+    c_solved_invalid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_solved_invalid}.txt"))
+    c_blocked_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_blocked_valid}.txt"))
+    c_missing_invalid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_missing_invalid}.txt"))
+    c_missing_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_missing_valid}.txt"))
+    claim(tmp_path, make_ticket(tmp_path, name=f"{tid_active}.txt"))
+
+    # Simulate moves while lead was down so capabilities remained cached
+    lead.down = True
+    ticket_mover.move_ticket(c_solved_valid, "SOLVED")
+    ticket_mover.move_ticket(c_solved_invalid, "SOLVED")
+    ticket_mover.move_ticket(c_blocked_valid, "BLOCKED")
+    c_missing_invalid.unlink()
+    c_missing_valid.unlink()
+    lead.down = False
+    capsys.readouterr()
+
+    # Expire the two *_invalid leases on the lead
+    cache_before = _cached(tmp_path)
+    del lead.leases[cache_before[tid_solved_invalid]["task_id"]]
+    del lead.leases[cache_before[tid_missing_invalid]["task_id"]]
+
+    # Add an uncached own claim in QUEUED so renew-leases also backfills it at the end
+    make_ticket(tmp_path, folder="QUEUED", name=f"{tid_backfill}.ASUS-GEI.txt")
+
+    rc = ticket_mover._cli(["--renew-leases", "--host", "ASUS-GEI", "--tickets-dir", str(tmp_path / "tickets")])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+
+    cache_after = _cached(tmp_path)
+    assert set(cache_after) == {tid_active, tid_backfill}
+    assert bach_lease.has_lease_capability(cache_after[tid_active])
+    assert bach_lease.has_lease_capability(cache_after[tid_backfill])
+
+    release_by_task = {
+        int(path.split("/")[3]): data["outcome"]
+        for _method, path, data in lead.calls
+        if path.endswith("/release")
+    }
+    assert release_by_task[cache_before[tid_solved_valid]["task_id"]] == "done"
+    assert release_by_task[cache_before[tid_blocked_valid]["task_id"]] == "blocked"
+    assert release_by_task[cache_before[tid_missing_valid]["task_id"]] == "return"
+    assert f"{tid_backfill}: LEASED" in out
+
+
+def test_fast_lane_takes_lease_and_releases_with_done(tmp_path, lead):
+    import ticket_writer
+
+    queue = verified_queue(tmp_path / "tickets")
+    make_slot(tmp_path)
+    created = Path(ticket_writer.create("Fast-Lane-Fix", "Einzeiler", tickets_dir=queue))
+    created_id = bach_lease.ticket_id_of(created.name)
+    actionable = ticket_mover.move_ticket(created, "ACTIONABLE")
+    claimed = ticket_mover.claim_current_host(actionable, claim_host="ASUS-GEI", sync_root=tmp_path)
+    ticket_note.update_ticket_note(
+        claimed,
+        status="SOLVED (seit 2026-11-22)",
+        verlauf="2026-11-22 | ticket-master@ASUS-GEI | Fast-Lane erledigt — Beleg: pytest grün",
+    )
+    solved = ticket_mover.move_ticket(claimed, "SOLVED")
+
+    assert solved.parent.name == "SOLVED"
+    assert f"ticket:{created_id}:ticket-master" in lead.tasks
+    assert lead.outcomes() == ["done"]
+    assert created_id not in _cached(tmp_path)

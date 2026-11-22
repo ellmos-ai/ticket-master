@@ -158,6 +158,14 @@ per **Dateiname** signalisiert — kein In-File-Feld nötig:
 - `tickets/*/T-*.txt` ohne Host-Suffix → unclaimed Tickets
 - `tickets/*/T-*.WORKSTATION.txt` → von WORKSTATION geclaimte Tickets
 
+### Servermodus (Leases zuerst)
+
+Mit `bach_lease.enabled = true` ist der Lease auf dem Lead der kanonische Claim; der Dateisuffix `T-….<HOST>.txt` dient nur der Anzeige:
+- **Vor jeder Arbeit mit Lease claimen** — auch bei gerade selbst angelegten Tickets und Fast-Lane-Einzeilern (`ticket_writer.py` → `ACTIONABLE` → `--claim-current-host` → `SOLVED`, holt einen Lease und gibt ihn mit Outcome `done` frei, damit der Lead die Arbeit sieht).
+- **Reiner Dateibetrieb nur als Fallback (`fail_open = true`)**, wenn der Lead nicht erreichbar ist oder das Token fehlt: `ticket_mover.py` schreibt automatisch `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <Grund>` in `VERLAUF` und markiert `pending_lease` im Cache. `409` (fremder Holder) ist **nie** ein Fallback und lehnt den Claim immer ab.
+- **Beim Boot Backfill ausführen** (holt fehlende/`pending_lease`-Leases in `ACTIONABLE` und `QUEUED` nach; läuft auch am Ende von `--renew-leases`):
+  `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
+
 ### Die Nummer ist eine 9-stellige Zufallszahl (seit 2026-08-15)
 
 **Nie selbst würfeln, nie hochzählen — immer `lib/ticket_writer.py create()`

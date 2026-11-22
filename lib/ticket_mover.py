@@ -38,11 +38,12 @@ from pathlib import Path
 
 try:  # package import
     from .ticket_writer import (
-        TICKET_FILENAME_RE, iter_lifecycle_files, queue_root_of,
+        TICKET_FILENAME_RE, _LIFECYCLE_SUBDIRS, iter_lifecycle_files, queue_root_of,
         require_ticket_in_verified_queue, require_verified_queue_root,
     )
-    from .config_paths import resolve_queue_alias
+    from .config_paths import require_tickets_dir, resolve_queue_alias, resolve_tickets_dir
     from . import bach_lease
+    from .ticket_note import update_ticket_note
     from .session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
     )
@@ -74,11 +75,12 @@ try:  # package import
     )
 except ImportError:  # direct import from lib on sys.path
     from ticket_writer import (
-        TICKET_FILENAME_RE, iter_lifecycle_files, queue_root_of,
+        TICKET_FILENAME_RE, _LIFECYCLE_SUBDIRS, iter_lifecycle_files, queue_root_of,
         require_ticket_in_verified_queue, require_verified_queue_root,
     )
-    from config_paths import resolve_queue_alias
+    from config_paths import require_tickets_dir, resolve_queue_alias, resolve_tickets_dir
     import bach_lease
+    from ticket_note import update_ticket_note
     from session_provenance import (
         SessionProvenanceError, resolve_session_provenance,
     )
@@ -116,9 +118,11 @@ __all__ = [
     "HostIdentityError",
     "NestedLifecycleDestinationError",
     "TicketCollisionError",
+    "backfill_leases",
     "claim_contract",
     "claim_contract_current_host",
     "claim_current_host",
+    "maintain_lease_cache",
     "verify_claim_host",
     "complete_contract",
     "move_ticket",
@@ -428,13 +432,23 @@ def verify_claim_host(claim_host: str, *, sync_root: Path | str) -> tuple[str, s
     return host, slot, snapshot
 
 
-def _lease_take(source: Path, host: str, dry_run: bool) -> bool:
+def _lease_take(source: Path, host: str, dry_run: bool) -> tuple[bool, str | None]:
     """Take the optional BACH task lease BEFORE a claim rename (lib/bach_lease.py).
 
-    Off by default and a no-op for `dry_run`. Raises (a RuntimeError subclass, so the CLI
-    reports `REFUSED: ...`) on 409 or when enabled and the lead is unusable.
+    Off by default and a no-op for `dry_run`. Returns `(leased, fallback_reason)`.
+    Raises (a RuntimeError subclass, so the CLI reports `REFUSED: ...`) on 409 or
+    when enabled with `fail_open = false` and the lead is unusable.
     """
-    return not dry_run and bach_lease.claim_lease(source, host=host)
+    if dry_run:
+        return False, None
+    return bach_lease.claim_lease_status(source, host=host)
+
+
+def _record_fallback_verlauf(ticket: Path, *, host: str, reason: str) -> None:
+    """Append the visible fallback note after a fail-open file-only claim."""
+    worker = bach_lease.worker_id_for_host(host)
+    line = f"{date.today().isoformat()} | {worker} | Claim ohne Lease (Fallback Dateibetrieb): {reason}"
+    update_ticket_note(ticket, verlauf=line)
 
 
 def _lease_warn(ticket_name: str, outcome: str, result_ref: str = "", *,
@@ -466,7 +480,9 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
     existing = claim_suffix(source.name)
     if existing:
         if existing.casefold() == host.casefold():
-            _lease_take(source, host, dry_run)  # idempotent: renews a lease this host already holds
+            _leased, fallback_reason = _lease_take(source, host, dry_run)  # idempotent: renews a lease this host already holds
+            if fallback_reason is not None:
+                _record_fallback_verlauf(source, host=host, reason=fallback_reason)
             return source
         raise HostIdentityError(
             f"ticket is already claimed by {existing!r}; verified live host is {host!r}"
@@ -476,13 +492,18 @@ def claim_current_host(ticket: Path | str, *, claim_host: str, sync_root: Path |
         raise HostIdentityError(f"cannot build legacy claim name: {source.name}")
     slug = f"_{match.group('slug')}" if match.group("slug") else ""
     claimed_name = f"T-{match.group('date')}-{match.group('number')}{slug}.{host}.txt"
-    leased = _lease_take(source, host, dry_run)
+    leased, fallback_reason = _lease_take(source, host, dry_run)
     try:
-        return move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
+        claimed = move_ticket(source, source.parent, new_name=claimed_name, dry_run=dry_run)
     except BaseException:
         if leased:
             _lease_warn(source.name, "return", reason_code="ticket_claim_rollback")  # the claim did not happen: hand the lease back
+        elif fallback_reason is not None:
+            bach_lease.clear_pending_lease(source.name)
         raise
+    if fallback_reason is not None:
+        _record_fallback_verlauf(claimed, host=host, reason=fallback_reason)
+    return claimed
 
 
 def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
@@ -514,13 +535,18 @@ def claim_contract_current_host(ticket: Path | str, *, claim_host: str,
         raise HostIdentityError(
             "legacy tickets must use --claim-current-host, not claim_contract()"
         )
-    leased = _lease_take(source, host, dry_run)
+    leased, fallback_reason = _lease_take(source, host, dry_run)
     try:
-        return claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
+        claimed = claim_contract(source, host=host, actor=actor, runner=runner, dry_run=dry_run)
     except BaseException:
         if leased:
             _lease_warn(source.name, "return", reason_code="ticket_claim_rollback")
+        elif fallback_reason is not None:
+            bach_lease.clear_pending_lease(source.name)
         raise
+    if fallback_reason is not None:
+        _record_fallback_verlauf(claimed, host=host, reason=fallback_reason)
+    return claimed
 
 
 def _dest_cluster_name(dest_dir: Path) -> str:
@@ -1041,6 +1067,157 @@ def release_claims(base: Path | str, *, host: str,
     return (freed, refused, held) if report_refused else freed
 
 
+def _ticket_locations_by_id(base: Path) -> dict[str, list[tuple[str, Path]]]:
+    """Map exact `T-YYYYMMDD-...` IDs to `(cluster, path)` across all lifecycle folders."""
+    locations: dict[str, list[tuple[str, Path]]] = {}
+    for sub in _LIFECYCLE_SUBDIRS:
+        directory = base / sub if sub else base
+        if not directory.is_dir():
+            continue
+        cluster = sub or "INBOX"
+        for entry in sorted(directory.iterdir()):
+            if not entry.is_file():
+                continue
+            if not TICKET_FILENAME_RE.match(entry.name):
+                try:
+                    parsed = parse_ticket_name(entry.name)
+                except ValueError:
+                    continue
+                if not parsed.is_v2:
+                    continue
+            ticket_id = bach_lease.ticket_id_of(entry.name)
+            if ticket_id:
+                locations.setdefault(ticket_id, []).append((cluster, entry))
+    return locations
+
+
+def maintain_lease_cache(tickets_dir: Path | str, *, config: dict | None = None,
+                         client: bach_lease.BachLeaseClient | None = None) -> list[tuple[str, str, str]]:
+    """Cache hygiene for `--renew-leases`: clean entries whose ticket is in SOLVED
+    or no longer exists in an active folder (`ACTIONABLE`, `QUEUED`).
+
+    Valid leases are released with the outcome matching the folder (`done` for SOLVED,
+    `blocked` for BLOCKED, `return` otherwise); invalid or `pending_lease` entries are
+    removed from the cache.
+    """
+    base = require_verified_queue_root(Path(tickets_dir))
+    cfg = bach_lease.load_config(config)
+    if not cfg["enabled"]:
+        return []
+    try:
+        state = bach_lease.load_state(cfg)
+    except bach_lease.LeaseError as exc:
+        return [("-", "error", bach_lease._safe_fallback_reason(exc, cfg))]
+    if not state:
+        return []
+    locations = _ticket_locations_by_id(base)
+    results: list[tuple[str, str, str]] = []
+    for ticket_id in sorted(state):
+        locs = locations.get(ticket_id, [])
+        if any(cluster in WORKING_SUBDIRS for cluster, _path in locs):
+            continue
+        if locs:
+            solved_loc = next(((c, p) for c, p in locs if c == "SOLVED"), None)
+            cluster, ticket_path = solved_loc or locs[0]
+            known_outcome = bach_lease.outcome_for_cluster(cluster)
+            outcome = known_outcome or "return"
+            result_ref = f"{cluster}/{ticket_path.name}"
+            reason_code = "ticket_moved" if known_outcome else "ticket_claim_released"
+            reason_detail = cluster if known_outcome else None
+        else:
+            outcome = "return"
+            result_ref = ""
+            reason_code = "ticket_claim_released"
+            reason_detail = None
+        action, message = bach_lease.clean_inactive_lease(
+            ticket_id, outcome, result_ref=result_ref,
+            reason_code=reason_code, reason_detail=reason_detail,
+            config=config, client=client,
+        )
+        if action != "absent":
+            results.append((ticket_id, action, message))
+    return results
+
+
+def backfill_leases(tickets_dir: Path | str | None = None, *, host: str,
+                    dry_run: bool = False, config: dict | None = None,
+                    client: bach_lease.BachLeaseClient | None = None,
+                    already_valid: set[str] | None = None) -> list[tuple[str, str, str]]:
+    """Acquire leases for every own claim (exact `host` suffix) in ACTIONABLE and QUEUED
+    without a valid cached lease or marked `pending_lease`.
+
+    Returns `(ticket_id, status, detail)` where `status` is one of
+    `"LEASED"`, `"HELD-BY"`, `"SKIPPED"`, or `"FAILED"`.
+    """
+    if not host or not host.strip():
+        raise ValueError("host is required for backfill_leases")
+    base = require_verified_queue_root(require_tickets_dir(tickets_dir, config=config))
+    cfg = bach_lease.load_config(config)
+    if not cfg["enabled"]:
+        return []
+    try:
+        state = bach_lease.load_state(cfg)
+    except bach_lease.LeaseError as exc:
+        return [("-", "FAILED", bach_lease._safe_fallback_reason(exc, cfg))]
+
+    results: list[tuple[str, str, str]] = []
+    seen_ids: set[str] = set()
+    validated = already_valid or set()
+
+    for folder in ("ACTIONABLE", "QUEUED"):
+        directory = base / folder
+        if not directory.is_dir():
+            continue
+        for entry in sorted(directory.iterdir()):
+            if not entry.is_file() or claim_suffix(entry.name) != host:
+                continue
+            ticket_id = bach_lease.ticket_id_of(entry.name)
+            if ticket_id is None:
+                continue
+            if ticket_id in seen_ids:
+                results.append((ticket_id, "SKIPPED", "duplicate ticket id in active folders"))
+                continue
+            seen_ids.add(ticket_id)
+
+            cached = state.get(ticket_id)
+            pending = bach_lease.is_pending_lease_entry(cached)
+            has_cap = bach_lease.has_lease_capability(cached)
+
+            if has_cap and ticket_id in validated:
+                results.append((ticket_id, "SKIPPED", "already holds valid lease"))
+                continue
+
+            if dry_run:
+                if has_cap:
+                    results.append((ticket_id, "SKIPPED", "already cached (dry-run)"))
+                elif pending:
+                    results.append((ticket_id, "SKIPPED", "dry-run (pending_lease; would acquire lease)"))
+                else:
+                    results.append((ticket_id, "SKIPPED", "dry-run (would acquire lease)"))
+                continue
+
+            try:
+                lease_client = bach_lease._client(cfg, client, host)
+                if has_cap and lease_client.renew(ticket_id):
+                    results.append((ticket_id, "SKIPPED", "already holds valid lease"))
+                    continue
+                lease_client.acquire(ticket_id, bach_lease._title_of(entry, ticket_id))
+                results.append((ticket_id, "LEASED", ""))
+            except bach_lease.LeaseConflictError as exc:
+                holder = exc.holder or str(exc)
+                results.append((ticket_id, "HELD-BY", holder))
+            except bach_lease.LeaseError as exc:
+                results.append((ticket_id, "FAILED", bach_lease._safe_fallback_reason(exc, cfg)))
+
+    return results
+
+
+def _format_backfill_line(ticket_id: str, status: str, detail: str) -> str:
+    if status == "LEASED":
+        return f"{ticket_id}: LEASED"
+    return f"{ticket_id}: {status} {detail}".rstrip()
+
+
 def _cli(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -1054,25 +1231,30 @@ def _cli(argv: list[str] | None = None) -> int:
     parser.add_argument("dest_dir", nargs="?",
                         help="Destination lifecycle folder (e.g. .../SOLVED).")
     parser.add_argument("--renew-leases", action="store_true",
-                        help=("Renew every BACH task lease this host holds (needs bach_lease.enabled "
-                              "in the config; see lib/bach_lease.py). Run it at least every 15 minutes "
-                              "while working on claimed tickets."))
+                        help=("Renew every BACH task lease this host holds, clean stale cache "
+                              "entries for solved/inactive tickets, and backfill own claims at "
+                              "the end (needs bach_lease.enabled in the config; see lib/bach_lease.py). "
+                              "Run it at least every 15 minutes while working on claimed tickets."))
+    parser.add_argument("--backfill-leases", action="store_true",
+                        help=("Acquire leases for every own claim (exact --host suffix) in "
+                              "ACTIONABLE and QUEUED without a valid cached lease or marked "
+                              "pending_lease. Requires --host; optional --tickets-dir and --dry-run."))
     parser.add_argument("--release-session", action="store_true",
                         help=("Release this host's claims at regular session end. "
                               "ACTIONABLE always; QUEUED only reported unless "
                               "--include-queued is given (T-20260815-205002196). "
                               "Requires --host."))
     parser.add_argument("--host",
-                        help="Claim suffix to release, e.g. ASUS-GEI. Exact match.")
+                        help="Host suffix (exact match) for claim/release/backfill/renew operations, e.g. WORKSTATION.")
     parser.add_argument("--tickets-dir",
-                        help="Ticket queue root (for --release-session).")
+                        help="Ticket queue root (for --release-session, --backfill-leases, --renew-leases).")
     parser.add_argument("--include-queued", action="store_true",
                         help=("Also release QUEUED claims (not just report them). "
                               "Still never releases an actively delegated ticket "
                               "(fresh DELEGIERT_AN marker)."))
     parser.add_argument("--dry-run", action="store_true",
-                        help=("Preview a single-ticket move or show what "
-                              "--release-session would free; change nothing."))
+                        help=("Preview a single-ticket move, claim, --backfill-leases, or "
+                              "--release-session; change nothing."))
     parser.add_argument("--mark-delegated", metavar="TICKET",
                         help="Write a DELEGIERT_AN marker into TICKET. Requires --agent.")
     parser.add_argument("--claim-current-host", metavar="TICKET",
@@ -1125,7 +1307,7 @@ def _cli(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.decision_readback:
-        if args.source or args.dest_dir:
+        if args.source or args.dest_dir or args.backfill_leases or args.renew_leases:
             parser.error("--decision-readback cannot be combined with a move")
         # queue_root_of makes the path absolute and knows root-level tickets;
         # Path(...).parent.parent of a relative path was '.' (T-20261107-456970984).
@@ -1155,7 +1337,9 @@ def _cli(argv: list[str] | None = None) -> int:
     if any(freigabe_ops) and (args.source or args.dest_dir or args.release_session
                               or args.claim_current_host
                               or args.claim_contract_current_host
-                              or args.mark_delegated):
+                              or args.mark_delegated
+                              or args.backfill_leases
+                              or args.renew_leases):
         parser.error("a freigabe operation cannot be combined with another operation")
 
     if args.freigabe_status:
@@ -1196,6 +1380,7 @@ def _cli(argv: list[str] | None = None) -> int:
     if args.verify_claim_host:
         if (args.claim_current_host or args.claim_contract_current_host
                 or args.mark_delegated or args.release_session
+                or args.backfill_leases or args.renew_leases
                 or args.source or args.dest_dir or args.dry_run):
             parser.error("--verify-claim-host cannot be combined with another operation")
         if not args.sync_root:
@@ -1210,18 +1395,74 @@ def _cli(argv: list[str] | None = None) -> int:
         print(f"VERIFIED CLAIM HOST: {host} (slot={slot}, snapshot={snapshot})")
         return 0
 
+    if args.backfill_leases:
+        if (args.renew_leases or args.claim_current_host or args.claim_contract_current_host
+                or args.mark_delegated or args.release_session or args.source or args.dest_dir):
+            parser.error("--backfill-leases cannot be combined with another operation")
+        if not args.host:
+            parser.error("--backfill-leases requires --host")
+        try:
+            queue_dir = require_verified_queue_root(require_tickets_dir(args.tickets_dir))
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        if not bach_lease.load_config()["enabled"]:
+            print("bach_lease is not enabled; nothing to backfill")
+            return 0
+        backfill_results = backfill_leases(
+            queue_dir, host=args.host, dry_run=args.dry_run
+        )
+        for ticket_id, status, detail in backfill_results:
+            print(_format_backfill_line(ticket_id, status, detail))
+        return 1 if any(status == "FAILED" for _, status, _ in backfill_results) else 0
+
     if args.renew_leases:
-        if (args.claim_current_host or args.claim_contract_current_host or args.mark_delegated
-                or args.release_session or args.source or args.dest_dir or args.dry_run):
+        if (args.backfill_leases or args.claim_current_host or args.claim_contract_current_host
+                or args.mark_delegated or args.release_session or args.source or args.dest_dir
+                or args.dry_run):
             parser.error("--renew-leases cannot be combined with another operation")
-        results = bach_lease.renew_leases()
+        queue_dir: Path | None = None
+        if args.tickets_dir:
+            try:
+                queue_dir = require_verified_queue_root(require_tickets_dir(args.tickets_dir))
+            except (ValueError, RuntimeError, OSError) as exc:
+                print(f"REFUSED: {exc}")
+                return 1
+        else:
+            candidate = resolve_tickets_dir()
+            if candidate is not None and candidate.is_dir():
+                with contextlib.suppress(ValueError, RuntimeError, OSError):
+                    queue_dir = require_verified_queue_root(candidate)
         if not bach_lease.load_config()["enabled"]:
             print("bach_lease is not enabled; nothing to renew")
             return 0
+        hygiene_results: list[tuple[str, str, str]] = []
+        if queue_dir is not None:
+            hygiene_results = maintain_lease_cache(queue_dir)
+            for ticket_id, action, message in hygiene_results:
+                label = "RELEASED" if action == "released" else (
+                    "REMOVED" if action == "removed" else "NOT RELEASED"
+                )
+                print(f"{label}: {ticket_id} -- {message}")
+        results = bach_lease.renew_leases()
         for ticket_id, ok, message in results:
             print(f"{'RENEWED' if ok else 'NOT RENEWED'}: {ticket_id} -- {message}")
         print(f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} lease(s) renewed")
-        return 1 if any(not ok for _, ok, _ in results) else 0
+        backfill_results = []
+        if queue_dir is not None:
+            host = (args.host or socket.gethostname()).strip()
+            if host:
+                already_valid = {tid for tid, ok, _ in results if ok}
+                backfill_results = backfill_leases(
+                    queue_dir, host=host, already_valid=already_valid
+                )
+                for ticket_id, status, detail in backfill_results:
+                    print(_format_backfill_line(ticket_id, status, detail))
+        recovered = {tid for tid, status, _ in backfill_results if status == "LEASED"}
+        failed_renew = any(not ok and tid not in recovered for tid, ok, _ in results)
+        failed_hygiene = any(action == "error" for _, action, _ in hygiene_results)
+        failed_backfill = any(status == "FAILED" for _, status, _ in backfill_results)
+        return 1 if (failed_renew or failed_hygiene or failed_backfill) else 0
 
     if args.claim_current_host:
         if (args.claim_contract_current_host or args.mark_delegated

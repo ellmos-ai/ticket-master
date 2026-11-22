@@ -713,6 +713,14 @@ Das vollständige Kategorien-Modell (Ein-/Ausgangsregeln, Autonomie-Loop, STATUS
 
 Neue IDs enthalten neunstellige Zufallszahlen, die ausschließlich über `lib/ticket_writer.py` erzeugt werden.
 
+### Servermodus (Leases zuerst)
+
+Mit `bach_lease.enabled = true` ist die Lease-Instanz (`lib/bach_lease.py`) der kanonische Claim und der Dateisuffix `T-….<HOST>.txt` dient nur der Anzeige:
+- **Vor jeder Arbeit mit Lease claimen** — auch bei gerade selbst angelegten Tickets und Fast-Lane-Einzeilern (`ticket_writer.py` → `ACTIONABLE` → `--claim-current-host` → `SOLVED`, holt einen Lease und gibt ihn mit Outcome `done` frei, damit der Lead die Arbeit sieht).
+- **Reiner Dateibetrieb nur als Fallback (`fail_open = true`)**, wenn der Lead nicht erreichbar ist oder das Token fehlt: `ticket_mover.py` ergänzt automatisch `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <Grund>` in `VERLAUF` und markiert `pending_lease` im Cache. `409` (fremder Holder) ist **nie** ein Fallback und lehnt den Claim immer ab.
+- **Beim Boot Backfill ausführen** (holt fehlende/`pending_lease`-Leases in `ACTIONABLE` und `QUEUED` nach; `--renew-leases` räumt zudem inaktive Cache-Einträge auf und führt am Ende den Backfill aus):
+  `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
+
 ---
 
 <a id="sec-13"></a>
