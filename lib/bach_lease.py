@@ -123,9 +123,17 @@ class LeaseUnavailableError(LeaseError):
     """The lead is unreachable, answered unusably, or no token/config is available."""
 
 
+def _normalize_host(host: str | None = None) -> str:
+    """Normalize a host token: strip whitespace, a trailing `.local`, and uppercase."""
+    raw = (host or socket.gethostname()).strip()
+    if raw.casefold().endswith(".local"):
+        raw = raw[:-6].strip()
+    return raw.upper()
+
+
 def worker_id_for_host(host: str | None = None) -> str:
     """Canonical worker identifier `<role>@<HOST>` for lease and fallback notes."""
-    resolved = (host or socket.gethostname()).strip().upper()
+    resolved = _normalize_host(host)
     return f"ticket-master@{resolved}"
 
 
@@ -451,7 +459,7 @@ class BachLeaseClient:
                  token_provider: Callable[[str], str | None] | None = None,
                  host: str | None = None) -> None:
         self.cfg = cfg
-        self.host = (host or socket.gethostname()).strip().upper()
+        self.host = _normalize_host(host)
         self._transport = transport or _urllib_transport
         self._token_provider = token_provider or (lambda h: _default_token(cfg, h))
         lead = str(cfg.get("lead_url") or "").rstrip("/")
@@ -587,10 +595,11 @@ def record_pending_lease(ticket_id: str, *, host: str, reason: str = "",
                          config: dict | None = None) -> bool:
     """Record a fail-open fallback claim as `pending_lease` in the local cache.
 
-    Never overwrites a live lease capability placed concurrently by another process.
+    Returns True only when `pending_lease` was newly recorded; never overwrites a
+    live lease capability or an already-pending marker.
     """
     cfg = load_config(config)
-    resolved_host = (host or socket.gethostname()).strip().upper()
+    resolved_host = _normalize_host(host)
     pending_entry: dict[str, Any] = {
         "status": "pending_lease",
         "pending_lease": True,
@@ -603,6 +612,8 @@ def record_pending_lease(ticket_id: str, *, host: str, reason: str = "",
         current = load_state(cfg)
         existing = current.get(ticket_id)
         if has_lease_capability(existing):
+            return False
+        if is_pending_lease_entry(existing):
             return False
         current[ticket_id] = pending_entry
         _write_state(cfg, current)
@@ -627,9 +638,10 @@ def claim_lease_status(ticket: Path | str, *, host: str, config: dict | None = N
                        client: BachLeaseClient | None = None) -> tuple[bool, str | None]:
     """Take the lease for a ticket about to be claimed by `host`.
 
-    Returns `(True, None)` when a lease is held, `(False, None)` when `bach_lease` is disabled,
-    and `(False, safe_reason)` when `fail_open` is true and the lead is unreachable or the token
-    is missing (recording `pending_lease` in the cache).
+    Returns `(True, None)` when a lease is held, `(False, None)` when `bach_lease` is disabled
+    or when `fail_open` skipped without newly setting `pending_lease` (already holding a cached
+    lease capability or already `pending_lease`), and `(False, safe_reason)` when `fail_open`
+    newly recorded `pending_lease` for this outage phase.
     Raises `LeaseConflictError` on 409 (never a fallback) and `LeaseUnavailableError` when
     enabled with `fail_open = false`.
     """
@@ -648,8 +660,8 @@ def claim_lease_status(ticket: Path | str, *, host: str, config: dict | None = N
         if cfg["fail_open"]:
             reason = _safe_fallback_reason(exc, cfg)
             print(f"WARNING: lease not taken (fail_open): {reason}", file=sys.stderr)
-            record_pending_lease(ticket_id, host=host, reason=reason, config=cfg)
-            return False, reason
+            recorded = record_pending_lease(ticket_id, host=host, reason=reason, config=cfg)
+            return False, (reason if recorded else None)
         raise
     return True, None
 

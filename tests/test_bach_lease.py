@@ -696,7 +696,7 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     tid_solved_valid = "T-20261122-300000001"
     tid_solved_invalid = "T-20261122-300000002"
     tid_blocked_valid = "T-20261122-300000003"
-    tid_missing_invalid = "T-20261122-300000004"
+    tid_waiting_invalid = "T-20261122-300000004"
     tid_missing_valid = "T-20261122-300000005"
     tid_active = "T-20261122-300000006"
     tid_backfill = "T-20261122-300000007"
@@ -704,7 +704,7 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     c_solved_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_solved_valid}.txt"))
     c_solved_invalid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_solved_invalid}.txt"))
     c_blocked_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_blocked_valid}.txt"))
-    c_missing_invalid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_missing_invalid}.txt"))
+    c_waiting_invalid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_waiting_invalid}.txt"))
     c_missing_valid = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_missing_valid}.txt"))
     claim(tmp_path, make_ticket(tmp_path, name=f"{tid_active}.txt"))
 
@@ -713,7 +713,7 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     ticket_mover.move_ticket(c_solved_valid, "SOLVED")
     ticket_mover.move_ticket(c_solved_invalid, "SOLVED")
     ticket_mover.move_ticket(c_blocked_valid, "BLOCKED")
-    c_missing_invalid.unlink()
+    ticket_mover.move_ticket(c_waiting_invalid, "WAITING")
     c_missing_valid.unlink()
     lead.down = False
     capsys.readouterr()
@@ -721,7 +721,7 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     # Expire the two *_invalid leases on the lead
     cache_before = _cached(tmp_path)
     del lead.leases[cache_before[tid_solved_invalid]["task_id"]]
-    del lead.leases[cache_before[tid_missing_invalid]["task_id"]]
+    del lead.leases[cache_before[tid_waiting_invalid]["task_id"]]
 
     # Add an uncached own claim in QUEUED so renew-leases also backfills it at the end
     make_ticket(tmp_path, folder="QUEUED", name=f"{tid_backfill}.ASUS-GEI.txt")
@@ -731,8 +731,9 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     assert rc == 0, out
 
     cache_after = _cached(tmp_path)
-    assert set(cache_after) == {tid_active, tid_backfill}
+    assert set(cache_after) == {tid_active, tid_missing_valid, tid_backfill}
     assert bach_lease.has_lease_capability(cache_after[tid_active])
+    assert bach_lease.has_lease_capability(cache_after[tid_missing_valid])
     assert bach_lease.has_lease_capability(cache_after[tid_backfill])
 
     release_by_task = {
@@ -742,7 +743,8 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     }
     assert release_by_task[cache_before[tid_solved_valid]["task_id"]] == "done"
     assert release_by_task[cache_before[tid_blocked_valid]["task_id"]] == "blocked"
-    assert release_by_task[cache_before[tid_missing_valid]["task_id"]] == "return"
+    assert cache_before[tid_missing_valid]["task_id"] not in release_by_task
+    assert f"UNKNOWN {tid_missing_valid} (kept)" in out
     assert f"{tid_backfill}: LEASED" in out
 
 
@@ -766,3 +768,254 @@ def test_fast_lane_takes_lease_and_releases_with_done(tmp_path, lead):
     assert f"ticket:{created_id}:ticket-master" in lead.tasks
     assert lead.outcomes() == ["done"]
     assert created_id not in _cached(tmp_path)
+
+
+# --- follow-ups of the review of #68 (T-20261122-659513039) -------------------------------
+
+
+@pytest.mark.parametrize(
+    ("kind", "token_env_name", "token_env_val", "raw_exc", "forbidden", "expected_marker"),
+    [
+        (
+            "bearer",
+            "TICKET_MASTER_BACH_TOKEN",
+            SECRET,
+            "proxy rejected header Bearer keyring-only-bearer-98765",
+            "keyring-only-bearer-98765",
+            "Bearer [REDACTED]",
+        ),
+        (
+            "url",
+            "TICKET_MASTER_BACH_TOKEN",
+            SECRET,
+            "connect timeout at https://private-lead.internal:8443/v1/secret-path",
+            "private-lead.internal",
+            "[REDACTED-URL]",
+        ),
+        (
+            "token_env",
+            "CUSTOM_TM_BACH_SECRET_ENV",
+            "raw-custom-env-secret-4242",
+            "auth digest failed for raw-custom-env-secret-4242 on socket",
+            "raw-custom-env-secret-4242",
+            "[REDACTED]",
+        ),
+    ],
+)
+def test_fallback_note_redacts_bearer_url_and_token_env_independently(
+    tmp_path, lead, monkeypatch, capsys, kind, token_env_name, token_env_val, raw_exc, forbidden, expected_marker
+):
+    cfg = dict(bach_lease.load_config(), fail_open=True, token_env=token_env_name)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    monkeypatch.setenv(token_env_name, token_env_val)
+
+    def failing_transport(*_a, **_k):
+        raise bach_lease.LeaseUnavailableError(raw_exc)
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", failing_transport)
+    tid = f"T-20261122-40000000{('bearer', 'url', 'token_env').index(kind) + 1}"
+    ticket = make_ticket(tmp_path, name=f"{tid}.txt")
+    ticket.write_text(
+        f"ID:            {tid}\n"
+        "TITEL:         Redaktionsbeweis\n"
+        "STATUS:        ACTIONABLE\n\n"
+        "VERLAUF / LOG\n"
+        "--------------------------------------------------------------\n",
+        encoding="utf-8",
+    )
+    claimed = claim(tmp_path, ticket)
+    out = capsys.readouterr()
+    text = claimed.read_text(encoding="utf-8")
+    assert expected_marker in text
+    assert forbidden not in text
+    assert forbidden not in out.out + out.err
+    assert forbidden not in json.dumps(_cached(tmp_path))
+
+
+def test_reclaim_during_outage_preserves_real_cached_lease_capability(tmp_path, lead, monkeypatch, capsys):
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+
+    ticket = make_ticket(tmp_path)
+    claimed = claim(tmp_path, ticket)
+    before_entry = dict(_cached(tmp_path)[TID])
+    assert bach_lease.has_lease_capability(before_entry)
+
+    # Outage during re-claim of an already-leased ticket must keep the real capability
+    # and must NOT write a false fallback VERLAUF note.
+    lead.down = True
+    reclaimed = claim(tmp_path, claimed)
+    capsys.readouterr()
+    assert reclaimed == claimed
+    assert _cached(tmp_path)[TID] == before_entry
+    assert bach_lease.has_lease_capability(_cached(tmp_path)[TID])
+    assert not bach_lease.is_pending_lease_entry(_cached(tmp_path)[TID])
+    assert "Claim ohne Lease (Fallback Dateibetrieb):" not in reclaimed.read_text(encoding="utf-8")
+    assert bach_lease.record_pending_lease(TID, host="ASUS-GEI", reason="manual") is False
+    assert _cached(tmp_path)[TID] == before_entry
+
+
+def test_fallback_note_written_only_once_per_outage_phase(tmp_path, lead, monkeypatch, capsys):
+    cfg = dict(bach_lease.load_config(), fail_open=True)
+    monkeypatch.setattr(bach_lease, "load_config", lambda config=None, _c=cfg: _c)
+    lead.down = True
+
+    ticket = make_ticket(tmp_path)
+    claimed = claim(tmp_path, ticket)
+    capsys.readouterr()
+    marker = "Claim ohne Lease (Fallback Dateibetrieb):"
+    assert claimed.read_text(encoding="utf-8").count(marker) == 1
+
+    # Re-claiming while still pending in the same outage phase must not add another note.
+    claim(tmp_path, claimed)
+    claim(tmp_path, claimed)
+    capsys.readouterr()
+    assert claimed.read_text(encoding="utf-8").count(marker) == 1
+
+    # Releasing clears pending_lease; a subsequent outage claim starts a new phase and logs once.
+    freed = ticket_mover.release_claim(claimed)
+    assert TID not in _cached(tmp_path)
+    claimed_phase2 = claim(tmp_path, freed)
+    claim(tmp_path, claimed_phase2)
+    capsys.readouterr()
+    assert claimed_phase2.read_text(encoding="utf-8").count(marker) == 2
+
+
+def test_maintain_lease_cache_releases_only_inactive_and_keeps_unknown_and_inbox(tmp_path, lead, capsys):
+    tids = {
+        "SOLVED": "T-20261122-500000001",
+        "BLOCKED": "T-20261122-500000002",
+        "WAITING": "T-20261122-500000003",
+        "USER": "T-20261122-500000004",
+        "PARKED": "T-20261122-500000005",
+        "INBOX": "T-20261122-500000006",
+        "MISSING": "T-20261122-500000007",
+    }
+    claimed = {
+        key: claim(tmp_path, make_ticket(tmp_path, name=f"{tid}.txt"))
+        for key, tid in tids.items()
+    }
+    decisions_index = tmp_path / "decisions.index.json"
+    decisions_index.write_text(json.dumps({"entries": []}), encoding="utf-8")
+
+    lead.down = True
+    for folder in ("SOLVED", "BLOCKED", "WAITING", "PARKED", "INBOX"):
+        ticket_mover.move_ticket(claimed[folder], folder)
+    ticket_mover.move_ticket(claimed["USER"], "USER", decisions_index=decisions_index)
+    claimed["MISSING"].unlink()
+    lead.down = False
+    capsys.readouterr()
+
+    before = _cached(tmp_path)
+    hygiene = ticket_mover.maintain_lease_cache(tmp_path / "tickets")
+    assert (tids["MISSING"], "unknown", f"UNKNOWN {tids['MISSING']} (kept)") in hygiene
+
+    after = _cached(tmp_path)
+    assert set(after) == {tids["INBOX"], tids["MISSING"]}
+    assert after[tids["MISSING"]] == before[tids["MISSING"]]
+    assert after[tids["INBOX"]] == before[tids["INBOX"]]
+
+    release_by_task = {
+        int(path.split("/")[3]): data["outcome"]
+        for _method, path, data in lead.calls
+        if path.endswith("/release")
+    }
+    assert release_by_task == {
+        before[tids["SOLVED"]]["task_id"]: "done",
+        before[tids["BLOCKED"]]["task_id"]: "blocked",
+        before[tids["WAITING"]]["task_id"]: "return",
+        before[tids["USER"]]["task_id"]: "return",
+        before[tids["PARKED"]]["task_id"]: "return",
+    }
+
+
+def test_maintain_lease_cache_aborts_when_queue_missing_or_lacks_lifecycle_folders(tmp_path, lead, capsys):
+    claim(tmp_path, make_ticket(tmp_path))
+    before_cache = _cached(tmp_path)
+    calls_before = len(lead.calls)
+
+    # Case 1: queue directory does not exist at all
+    missing_dir = tmp_path / "missing-tickets-dir"
+    res_missing = ticket_mover.maintain_lease_cache(missing_dir)
+    assert len(res_missing) == 1 and res_missing[0][1] == "aborted"
+    assert "does not exist" in res_missing[0][2]
+    assert len(lead.calls) == calls_before
+    assert _cached(tmp_path) == before_cache
+
+    rc_missing = ticket_mover._cli(["--renew-leases", "--tickets-dir", str(missing_dir)])
+    out_missing = capsys.readouterr().out
+    assert rc_missing == 1
+    assert "HYGIENE ABORTED" in out_missing and "does not exist" in out_missing
+    assert not any(c[1].endswith("/release") for c in lead.calls)
+    assert TID in _cached(tmp_path)
+
+    # Case 2: queue directory exists (even with queue marker) without any lifecycle folders
+    bare_queue = verified_queue(tmp_path / "bare-queue")
+    calls_mid = len(lead.calls)
+    before_mid = _cached(tmp_path)
+    res_bare = ticket_mover.maintain_lease_cache(bare_queue)
+    assert len(res_bare) == 1 and res_bare[0][1] == "aborted"
+    assert "lifecycle" in res_bare[0][2]
+    assert len(lead.calls) == calls_mid
+    assert _cached(tmp_path) == before_mid
+
+    rc_bare = ticket_mover._cli(["--renew-leases", "--tickets-dir", str(bare_queue)])
+    out_bare = capsys.readouterr().out
+    assert rc_bare == 1
+    assert "HYGIENE ABORTED" in out_bare and "lifecycle" in out_bare
+    assert not any(c[1].endswith("/release") for c in lead.calls)
+    assert TID in _cached(tmp_path)
+
+
+def test_backfill_and_renew_host_case_insensitive_strip_local_and_resolve_live_host(
+    tmp_path, lead, monkeypatch, capsys
+):
+    make_slot(tmp_path)
+    tid_upper = "T-20261122-600000001"
+    tid_lower = "T-20261122-600000002"
+    tid_renew = "T-20261122-600000003"
+    tid_foreign = "T-20261122-600000004"
+
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_upper}.ASUS-GEI.txt")
+    make_ticket(tmp_path, folder="QUEUED", name=f"{tid_lower}.asus-gei.txt")
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_foreign}.WORKSTATION-LG.txt")
+    queue_dir = str(tmp_path / "tickets")
+
+    # 1) Explicit --host with lowercase + trailing .local matches both .ASUS-GEI and .asus-gei
+    rc = ticket_mover._cli([
+        "--backfill-leases", "--host", "asus-gei.local", "--tickets-dir", queue_dir
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    assert f"{tid_upper}: LEASED" in out
+    assert f"{tid_lower}: LEASED" in out
+    assert tid_foreign not in out
+    assert _cached(tmp_path)[tid_upper]["worker_id"] == "ticket-master@ASUS-GEI"
+    assert _cached(tmp_path)[tid_lower]["worker_id"] == "ticket-master@ASUS-GEI"
+
+    # 2) Omitted --host in --backfill-leases and --renew-leases uses resolve_live_host
+    #    (strips .local from gethostname() and verifies against self-slot snapshot).
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "asus-gei.local")
+    tid_auto = "T-20261122-600000005"
+    make_ticket(tmp_path, folder="ACTIONABLE", name=f"{tid_auto}.ASUS-GEI.txt")
+    rc_auto = ticket_mover._cli(["--backfill-leases", "--tickets-dir", queue_dir])
+    out_auto = capsys.readouterr().out
+    assert rc_auto == 0, out_auto
+    assert f"{tid_auto}: LEASED" in out_auto
+
+    make_ticket(tmp_path, folder="QUEUED", name=f"{tid_renew}.asus-gei.txt")
+    rc_renew = ticket_mover._cli(["--renew-leases", "--tickets-dir", queue_dir])
+    out_renew = capsys.readouterr().out
+    assert rc_renew == 0, out_renew
+    assert f"{tid_renew}: LEASED" in out_renew
+
+    # 3) Proof it uses resolve_live_host instead of raw socket.gethostname():
+    #    when gethostname() disagrees with the self-slot snapshot, omitted --host fails closed.
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG.local")
+    calls_before = len(lead.calls)
+    rc_mismatch = ticket_mover._cli(["--backfill-leases", "--tickets-dir", queue_dir])
+    out_mismatch = capsys.readouterr().out
+    assert rc_mismatch == 1
+    assert "REFUSED:" in out_mismatch
+    assert len(lead.calls) == calls_before
+    assert tid_foreign not in _cached(tmp_path)
