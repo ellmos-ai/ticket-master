@@ -393,10 +393,13 @@ def _normalize_host_token(raw: str) -> str:
     return host
 
 
+SYNC_ROOT_ENV = "TICKET_MASTER_SYNC_ROOT"
+
+
 def _discover_sync_root(queue_dir: Path | None = None, *, config: dict | None = None) -> Path | None:
     """Locate `.SYNC` root from env/config or queue ancestors when `--sync-root` is omitted."""
     cfg = tm_config() if config is None else config
-    env_sync = os.environ.get("TICKET_MASTER_SYNC_ROOT")
+    env_sync = os.environ.get(SYNC_ROOT_ENV)
     cfg_sync = cfg.get("sync_root") if isinstance(cfg, dict) else None
     for raw in (env_sync, cfg_sync):
         candidate = resolve_config_path(raw) if raw else None
@@ -440,9 +443,14 @@ def _resolve_lease_cli_host(
     if resolved_sync is None:
         raise HostIdentityError(
             "cannot resolve live host without --host or a verifiable .SYNC root "
-            "(pass --sync-root or --host)"
+            f"(pass --host, --sync-root, or set {SYNC_ROOT_ENV})"
         )
-    host, _slot, _snapshot = resolve_live_host(resolved_sync)
+    try:
+        host, _slot, _snapshot = resolve_live_host(resolved_sync)
+    except HostIdentityError as exc:
+        raise HostIdentityError(
+            f"{exc} (pass --host, --sync-root, or set {SYNC_ROOT_ENV})"
+        ) from exc
     return host
 
 
@@ -1177,9 +1185,11 @@ def maintain_lease_cache(tickets_dir: Path | str, *, host: str | None = None,
 
     Releases an own cached lease only when the ticket is positively found in an inactive
     folder (`SOLVED`, `BLOCKED`, `WAITING`, `USER`, `PARKED`) of the resolved queue.
-    If the ticket is not found anywhere, the cache entry is kept and reported as
-    `"UNKNOWN <ticket> (kept)"`. If the queue directory does not exist or has none of
-    the expected lifecycle folders, hygiene aborts with a clear message and releases nothing.
+    If the ticket is not found anywhere or sits in `INBOX`, the cache entry is kept
+    without renewal and reported as `"UNKNOWN <ticket> (kept, not renewed)"` or
+    `"INBOX <ticket> (kept, not renewed)"`. If the queue directory does not exist or
+    has none of the expected lifecycle folders, hygiene aborts with a clear message
+    and releases nothing.
     """
     cfg = bach_lease.load_config(config)
     if not cfg["enabled"]:
@@ -1231,12 +1241,16 @@ def maintain_lease_cache(tickets_dir: Path | str, *, host: str | None = None,
             continue
         locs = locations.get(ticket_id, [])
         if not locs:
-            results.append((ticket_id, "unknown", f"UNKNOWN {ticket_id} (kept)"))
+            results.append((ticket_id, "unknown", f"UNKNOWN {ticket_id} (kept, not renewed)"))
             continue
         if any(cluster in WORKING_SUBDIRS for cluster, _path in locs):
             continue
         inactive = [(c, p) for c, p in locs if c in HYGIENE_INACTIVE_SUBDIRS]
         if not inactive:
+            if any(cluster == "INBOX" for cluster, _path in locs):
+                results.append((ticket_id, "inbox", f"INBOX {ticket_id} (kept, not renewed)"))
+            else:
+                results.append((ticket_id, "unknown", f"UNKNOWN {ticket_id} (kept, not renewed)"))
             continue
         solved_loc = next(((c, p) for c, p in inactive if c == "SOLVED"), None)
         cluster, ticket_path = solved_loc or inactive[0]
@@ -1554,15 +1568,22 @@ def _cli(argv: list[str] | None = None) -> int:
                 return 1
         else:
             raw_queue_dir = resolve_tickets_dir()
+        try:
+            host = _resolve_lease_cli_host(
+                args.host, queue_dir=raw_queue_dir, sync_root=args.sync_root
+            )
+        except (HostIdentityError, ValueError, RuntimeError, OSError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
         if not bach_lease.load_config()["enabled"]:
             print("bach_lease is not enabled; nothing to renew")
             return 0
         hygiene_results: list[tuple[str, str, str]] = []
         hygiene_aborted = False
         if raw_queue_dir is not None:
-            hygiene_results = maintain_lease_cache(raw_queue_dir, host=args.host)
+            hygiene_results = maintain_lease_cache(raw_queue_dir, host=host)
             for ticket_id, action, message in hygiene_results:
-                if action == "unknown":
+                if action in ("unknown", "inbox"):
                     print(message)
                 elif action == "aborted":
                     hygiene_aborted = True
@@ -1572,33 +1593,34 @@ def _cli(argv: list[str] | None = None) -> int:
                         "REMOVED" if action == "removed" else "NOT RELEASED"
                     )
                     print(f"{label}: {ticket_id} -- {message}")
-        results = bach_lease.renew_leases()
+        if hygiene_aborted:
+            return 1
+        skip_renew = {
+            tid for tid, action, _ in hygiene_results
+            if action in ("unknown", "inbox", "error") and tid != "-"
+        }
+        results = bach_lease.renew_leases(host=host, skip=skip_renew)
         for ticket_id, ok, message in results:
             print(f"{'RENEWED' if ok else 'NOT RENEWED'}: {ticket_id} -- {message}")
         print(f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} lease(s) renewed")
         backfill_results = []
-        host_failed = False
-        if raw_queue_dir is not None and not hygiene_aborted:
+        if raw_queue_dir is not None:
             try:
                 queue_dir = require_verified_queue_root(raw_queue_dir)
-                host = _resolve_lease_cli_host(
-                    args.host, queue_dir=queue_dir, sync_root=args.sync_root
-                )
-            except (HostIdentityError, ValueError, RuntimeError, OSError) as exc:
+            except (ValueError, RuntimeError, OSError) as exc:
                 print(f"REFUSED: {exc}")
-                host_failed = True
-            else:
-                already_valid = {tid for tid, ok, _ in results if ok}
-                backfill_results = backfill_leases(
-                    queue_dir, host=host, already_valid=already_valid
-                )
-                for ticket_id, status, detail in backfill_results:
-                    print(_format_backfill_line(ticket_id, status, detail))
+                return 1
+            already_valid = {tid for tid, ok, _ in results if ok}
+            backfill_results = backfill_leases(
+                queue_dir, host=host, already_valid=already_valid
+            )
+            for ticket_id, status, detail in backfill_results:
+                print(_format_backfill_line(ticket_id, status, detail))
         recovered = {tid for tid, status, _ in backfill_results if status == "LEASED"}
         failed_renew = any(not ok and tid not in recovered for tid, ok, _ in results)
         failed_hygiene = any(action in ("error", "aborted") for _, action, _ in hygiene_results)
         failed_backfill = any(status == "FAILED" for _, status, _ in backfill_results)
-        return 1 if (failed_renew or failed_hygiene or failed_backfill or host_failed) else 0
+        return 1 if (failed_renew or failed_hygiene or failed_backfill) else 0
 
     if args.claim_current_host:
         if (args.claim_contract_current_host or args.mark_delegated

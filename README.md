@@ -742,6 +742,7 @@ With `bach_lease.enabled = true`, the lease authority (`lib/bach_lease.py`) is t
 - **Pure file mode only as fallback (`fail_open = true`)** when the lead is unreachable or the token is missing: `ticket_mover.py` automatically appends `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <reason>` to `VERLAUF` and marks `pending_lease` in the cache. `409` (foreign holder) is **never** a fallback and always refuses the claim.
 - **Run backfill at boot** (acquires missing/`pending_lease` leases in `ACTIONABLE` and `QUEUED`; `--renew-leases` also cleans inactive cache entries and runs backfill at the end):
   `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
+  Without `--host`, `--renew-leases` and `--backfill-leases` verify the live host via a discoverable `.SYNC` root (`--sync-root` or `TICKET_MASTER_SYNC_ROOT`) before any lease action and exit `1` without touching anything if it cannot be resolved.
 
 ---
 

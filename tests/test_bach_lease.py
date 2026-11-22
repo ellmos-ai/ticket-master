@@ -311,7 +311,7 @@ def test_corrupt_cache_entry_is_not_used_in_a_url(tmp_path, lead, monkeypatch):
 
 
 @pytest.mark.parametrize("url", ["http://127.0.0.1:8000", "http://localhost:8000", "http://[::1]:8000",
-                                 "http://100.64.0.1:8000", "http://100.119.69.90:8000",
+                                 "http://100.64.0.1:8000", "http://100.100.100.100:8000",
                                  "http://100.127.255.254", "https://lead.example.org"])
 def test_no_warning_for_loopback_overlay_or_https(url):
     assert bach_lease._plaintext_lead_warning(url) is None
@@ -744,7 +744,7 @@ def test_renew_leases_cache_hygiene_and_backfill(tmp_path, lead, capsys):
     assert release_by_task[cache_before[tid_solved_valid]["task_id"]] == "done"
     assert release_by_task[cache_before[tid_blocked_valid]["task_id"]] == "blocked"
     assert cache_before[tid_missing_valid]["task_id"] not in release_by_task
-    assert f"UNKNOWN {tid_missing_valid} (kept)" in out
+    assert f"UNKNOWN {tid_missing_valid} (kept, not renewed)" in out
     assert f"{tid_backfill}: LEASED" in out
 
 
@@ -908,7 +908,8 @@ def test_maintain_lease_cache_releases_only_inactive_and_keeps_unknown_and_inbox
 
     before = _cached(tmp_path)
     hygiene = ticket_mover.maintain_lease_cache(tmp_path / "tickets")
-    assert (tids["MISSING"], "unknown", f"UNKNOWN {tids['MISSING']} (kept)") in hygiene
+    assert (tids["MISSING"], "unknown", f"UNKNOWN {tids['MISSING']} (kept, not renewed)") in hygiene
+    assert (tids["INBOX"], "inbox", f"INBOX {tids['INBOX']} (kept, not renewed)") in hygiene
 
     after = _cached(tmp_path)
     assert set(after) == {tids["INBOX"], tids["MISSING"]}
@@ -1019,3 +1020,140 @@ def test_backfill_and_renew_host_case_insensitive_strip_local_and_resolve_live_h
     assert "REFUSED:" in out_mismatch
     assert len(lead.calls) == calls_before
     assert tid_foreign not in _cached(tmp_path)
+
+
+# --- follow-ups of the review of #69 (T-20261122-659513039) -------------------------------
+
+
+def test_renew_leases_does_not_renew_unknown_or_inbox_and_still_renews_active(
+    tmp_path, lead, capsys
+):
+    tid_unknown = "T-20261122-700000001"
+    tid_inbox = "T-20261122-700000002"
+    tid_actionable = "T-20261122-700000003"
+    tid_queued = "T-20261122-700000004"
+
+    c_unknown = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_unknown}.txt"))
+    c_inbox = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_inbox}.txt"))
+    claim(tmp_path, make_ticket(tmp_path, name=f"{tid_actionable}.txt"))
+    c_queued = claim(tmp_path, make_ticket(tmp_path, name=f"{tid_queued}.txt"))
+    ticket_mover.move_ticket(c_queued, "QUEUED")
+
+    # Simulate outage during move to INBOX and missing file so capabilities stay cached
+    lead.down = True
+    inbox_ticket = ticket_mover.move_ticket(c_inbox, "INBOX")
+    c_unknown.unlink()
+    lead.down = False
+    capsys.readouterr()
+
+    cache_before = _cached(tmp_path)
+    fences_before = {
+        tid: lead.leases[cache_before[tid]["task_id"]]["fence"]
+        for tid in (tid_unknown, tid_inbox, tid_actionable, tid_queued)
+    }
+    calls_before = len(lead.calls)
+
+    rc = ticket_mover._cli([
+        "--renew-leases", "--host", "ASUS-GEI", "--tickets-dir", str(tmp_path / "tickets")
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+
+    new_calls = lead.calls[calls_before:]
+    renewed_task_ids = [
+        int(path.split("/")[3]) for _m, path, _d in new_calls if path.endswith("/lease/renew")
+    ]
+    released_task_ids = [
+        int(path.split("/")[3]) for _m, path, _d in new_calls if path.endswith("/release")
+    ]
+
+    # Negative control: fails if UNKNOWN or INBOX leases are renewed (or prematurely released)
+    assert cache_before[tid_unknown]["task_id"] not in renewed_task_ids
+    assert cache_before[tid_inbox]["task_id"] not in renewed_task_ids
+    assert released_task_ids == []
+    assert lead.leases[cache_before[tid_unknown]["task_id"]]["fence"] == fences_before[tid_unknown]
+    assert lead.leases[cache_before[tid_inbox]["task_id"]]["fence"] == fences_before[tid_inbox]
+    assert f"UNKNOWN {tid_unknown} (kept, not renewed)" in out
+    assert f"INBOX {tid_inbox} (kept, not renewed)" in out
+
+    # Positive control: fails if ACTIONABLE or QUEUED leases stop being renewed
+    assert set(renewed_task_ids) == {
+        cache_before[tid_actionable]["task_id"],
+        cache_before[tid_queued]["task_id"],
+    }
+    assert lead.leases[cache_before[tid_actionable]["task_id"]]["fence"] == fences_before[tid_actionable] + 1
+    assert lead.leases[cache_before[tid_queued]["task_id"]]["fence"] == fences_before[tid_queued] + 1
+    assert f"RENEWED: {tid_actionable} -- renewed" in out
+    assert f"RENEWED: {tid_queued} -- renewed" in out
+    assert "2/2 lease(s) renewed" in out
+
+    # Cache entries for UNKNOWN and INBOX stay unchanged until invalidated on a later inactive pass
+    cache_after = _cached(tmp_path)
+    assert cache_after[tid_unknown] == cache_before[tid_unknown]
+    assert cache_after[tid_inbox] == cache_before[tid_inbox]
+
+    # Once TTL expires them on the lead, another host can acquire without 409, and a later inactive
+    # move removes the expired capability from this host's cache.
+    del lead.leases[cache_before[tid_unknown]["task_id"]]
+    del lead.leases[cache_before[tid_inbox]["task_id"]]
+    lead.down = True
+    ticket_mover.move_ticket(inbox_ticket, "SOLVED")
+    lead.down = False
+    capsys.readouterr()
+    rc2 = ticket_mover._cli([
+        "--renew-leases", "--host", "ASUS-GEI", "--tickets-dir", str(tmp_path / "tickets")
+    ])
+    out2 = capsys.readouterr().out
+    assert rc2 == 0, out2
+    assert f"REMOVED: {tid_inbox}" in out2
+    assert tid_inbox not in _cached(tmp_path)
+    assert tid_unknown in _cached(tmp_path)
+
+
+def test_renew_leases_resolves_host_before_any_lease_action(tmp_path, lead, monkeypatch, capsys):
+    # Separate sync_slot from isolated_queue so queue ancestors hold no .SYNC root
+    sync_slot = tmp_path / "sync_slot"
+    make_slot(sync_slot)
+    isolated_root = tmp_path / "isolated"
+    queue_dir = verified_queue(isolated_root / "tickets")
+    monkeypatch.setenv("TICKET_MASTER_TICKETS_DIR", str(queue_dir))
+    monkeypatch.delenv("TICKET_MASTER_SYNC_ROOT", raising=False)
+    monkeypatch.setattr(ticket_mover, "tm_config", lambda *_a, **_k: {})
+
+    active_ticket = make_ticket(isolated_root, folder="ACTIONABLE", name=f"{TID}.txt")
+    ticket_mover.claim_current_host(active_ticket, claim_host="ASUS-GEI", sync_root=sync_slot)
+    tid_solved = "T-20261122-800000001"
+    solved_ticket = make_ticket(isolated_root, folder="ACTIONABLE", name=f"{tid_solved}.txt")
+    claimed_solved = ticket_mover.claim_current_host(
+        solved_ticket, claim_host="ASUS-GEI", sync_root=sync_slot
+    )
+    lead.down = True
+    ticket_mover.move_ticket(claimed_solved, "SOLVED")
+    lead.down = False
+    capsys.readouterr()
+
+    cache_before = _cached(tmp_path)
+    calls_before = list(lead.calls)
+
+    def must_not_touch_http(*_a, **_k):
+        raise AssertionError("HTTP transport called before host resolution")
+
+    monkeypatch.setattr(bach_lease, "_urllib_transport", must_not_touch_http)
+    rc = ticket_mover._cli(["--renew-leases", "--tickets-dir", str(queue_dir)])
+    out = capsys.readouterr().out
+
+    assert rc == 1
+    assert "REFUSED:" in out
+    assert "--host" in out
+    assert "TICKET_MASTER_SYNC_ROOT" in out
+    assert lead.calls == calls_before
+    assert _cached(tmp_path) == cache_before
+
+    # Providing TICKET_MASTER_SYNC_ROOT resolves the host and lets --renew-leases succeed
+    monkeypatch.setattr(bach_lease, "_urllib_transport", lead)
+    monkeypatch.setenv("TICKET_MASTER_SYNC_ROOT", str(sync_slot))
+    rc_ok = ticket_mover._cli(["--renew-leases", "--tickets-dir", str(queue_dir)])
+    out_ok = capsys.readouterr().out
+    assert rc_ok == 0, out_ok
+    assert f"RELEASED: {tid_solved}" in out_ok
+    assert f"RENEWED: {TID} -- renewed" in out_ok

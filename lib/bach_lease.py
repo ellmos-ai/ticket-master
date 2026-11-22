@@ -767,23 +767,27 @@ def clean_inactive_lease(ticket_id: str, outcome: str, *, result_ref: str = "",
 
 
 def renew_leases(*, config: dict | None = None, client: BachLeaseClient | None = None,
-                 only: str | None = None) -> list[tuple[str, bool, str]]:
-    """Renew every cached lease capability (or only `only`). Returns (ticket_id, ok, message).
+                 only: str | None = None,
+                 skip: set[str] | frozenset[str] | None = None,
+                 host: str | None = None) -> list[tuple[str, bool, str]]:
+    """Renew every cached lease capability (or only `only`), excluding `skip`.
+    Returns (ticket_id, ok, message).
 
     `pending_lease` markers have no remote lease yet and are skipped so backfill can acquire them.
     """
     cfg = load_config(config)
     if not cfg["enabled"]:
         return []
+    skipped = skip or ()
     results: list[tuple[str, bool, str]] = []
     try:
         state = load_state(cfg)
         ids = ([only] if only in state else []) if only else sorted(state)
         for ticket_id in ids:
-            if is_pending_lease_entry(state.get(ticket_id)):
+            if ticket_id in skipped or is_pending_lease_entry(state.get(ticket_id)):
                 continue
             try:
-                ok = _client(cfg, client, None).renew(ticket_id)
+                ok = _client(cfg, client, host).renew(ticket_id)
                 results.append((ticket_id, ok, "renewed" if ok else "not renewed (no cache entry or lead refused)"))
             except LeaseError as exc:
                 results.append((ticket_id, False, str(exc)))
