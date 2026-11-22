@@ -1164,3 +1164,149 @@ def test_command_output_requires_complete_scalar_tokens(evidence):
     line = (f"{date.today()} | reviewer@host | Finding {finding_id} "
             f"location=lib/probe.py value=clear — {evidence}")
     assert not auditor_bridge._has_current_readback(finding_id, line)
+
+
+def _write_lifecycle_ticket(tickets_dir: Path, folder: str, name: str, body: str) -> Path:
+    target = tickets_dir / folder / name
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(body, encoding="utf-8")
+    return target
+
+
+def test_single_pass_index_matches_single_queries_and_scans_lifecycle_once(tmp_path, monkeypatch):
+    """T-20261122-376591702: O(F + T) pre-indexing must match per-finding lookups
+    100% across lifecycle folders while walking iter_lifecycle_files at most once."""
+    findings_dir = tmp_path / "findings"
+    tickets_dir = verified_queue(tmp_path / "tickets")
+    base_dir = tmp_path / "project"
+    base_dir.mkdir()
+    (base_dir / "present.py").write_text("ok\n", encoding="utf-8")
+
+    fid_current = current_finding_id("01-current")
+    fid_needs_rb = current_finding_id("02-needs-rb")
+    fid_missing_loc = current_finding_id("03-missing-loc")
+    fid_multi_mixed = current_finding_id("04-multi-mixed")
+    fid_fresh_a = current_finding_id("05-fresh-a")
+    fid_fresh_b = current_finding_id("06-fresh-b")
+    all_ids = [
+        fid_current,
+        fid_needs_rb,
+        fid_missing_loc,
+        fid_multi_mixed,
+        fid_fresh_a,
+        fid_fresh_b,
+    ]
+    for fid in all_ids:
+        make_finding(
+            findings_dir,
+            fid,
+            f"Title for {fid}",
+            body=f"Cross-references {fid_fresh_b} in prose without a Finding header.",
+        )
+
+    # Populate tickets across multiple lifecycle directories, including CRLF,
+    # repeated Finding lines in one ticket, shared multi-finding tickets, and noise.
+    _write_lifecycle_ticket(
+        tickets_dir,
+        "SOLVED",
+        "T-20261025-100000001.HOST-A.txt",
+        f"Finding:   {fid_current}  \r\n"
+        f"Finding: {fid_current}\n"
+        f"{readback_line(fid_current)}\n",
+    )
+    t_needs = _write_lifecycle_ticket(
+        tickets_dir,
+        "BLOCKED",
+        "T-20261025-100000002.txt",
+        f"Finding: {fid_needs_rb}\n2026-10-25 | reviewer@ASUS-GEI | Status: open — T-20261025-100000002.txt\n",
+    )
+    t_missing = _write_lifecycle_ticket(
+        tickets_dir,
+        "WAITING",
+        "T-20261025-100000003.txt",
+        f"Finding: {fid_missing_loc}\n"
+        f"{date.today().isoformat()} | reviewer@localhost | Finding {fid_missing_loc} "
+        "location=vanished.py value=clear — pytest tests/test_probe.py -q: 1 passed\n",
+    )
+    _write_lifecycle_ticket(
+        tickets_dir,
+        "ACTIONABLE",
+        "T-20261025-100000004.txt",
+        f"Finding: {fid_multi_mixed}\nStatus note without current receipt.\n",
+    )
+    _write_lifecycle_ticket(
+        tickets_dir,
+        "QUEUED",
+        "T-20261025-100000005.txt",
+        f"Finding:\t{fid_multi_mixed}\n"
+        f"{date.today().isoformat()} | reviewer@localhost | Finding {fid_multi_mixed} "
+        "location=present.py value=clear — pytest tests/test_probe.py -q: 1 passed\n",
+    )
+    _write_lifecycle_ticket(
+        tickets_dir,
+        "PARKED",
+        "T-20261025-100000006.txt",
+        f"Unrelated ticket mentioning {fid_fresh_a} and Finding: {fid_fresh_a}-other\n",
+    )
+
+    # (a) Reference equality: prebuilt index vs unindexed single-finding queries
+    built_index = auditor_bridge._build_finding_ticket_index(tickets_dir)
+    for fid in all_ids:
+        single_links = auditor_bridge._finding_ticket_links(fid, tickets_dir)
+        indexed_links = auditor_bridge._finding_ticket_links(
+            fid, tickets_dir, ticket_index=built_index,
+        )
+        assert indexed_links == single_links
+
+    # Compare full findings_to_tickets() output against per-finding invocations
+    expected_per_finding = []
+    for fid in all_ids:
+        single_dir = tmp_path / "single" / fid
+        make_finding(
+            single_dir,
+            fid,
+            f"Title for {fid}",
+            body=f"Cross-references {fid_fresh_b} in prose without a Finding header.",
+        )
+        single_res = auditor_bridge.findings_to_tickets(
+            single_dir, tickets_dir, dry_run=True, location_base=base_dir,
+        )
+        assert len(single_res) == 1
+        expected_row = dict(single_res[0])
+        expected_row["finding_path"] = str(findings_dir / f"{fid}.md")
+        expected_per_finding.append(expected_row)
+
+    # (b) Spy/counter on iter_lifecycle_files: N=6 findings -> at most 1 traversal
+    real_iter = ticket_writer.iter_lifecycle_files
+    iter_calls = 0
+
+    def spy_iter_lifecycle_files(base):
+        nonlocal iter_calls
+        iter_calls += 1
+        return real_iter(base)
+
+    monkeypatch.setattr(ticket_writer, "iter_lifecycle_files", spy_iter_lifecycle_files)
+
+    batch_results = auditor_bridge.findings_to_tickets(
+        findings_dir, tickets_dir, dry_run=True, location_base=base_dir,
+    )
+    assert iter_calls == 1
+    assert batch_results == expected_per_finding
+
+    by_id = {row["finding_id"]: row for row in batch_results}
+    assert by_id[fid_current]["status"] == "skipped_existing"
+    assert by_id[fid_needs_rb]["status"] == "needs_readback"
+    assert by_id[fid_needs_rb]["existing_ticket_paths"] == [str(t_needs)]
+    assert by_id[fid_missing_loc]["status"] == "needs_readback"
+    assert by_id[fid_missing_loc]["existing_ticket_paths"] == [str(t_missing)]
+    assert by_id[fid_missing_loc]["reason"] == "location not found"
+    assert by_id[fid_multi_mixed]["status"] == "skipped_existing"
+    assert by_id[fid_fresh_a]["status"] == "planned"
+    assert by_id[fid_fresh_b]["status"] == "planned"
+
+    # Empty findings directory must not walk iter_lifecycle_files at all
+    empty_findings = tmp_path / "empty_findings"
+    empty_findings.mkdir()
+    iter_calls = 0
+    assert auditor_bridge.findings_to_tickets(empty_findings, tickets_dir, dry_run=True) == []
+    assert iter_calls == 0
