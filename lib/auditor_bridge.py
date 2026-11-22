@@ -32,6 +32,7 @@ import re
 import shutil
 import socket
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
@@ -710,6 +711,14 @@ def _has_current_readback(
     )[0]
 
 
+TicketLink = tuple[Path, str]
+
+_FINDING_LINE_RE = re.compile(
+    r"^Finding:[ \t]*(?P<id>[^ \t\r\n](?:[^\r\n]*?[^ \t\r\n])?)[ \t]*\r?$",
+    re.MULTILINE,
+)
+
+
 def _has_finding_line(text: str, finding_id: str) -> bool:
     """True only for the ``Finding: <id>`` line that ``_finding_to_ticket_text`` writes.
 
@@ -721,11 +730,66 @@ def _has_finding_line(text: str, finding_id: str) -> bool:
     ) is not None
 
 
+def _index_ticket_entry(
+    ticket_index: dict[str, list[TicketLink]], entry: Path, text: str,
+) -> None:
+    """Record ``(entry, text)`` once per distinct ``Finding: <id>`` line in *text*."""
+    seen: set[str] = set()
+    for match in _FINDING_LINE_RE.finditer(text):
+        finding_id = match.group("id")
+        if finding_id not in seen:
+            seen.add(finding_id)
+            ticket_index.setdefault(finding_id, []).append((entry, text))
+
+
+_INDEX_READ_WORKERS = 64
+
+
+def _read_ticket_entry(entry: Path) -> str | None:
+    try:
+        return entry.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _build_finding_ticket_index(tickets_dir: Path) -> dict[str, list[TicketLink]]:
+    """Scan ``iter_lifecycle_files(tickets_dir)`` once into ``finding_id -> list[TicketLink]``.
+
+    Overlaps per-file reads across a bounded thread pool when multiple tickets
+    exist (cloud-synced Windows/OneDrive filter opens otherwise pay ~25 ms per
+    sequential file), while preserving exact ``iter_lifecycle_files`` order.
+    """
+    ticket_index: dict[str, list[TicketLink]] = {}
+    entries = [
+        entry
+        for entry, _date, _number, _suffix in ticket_writer.iter_lifecycle_files(tickets_dir)
+    ]
+    if not entries:
+        return ticket_index
+    if len(entries) == 1:
+        texts = [_read_ticket_entry(entries[0])]
+    else:
+        try:
+            with ThreadPoolExecutor(max_workers=min(_INDEX_READ_WORKERS, len(entries))) as pool:
+                texts = list(pool.map(_read_ticket_entry, entries))
+        except RuntimeError:
+            texts = [_read_ticket_entry(entry) for entry in entries]
+    for entry, text in zip(entries, texts):
+        if text is not None:
+            _index_ticket_entry(ticket_index, entry, text)
+    return ticket_index
+
+
 def _finding_ticket_links(
-    finding_id: str, tickets_dir: Path,
-) -> list[tuple[Path, str]]:
+    finding_id: str,
+    tickets_dir: Path,
+    *,
+    ticket_index: dict[str, list[TicketLink]] | None = None,
+) -> list[TicketLink]:
     """Return tickets carrying the finding's ``Finding:`` line; a link alone is not a current readback."""
-    links: list[tuple[Path, str]] = []
+    if ticket_index is not None and finding_id and finding_id == finding_id.strip(" \t\r\n"):
+        return list(ticket_index.get(finding_id, ()))
+    links: list[TicketLink] = []
     for entry, _date, _number, _suffix in ticket_writer.iter_lifecycle_files(tickets_dir):
         try:
             text = entry.read_text(encoding="utf-8", errors="replace")
@@ -769,6 +833,9 @@ def findings_to_tickets(
     (``M-YYYYMMDD-slug``, from the filename): a finding already referenced by
     any ticket in any lifecycle folder is skipped, never re-created.
 
+    Builds a single-pass ``finding_id -> list[TicketLink]`` index upfront so
+    deduplication runs in ``O(F + T)`` instead of ``O(F * T)`` filesystem reads.
+
     dry_run=True (default) plans only -- no file is written, ticket_writer is
     never called. Pass dry_run=False (the CLI's --apply) to actually create
     tickets via ticket_writer.create()'s atomic exclusive-create.
@@ -779,9 +846,16 @@ def findings_to_tickets(
     if not findings_dir.is_dir():
         return results
 
-    for path in sorted(findings_dir.glob("M-*.md")):
+    finding_paths = sorted(findings_dir.glob("M-*.md"))
+    if not finding_paths:
+        return results
+
+    ticket_index = _build_finding_ticket_index(tickets_dir)
+    for path in finding_paths:
         finding_id = path.stem
-        links = _finding_ticket_links(finding_id, tickets_dir)
+        links = _finding_ticket_links(
+            finding_id, tickets_dir, ticket_index=ticket_index,
+        )
         if links:
             readbacks = [
                 (entry, *_current_readback_status(
@@ -823,6 +897,13 @@ def findings_to_tickets(
         ticket_path = ticket_writer.create(
             title, body, priority="mittel", pipeline="<offen>", tickets_dir=tickets_dir,
         )
+        created_entry = Path(ticket_path)
+        try:
+            created_text = created_entry.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+        else:
+            _index_ticket_entry(ticket_index, created_entry, created_text)
         results.append({
             "finding_id": finding_id, "finding_path": str(path),
             "status": "created", "ticket_path": ticket_path,
