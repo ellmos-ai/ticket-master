@@ -9,7 +9,9 @@ Solution: with `bach_lease.enabled = true` in `config/ticket-master.config.json`
 ticket, created idempotently) BEFORE it renames the file. 409 = somebody else holds it ->
 the claim is refused and the holder is named. Moves into SOLVED/BLOCKED/USER/... and
 `--release-session` release the lease with a matching outcome. `--renew-leases` (and every
-VERLAUF note written through `ticket_note`) renews held leases.
+VERLAUF note written through `ticket_note`) renews held leases, cleans stale cache entries
+for solved/inactive tickets, and backfills missing leases; `--backfill-leases` acquires
+leases for existing or fallback (`pending_lease`) claims at boot.
 
 Design choices:
 
@@ -17,10 +19,12 @@ Design choices:
   this module touches the network unless `enabled` is true AND a ticket is claimed, moved
   or noted that this host actually holds a lease for.
 * **One authority.** The remote task DB is the truth. The only local file is a cache of
-  `lease_id`/`fence` per ticket, kept OUTSIDE any OneDrive tree (refused otherwise): it is
-  a capability, not a record.
+  `lease_id`/`fence` (or `pending_lease` fallback markers) per ticket, kept OUTSIDE any
+  OneDrive tree (refused otherwise): it is a capability, not a record.
 * **Fail-closed.** With `enabled = true`, an unreachable lead or a missing token refuses
-  the claim. `fail_open = true` is an explicit opt-out that only warns.
+  the claim. `fail_open = true` is an explicit fallback to file mode when the lead is
+  unreachable or the token is missing (never on 409): `ticket_mover` writes a visible
+  VERLAUF note and records `pending_lease` in the cache for later backfill.
 * **Release never undoes a move.** If the release call fails, the ticket stays where it is
   and a warning names the problem; the lease then expires on its own TTL.
 * **Stdlib only** (INV-PORTABLE-09). The token comes from an environment variable or, if
@@ -60,10 +64,17 @@ __all__ = [
     "LeaseError",
     "LeaseUnavailableError",
     "claim_lease",
+    "claim_lease_status",
+    "clean_inactive_lease",
+    "clear_pending_lease",
+    "has_lease_capability",
+    "is_pending_lease_entry",
     "load_config",
     "outcome_for_cluster",
+    "record_pending_lease",
     "release_lease",
     "renew_leases",
+    "worker_id_for_host",
 ]
 
 TICKET_ID_RE = re.compile(r"^(T-\d{8}-\d+)")
@@ -103,9 +114,55 @@ class LeaseError(RuntimeError):
 class LeaseConflictError(LeaseError):
     """409: another worker holds the lease for this ticket."""
 
+    def __init__(self, message: str, *, holder: str = "") -> None:
+        super().__init__(message)
+        self.holder = holder
+
 
 class LeaseUnavailableError(LeaseError):
     """The lead is unreachable, answered unusably, or no token/config is available."""
+
+
+def worker_id_for_host(host: str | None = None) -> str:
+    """Canonical worker identifier `<role>@<HOST>` for lease and fallback notes."""
+    resolved = (host or socket.gethostname()).strip().upper()
+    return f"ticket-master@{resolved}"
+
+
+def is_pending_lease_entry(entry: object) -> bool:
+    """True when a cache entry marks a fail-open fallback claim awaiting backfill."""
+    return isinstance(entry, dict) and (
+        entry.get("pending_lease") is True or entry.get("status") == "pending_lease"
+    )
+
+
+def has_lease_capability(entry: object) -> bool:
+    """True when a cache entry holds a syntactically usable task/lease capability."""
+    return (
+        isinstance(entry, dict)
+        and not is_pending_lease_entry(entry)
+        and _valid_task_id(entry.get("task_id")) is not None
+        and isinstance(entry.get("lease_id"), str)
+        and bool(entry.get("lease_id"))
+    )
+
+
+_BEARER_RE = re.compile(r"(?i)bearer\s+\S+")
+_URL_RE = re.compile(r"https?://\S+")
+
+
+def _safe_fallback_reason(exc: BaseException, cfg: dict | None = None) -> str:
+    """Sanitize a LeaseUnavailableError reason so tokens, URLs or pipes never enter VERLAUF."""
+    raw = str(exc).strip() or type(exc).__name__
+    raw = _BEARER_RE.sub("Bearer [REDACTED]", raw)
+    raw = _URL_RE.sub("[REDACTED-URL]", raw)
+    if isinstance(cfg, dict):
+        env_name = cfg.get("token_env")
+        env_secret = os.environ.get(str(env_name)) if env_name else None
+        if env_secret:
+            raw = raw.replace(env_secret, "[REDACTED]")
+    cleaned = " ".join(raw.replace("|", "/").split())
+    return cleaned[:200] or type(exc).__name__
 
 
 # --- configuration ----------------------------------------------------------
@@ -238,8 +295,10 @@ def save_state(cfg: dict, state: dict[str, dict]) -> None:
 def _same_capability(current: object, expected: dict) -> bool:
     if not isinstance(current, dict):
         return False
-    return all(type(current.get(key)) is type(expected.get(key)) and current.get(key) == expected.get(key)
-               for key in ("task_id", "lease_id", "fence", "worker_id"))
+    return all(
+        type(current.get(key)) is type(expected.get(key)) and current.get(key) == expected.get(key)
+        for key in ("task_id", "lease_id", "fence", "worker_id", "pending_lease", "status")
+    )
 
 
 def _update_cache_entry(cfg: dict, ticket_id: str, expected: dict | None,
@@ -431,7 +490,13 @@ class BachLeaseClient:
         })
         if status == 409:
             # A conflict on the task itself is an answer, not an outage: never let fail_open skip it.
-            raise LeaseConflictError(f"{ticket_id}: task create refused by the lead: {_holder_text(body)}")
+            holder_detail = _holder_text(body)
+            holder_name = str(
+                body.get("holder") or body.get("held_by") or body.get("worker_id") or holder_detail
+            )
+            raise LeaseConflictError(
+                f"{ticket_id}: task create refused by the lead: {holder_detail}", holder=holder_name
+            )
         task = body.get("task") if isinstance(body.get("task"), dict) else {}
         task_id = _valid_task_id(body.get("id") or task.get("id"))
         if not 200 <= status < 300 or task_id is None:
@@ -444,8 +509,13 @@ class BachLeaseClient:
             "request_id": str(uuid.uuid4()),
         })
         if status == 409:
+            holder_detail = _holder_text(body)
+            holder_name = str(
+                body.get("holder") or body.get("held_by") or body.get("worker_id") or holder_detail
+            )
             raise LeaseConflictError(
-                f"{ticket_id} is leased by another worker: {_holder_text(body)}")
+                f"{ticket_id} is leased by another worker: {holder_detail}", holder=holder_name
+            )
         if not 200 <= status < 300 or not body.get("lease_id"):
             raise LeaseUnavailableError(f"lease request failed (HTTP {status})")
         entry = {"task_id": task_id, "lease_id": body["lease_id"], "fence": body.get("fence"),
@@ -513,16 +583,59 @@ def _client(cfg: dict, client: BachLeaseClient | None, host: str | None) -> Bach
     return client or BachLeaseClient(cfg, host=host)
 
 
-def claim_lease(ticket: Path | str, *, host: str, config: dict | None = None,
-                client: BachLeaseClient | None = None) -> bool:
+def record_pending_lease(ticket_id: str, *, host: str, reason: str = "",
+                         config: dict | None = None) -> bool:
+    """Record a fail-open fallback claim as `pending_lease` in the local cache.
+
+    Never overwrites a live lease capability placed concurrently by another process.
+    """
+    cfg = load_config(config)
+    resolved_host = (host or socket.gethostname()).strip().upper()
+    pending_entry: dict[str, Any] = {
+        "status": "pending_lease",
+        "pending_lease": True,
+        "worker_id": worker_id_for_host(resolved_host),
+        "host": resolved_host,
+        "recorded_at": int(time.time()),
+        "reason": reason,
+    }
+    with _state_write_lock(cfg):
+        current = load_state(cfg)
+        existing = current.get(ticket_id)
+        if has_lease_capability(existing):
+            return False
+        current[ticket_id] = pending_entry
+        _write_state(cfg, current)
+        return True
+
+
+def clear_pending_lease(ticket_name: str, *, config: dict | None = None) -> None:
+    """Best-effort rollback of a `pending_lease` marker when the file rename fails."""
+    ticket_id = ticket_id_of(ticket_name)
+    if ticket_id is None:
+        return
+    with contextlib.suppress(LeaseError, OSError):
+        cfg = load_config(config)
+        with _state_write_lock(cfg):
+            current = load_state(cfg)
+            if is_pending_lease_entry(current.get(ticket_id)):
+                current.pop(ticket_id, None)
+                _write_state(cfg, current)
+
+
+def claim_lease_status(ticket: Path | str, *, host: str, config: dict | None = None,
+                       client: BachLeaseClient | None = None) -> tuple[bool, str | None]:
     """Take the lease for a ticket about to be claimed by `host`.
 
-    Returns True when a lease is held, False when the feature is off (or a fail-open skip).
-    Raises LeaseConflictError on 409 and LeaseUnavailableError when enabled and unusable.
+    Returns `(True, None)` when a lease is held, `(False, None)` when `bach_lease` is disabled,
+    and `(False, safe_reason)` when `fail_open` is true and the lead is unreachable or the token
+    is missing (recording `pending_lease` in the cache).
+    Raises `LeaseConflictError` on 409 (never a fallback) and `LeaseUnavailableError` when
+    enabled with `fail_open = false`.
     """
     cfg = load_config(config)
     if not cfg["enabled"]:
-        return False
+        return False, None
     ticket = Path(ticket)
     ticket_id = ticket_id_of(ticket.name)
     if ticket_id is None:
@@ -533,10 +646,23 @@ def claim_lease(ticket: Path | str, *, host: str, config: dict | None = None,
         raise  # never fail-open on a real conflict
     except LeaseUnavailableError as exc:
         if cfg["fail_open"]:
-            print(f"WARNING: lease not taken (fail_open): {exc}", file=sys.stderr)
-            return False
+            reason = _safe_fallback_reason(exc, cfg)
+            print(f"WARNING: lease not taken (fail_open): {reason}", file=sys.stderr)
+            record_pending_lease(ticket_id, host=host, reason=reason, config=cfg)
+            return False, reason
         raise
-    return True
+    return True, None
+
+
+def claim_lease(ticket: Path | str, *, host: str, config: dict | None = None,
+                client: BachLeaseClient | None = None) -> bool:
+    """Take the lease for a ticket about to be claimed by `host`.
+
+    Returns True when a lease is held, False when the feature is off (or a fail-open skip).
+    Raises LeaseConflictError on 409 and LeaseUnavailableError when enabled and unusable.
+    """
+    leased, _fallback_reason = claim_lease_status(ticket, host=host, config=config, client=client)
+    return leased
 
 
 def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
@@ -545,11 +671,19 @@ def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
     """Best-effort release. Never raises; returns a warning text or None.
 
     No local cache entry for the ticket -> nothing happens, and in particular no network call.
+    A `pending_lease` marker is dropped locally without touching the network.
     """
     ticket_id = ticket_id_of(ticket_name)
     try:
         cfg = load_config(config)
-        if not cfg["enabled"] or ticket_id is None or ticket_id not in load_state(cfg):
+        if not cfg["enabled"] or ticket_id is None:
+            return None
+        state = load_state(cfg)
+        entry = state.get(ticket_id)
+        if entry is None:
+            return None
+        if is_pending_lease_entry(entry):
+            _update_cache_entry(cfg, ticket_id, entry, None)
             return None
         released = _client(cfg, client, None).release(
             ticket_id, outcome, result_ref, reason_code=reason_code, reason_detail=reason_detail)
@@ -560,9 +694,72 @@ def release_lease(ticket_name: str, outcome: str, *, result_ref: str = "",
     return None
 
 
+def clean_inactive_lease(ticket_id: str, outcome: str, *, result_ref: str = "",
+                         reason_code: str | None = None, reason_detail: str | None = None,
+                         config: dict | None = None,
+                         client: BachLeaseClient | None = None) -> tuple[str, str]:
+    """Cache hygiene for a ticket in SOLVED or no longer in an active folder.
+
+    Valid leases are released with `outcome`; invalid or pending entries are removed from
+    the cache; transient lead outages retain the capability and report `("error", reason)`.
+    """
+    cfg = load_config(config)
+    if not cfg["enabled"]:
+        return "absent", "disabled"
+    try:
+        note = _release_note(reason_code, reason_detail)
+        if type(outcome) is not str or outcome not in _RELEASE_STATUSES:
+            raise LeaseUnavailableError("unsupported lease release outcome")
+        state = load_state(cfg)
+        entry = state.get(ticket_id)
+        if entry is None:
+            return "absent", "not in cache"
+        task_id = _valid_task_id(entry.get("task_id"))
+        if is_pending_lease_entry(entry) or task_id is None or not entry.get("lease_id"):
+            _update_cache_entry(cfg, ticket_id, entry, None)
+            return "removed", "invalid or pending cache entry removed"
+        lease_client = _client(cfg, client, None)
+        status, body = lease_client._call("POST", f"/api/tasks/{task_id}/lease/release", {
+            "lease_id": entry["lease_id"], "fence": entry["fence"],
+            "outcome": outcome, "result_ref": result_ref, "note": note,
+        })
+        if type(status) is not int:
+            raise LeaseUnavailableError("lease release response is invalid")
+        correlated = _native_response_matches(body, task_id)
+        released = (
+            200 <= status < 300
+            and correlated
+            and body.get("released") is True
+            and type(body.get("fence")) is int
+            and body["fence"] == entry["fence"]
+            and body.get("outcome") == outcome
+            and body.get("status") == _RELEASE_STATUSES[outcome]
+        )
+        if released:
+            _update_cache_entry(cfg, ticket_id, entry, None)
+            return "released", f"released ({outcome})"
+        denial_reason = body.get("reason") if isinstance(body, dict) else None
+        if status in (404, 410) or (
+            status == 409 and denial_reason not in ("completion_guard", "stale_task_version")
+        ):
+            _update_cache_entry(cfg, ticket_id, entry, None)
+            return "removed", "invalid lease removed from cache"
+        safe_reason = (
+            denial_reason
+            if type(denial_reason) is str and denial_reason in _SAFE_RELEASE_DENIALS
+            else "reason_unavailable"
+        )
+        return "error", f"lease release not confirmed (HTTP {status}; {safe_reason}); capability retained"
+    except LeaseError as exc:
+        return "error", _safe_fallback_reason(exc, cfg)
+
+
 def renew_leases(*, config: dict | None = None, client: BachLeaseClient | None = None,
                  only: str | None = None) -> list[tuple[str, bool, str]]:
-    """Renew every cached lease (or only `only`). Returns (ticket_id, ok, message)."""
+    """Renew every cached lease capability (or only `only`). Returns (ticket_id, ok, message).
+
+    `pending_lease` markers have no remote lease yet and are skipped so backfill can acquire them.
+    """
     cfg = load_config(config)
     if not cfg["enabled"]:
         return []
@@ -571,6 +768,8 @@ def renew_leases(*, config: dict | None = None, client: BachLeaseClient | None =
         state = load_state(cfg)
         ids = ([only] if only in state else []) if only else sorted(state)
         for ticket_id in ids:
+            if is_pending_lease_entry(state.get(ticket_id)):
+                continue
             try:
                 ok = _client(cfg, client, None).renew(ticket_id)
                 results.append((ticket_id, ok, "renewed" if ok else "not renewed (no cache entry or lead refused)"))

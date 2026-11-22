@@ -735,6 +735,14 @@ For legacy schema-v1 tickets in a cloud-synced folder, claims are signalled via 
 
 Every new ID is a 9-digit random value minted exclusively by `lib/ticket_writer.py` (directly or through `bin/ticket_master.py --intake`). Never copy the template to create a ticket, and never choose or increment the numeric component manually.
 
+### Server Mode (Leases First) — Servermodus (Leases zuerst)
+
+With `bach_lease.enabled = true`, the lease authority (`lib/bach_lease.py`) is the canonical claim and the filename suffix `T-….<HOST>.txt` is only a display:
+- **Claim with a lease before working on any ticket** — including tickets you just created and fast-lane one-liners (`ticket_writer.py` → `ACTIONABLE` → `--claim-current-host` → `SOLVED`, which takes a lease and releases it with outcome `done` so the lead sees the work).
+- **Pure file mode only as fallback (`fail_open = true`)** when the lead is unreachable or the token is missing: `ticket_mover.py` automatically appends `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <reason>` to `VERLAUF` and marks `pending_lease` in the cache. `409` (foreign holder) is **never** a fallback and always refuses the claim.
+- **Run backfill at boot** (acquires missing/`pending_lease` leases in `ACTIONABLE` and `QUEUED`; `--renew-leases` also cleans inactive cache entries and runs backfill at the end):
+  `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
+
 ---
 
 <a id="sec-13"></a>

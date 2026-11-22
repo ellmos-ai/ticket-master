@@ -148,6 +148,14 @@ folder (OneDrive, Dropbox, Google Drive), the claim is signalled via the
 - `tickets/*/T-*.txt` without a host suffix → unclaimed tickets
 - `tickets/*/T-*.WORKSTATION.txt` → tickets claimed by WORKSTATION
 
+### Server Mode (Leases First) — Servermodus (Leases zuerst)
+
+With `bach_lease.enabled = true`, the lease on the lead is the canonical claim; the filename suffix `T-….<HOST>.txt` is only a display:
+- **Claim with a lease before working on any ticket** — including tickets you just created and fast-lane one-liners (`ticket_writer.py` → `ACTIONABLE` → `--claim-current-host` → `SOLVED`, which takes a lease and releases it with outcome `done` so the lead sees the work).
+- **Pure file mode only as fallback (`fail_open = true`)** when the lead is unreachable or the token is missing: `ticket_mover.py` automatically writes `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <reason>` to `VERLAUF` and marks `pending_lease` in the cache. `409` (foreign holder) is **never** a fallback and always refuses the claim.
+- **Run backfill at boot** (acquires missing/`pending_lease` leases in `ACTIONABLE` and `QUEUED`; also runs at the end of `--renew-leases`):
+  `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
+
 ### The number is a 9-digit random value (since 2026-08-15)
 
 **Never roll your own, never count up — always use `lib/ticket_writer.py
