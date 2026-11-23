@@ -354,7 +354,7 @@ sequenceDiagram
    - Zero-Copyleft Isolation Guarantee (100% Permissive Open Source Stack: MIT, PSF-2.0)
    - Zero Mandatory Dependencies (Python Standard Library Core Runtime: dependencies = [])
    - Statutory Liability Disclaimer (§ 521 BGB Gefälligkeitsrecht)
-   - Committed 48-Hour Security Response SLA (security@ellmos.ai, security@open-bricks.org)
+   - Best-Effort 48-Hour Security Response Target (GitHub private vulnerability reporting)
 ========================================================================================================================
 ```
 
