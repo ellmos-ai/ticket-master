@@ -54,7 +54,7 @@ def test_learn_sources_deduplicates_detects_relocation_and_never_leaks_local_pat
     now = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
     learned = learn_sources_from_roots(
         [("automation-logs", logs_dir), ("analysis-reports", reports_dir)],
-        system_ref="system:asus-gei",
+        system_ref="system:host-a",
         owner_ref="owner:ticket-master",
         now=now,
     )
@@ -75,7 +75,7 @@ def test_learn_sources_deduplicates_detects_relocation_and_never_leaks_local_pat
 
     relearned = learn_sources_from_roots(
         [("automation-logs", logs_dir), ("analysis-reports", moved_dir)],
-        system_ref="system:asus-gei",
+        system_ref="system:host-a",
         owner_ref="owner:ticket-master",
         previous_bindings=learned["private_bindings"],
         now=now,
@@ -100,7 +100,7 @@ def test_retrieve_distinguishes_readable_empty_stale_missing_and_denied(tmp_path
             {
                 "source_ref": "log:auto/24h",
                 "source_kind": "log",
-                "system_ref": "system:asus-gei",
+                "system_ref": "system:host-a",
                 "owner_ref": "owner:ticket-master",
                 "window": "24h",
                 "observed_at": now.isoformat().replace("+00:00", "Z"),
@@ -115,7 +115,7 @@ def test_retrieve_distinguishes_readable_empty_stale_missing_and_denied(tmp_path
             {
                 "source_ref": "log:auto/empty",
                 "source_kind": "log",
-                "system_ref": "system:asus-gei",
+                "system_ref": "system:host-a",
                 "owner_ref": "owner:ticket-master",
                 "window": "other",
                 "observed_at": now.isoformat().replace("+00:00", "Z"),
@@ -130,7 +130,7 @@ def test_retrieve_distinguishes_readable_empty_stale_missing_and_denied(tmp_path
             {
                 "source_ref": "report:analysis/stale",
                 "source_kind": "report",
-                "system_ref": "system:asus-gei",
+                "system_ref": "system:host-a",
                 "owner_ref": "owner:ticket-master",
                 "window": "analysis",
                 "observed_at": (now - timedelta(days=5)).isoformat().replace("+00:00", "Z"),
@@ -145,7 +145,7 @@ def test_retrieve_distinguishes_readable_empty_stale_missing_and_denied(tmp_path
             {
                 "source_ref": "report:analysis/missing",
                 "source_kind": "report",
-                "system_ref": "system:asus-gei",
+                "system_ref": "system:host-a",
                 "owner_ref": "owner:ticket-master",
                 "window": "result",
                 "observed_at": now.isoformat().replace("+00:00", "Z"),
@@ -160,7 +160,7 @@ def test_retrieve_distinguishes_readable_empty_stale_missing_and_denied(tmp_path
             {
                 "source_ref": "report:restricted/secret",
                 "source_kind": "report",
-                "system_ref": "system:asus-gei",
+                "system_ref": "system:host-a",
                 "owner_ref": "owner:ticket-master",
                 "window": "audit",
                 "observed_at": now.isoformat().replace("+00:00", "Z"),

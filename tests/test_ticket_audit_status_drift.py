@@ -27,7 +27,7 @@ class TestStatusDrift(unittest.TestCase):
             base = Path(tmp)
             _ticket(base / "ACTIONABLE" / "T-20260830-000000001.txt",
                     "ACTIONABLE (seit 2026-08-30) — Freitext dahinter ist erlaubt")
-            _ticket(base / "USER" / "T-20260830-000000002.ASUS-GEI.txt",
+            _ticket(base / "USER" / "T-20260830-000000002.HOST-A.txt",
                     "USER/decision (seit 2026-08-30)")
             _ticket(base / "T-20260830-000000003.txt", "INBOX")
             _ticket(base / "T-20260830-000000004.txt", "OPEN")  # Legacy-Alias fuer INBOX
@@ -79,10 +79,10 @@ class TestLegacyMarkdownStatus(unittest.TestCase):
     def test_legacy_markdown_status_matching_folder_is_reported_as_legacy_header(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            p = base / "BLOCKED" / "T-20260802-01.WORKSTATION-LG.txt"
+            p = base / "BLOCKED" / "T-20260802-01.HOST-B.txt"
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(
-                "# T-20260802-01.WORKSTATION-LG\n\n"
+                "# T-20260802-01.HOST-B\n\n"
                 "**Status:** BLOCKED/foreign-state (seit 2026-08-08) - Details\n"
                 "**Typ:** Automation\n",
                 encoding="utf-8",

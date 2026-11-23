@@ -26,8 +26,8 @@ REGISTRY = {
     "source": "fixture://systems",
     "checked_at": "2026-08-22T08:00:00Z",
     "systems": {
-        "ASUS-GEI": {"active": True, "slot": "laptop"},
-        "WORKSTATION-LG": {"active": True, "slot": "workstation"},
+        "HOST-A": {"active": True, "slot": "laptop"},
+        "HOST-B": {"active": True, "slot": "workstation"},
         "MAC-STUDIO": {"active": False, "slot": "mac-studio"},
     },
 }
@@ -116,7 +116,7 @@ def make_contract(
     execution_matrix: dict | None = None,
 ) -> Path:
     if target_kind == "grouped" and targets is None:
-        targets = ["ASUS-GEI", "WORKSTATION-LG"]
+        targets = ["HOST-A", "HOST-B"]
     verified_queue(tmp_path)  # T-20260831-333760321: writers refuse an unverified root
     path = ticket_writer.create_routed_ticket(
         "Mehrsystemprüfung",
@@ -131,7 +131,7 @@ def make_contract(
         binding_mode=binding_mode,
         binding_ttl=binding_ttl,
         primary_ticket="T-20260822-100000000",
-        original_owner="ASUS-GEI",
+        original_owner="HOST-A",
         receipt_to="T-20260822-100000000",
         execution_matrix=execution_matrix,
         resolver=resolver,
@@ -155,28 +155,28 @@ def receipt(host: str, signature: str, *, status: str = "done", runner: str = "c
 
 def test_filename_grammar_keeps_v2_axes_and_legacy_claim_unambiguous():
     parsed = rc.parse_ticket_name(
-        "T-20260822-123456789.to-grouped.via-agy.claim-ASUS-GEI.txt"
+        "T-20260822-123456789.to-grouped.via-agy.claim-HOST-A.txt"
     )
-    assert (parsed.target, parsed.via, parsed.claim) == ("grouped", "agy", "ASUS-GEI")
+    assert (parsed.target, parsed.via, parsed.claim) == ("grouped", "agy", "HOST-A")
     exact = rc.parse_ticket_name(
         "T-20260822-123456789.via-openai-gpt-5.6-sol.txt"
     )
     assert exact.via == "openai-gpt-5.6-sol"
     legacy = rc.parse_ticket_name(
-        "T-20260731-123456789.LAPTOP-WORKSTATION-LG.txt"
+        "T-20260731-123456789.LAPTOP-HOST-B.txt"
     )
-    assert legacy.legacy_claim == "LAPTOP-WORKSTATION-LG"
+    assert legacy.legacy_claim == "LAPTOP-HOST-B"
     assert not legacy.is_v2
 
 
 @pytest.mark.parametrize(
     "name",
     [
-        "T-20260822-123456789.claim-ASUS-GEI.to-all.txt",
+        "T-20260822-123456789.claim-HOST-A.to-all.txt",
         "T-20260822-123456789.via-claude.to-all.txt",
         "T-20260822-123456789.to-all.to-grouped.txt",
         "T-20260822-123456789.via-claude.via-codex.txt",
-        "T-20260822-123456789.claim-ASUS-GEI.extra.txt",
+        "T-20260822-123456789.claim-HOST-A.extra.txt",
     ],
 )
 def test_filename_grammar_rejects_order_duplicates_and_unknown_segments(name):
@@ -192,10 +192,10 @@ def test_user_aliases_normalize_through_system_registry_and_clutch_only():
     assert name == "T-20260822-123456789.to-all.via-claude.txt"
     assert note["registry_fingerprint"] == "sha256:fixture"
     name, _note = rc.normalize_alias(
-        "T-20260822-123456789", ["WORKSTATION-LG", "claude-opus"],
+        "T-20260822-123456789", ["HOST-B", "claude-opus"],
         registry_snapshot=REGISTRY, resolver=resolver,
     )
-    assert name == "T-20260822-123456789.to-WORKSTATION-LG.via-claude-opus.txt"
+    assert name == "T-20260822-123456789.to-HOST-B.via-claude-opus.txt"
     name, _note = rc.normalize_alias(
         "T-20260822-123456789", ["gpt"],
         registry_snapshot=REGISTRY, resolver=resolver,
@@ -237,10 +237,10 @@ def test_public_clutch_resolver_seam_makes_via_ticket_claimable(tmp_path, monkey
         registry_snapshot=REGISTRY,
         ticket_kind="transfer",
         target_kind="exact",
-        target="WORKSTATION-LG",
+        target="HOST-B",
         via="codex",
         primary_ticket="T-20260822-100000000",
-        original_owner="ASUS-GEI",
+        original_owner="HOST-A",
         receipt_to="T-20260822-100000000",
         today="2026-08-22",
         rng=FixedRandom(),
@@ -248,10 +248,10 @@ def test_public_clutch_resolver_seam_makes_via_ticket_claimable(tmp_path, monkey
 
     assert rc.contract_errors(path, now="2026-08-22T09:00:00Z") == []
     claimed = rc.claim_contract(
-        path, host="WORKSTATION-LG", actor="codex", runner="codex",
+        path, host="HOST-B", actor="codex", runner="codex",
         now="2026-08-22T09:00:00Z",
     )
-    assert claimed.name.endswith(".to-WORKSTATION-LG.via-codex.claim-WORKSTATION-LG.txt")
+    assert claimed.name.endswith(".to-HOST-B.via-codex.claim-HOST-B.txt")
 
 
 def test_missing_public_resolver_is_loud_and_cause_specific(monkeypatch, caplog):
@@ -280,7 +280,7 @@ def test_unresolved_binding_is_distinct_from_unbound_and_denied_loudly(tmp_path,
     assert "selector-not-in-registry" in caplog.text
     with pytest.raises(rc.ClaimDeniedError, match="selector-not-in-registry"):
         rc.claim_contract(
-            unresolved, host="ASUS-GEI", actor="codex", runner="codex",
+            unresolved, host="HOST-A", actor="codex", runner="codex",
             resolver=resolver, now="2026-08-22T09:00:00Z",
         )
 
@@ -290,37 +290,37 @@ def test_unresolved_binding_is_distinct_from_unbound_and_denied_loudly(tmp_path,
 
 def test_target_snapshot_is_fixed_evidence_and_never_a_hardcoded_host_list():
     all_targets = rc.resolve_targets("all", registry_snapshot=REGISTRY)
-    assert all_targets["systems"] == ["ASUS-GEI", "WORKSTATION-LG"]
-    assert all_targets["details"]["ASUS-GEI"]["slot"] == "laptop"
+    assert all_targets["systems"] == ["HOST-A", "HOST-B"]
+    assert all_targets["details"]["HOST-A"]["slot"] == "laptop"
     assert all_targets["source"] == "fixture://systems"
     assert all_targets["fingerprint"].startswith("sha256:")
     grouped = rc.resolve_targets(
-        "grouped", targets=["WORKSTATION-LG", "ASUS-GEI"],
+        "grouped", targets=["HOST-B", "HOST-A"],
         registry_snapshot=REGISTRY,
     )
-    assert grouped["systems"] == ["ASUS-GEI", "WORKSTATION-LG"]
+    assert grouped["systems"] == ["HOST-A", "HOST-B"]
     with pytest.raises(rc.RoutingContractError, match="unknown grouped"):
         rc.resolve_targets("grouped", targets=["INVENTED"], registry_snapshot=REGISTRY)
 
 
 def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_path):
     path = make_contract(
-        tmp_path, target_kind="exact", target="WORKSTATION-LG",
+        tmp_path, target_kind="exact", target="HOST-B",
         ticket_kind="transfer",
     )
-    assert path.name == "T-20260822-123456789.to-WORKSTATION-LG.txt"
+    assert path.name == "T-20260822-123456789.to-HOST-B.txt"
     view = rc.load_contract(path)
     assert view.ticket_kind == "transfer"
     assert view.fields["PRIMARY_TICKET"] == "T-20260822-100000000"
-    assert view.fields["ORIGINAL_OWNER"] == "ASUS-GEI"
-    assert [row["system"] for row in view.ledger] == ["WORKSTATION-LG"]
+    assert view.fields["ORIGINAL_OWNER"] == "HOST-A"
+    assert [row["system"] for row in view.ledger] == ["HOST-B"]
     assert rc.contract_errors(path, now="2026-08-22T09:00:00Z") == []
 
     verified_queue(tmp_path / "all")
     all_path = ticket_writer.create_routed_ticket(
         "All systems", "One circulating contract.", tickets_dir=tmp_path / "all",
         registry_snapshot=REGISTRY, ticket_kind="fork", target_kind="all",
-        primary_ticket="T-20260822-100000000", original_owner="ASUS-GEI",
+        primary_ticket="T-20260822-100000000", original_owner="HOST-A",
         receipt_to="T-20260822-100000000", today="2026-08-22", rng=FixedRandom(),
     )
     assert Path(all_path).name.endswith(".to-all.txt")
@@ -333,20 +333,20 @@ def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_
     assert ticket_writer._cli([
         "--title", "CLI transfer", "--body", "Targeted through public CLI",
         "--tickets-dir", str(cli_root), "--ticket-kind", "transfer",
-        "--target-kind", "exact", "--target", "WORKSTATION-LG",
+        "--target-kind", "exact", "--target", "HOST-B",
         "--systems-registry", str(registry_path),
         "--primary-ticket", "T-20260822-100000000",
-        "--original-owner", "ASUS-GEI", "--receipt-to", "T-20260822-100000000",
+        "--original-owner", "HOST-A", "--receipt-to", "T-20260822-100000000",
     ]) == 0
-    assert len(list((cli_root / "INBOX").glob("*.to-WORKSTATION-LG.txt"))) == 1
+    assert len(list((cli_root / "INBOX").glob("*.to-HOST-B.txt"))) == 1
 
     request_root = tmp_path / "idempotent"
     verified_queue(request_root)
     kwargs = dict(
         tickets_dir=request_root, registry_snapshot=REGISTRY,
         ticket_kind="fork", target_kind="grouped",
-        targets=["ASUS-GEI", "WORKSTATION-LG"],
-        primary_ticket="T-20260822-100000000", original_owner="ASUS-GEI",
+        targets=["HOST-A", "HOST-B"],
+        primary_ticket="T-20260822-100000000", original_owner="HOST-A",
         receipt_to="T-20260822-100000000", idempotency_key="gap:req-42",
         today="2026-08-22", rng=FixedRandom(),
     )
@@ -360,31 +360,31 @@ def test_writer_creates_one_transfer_contract_with_primary_owner_and_ledger(tmp_
 
 def test_wrong_or_done_target_cannot_claim(tmp_path):
     path = make_contract(
-        tmp_path, target_kind="exact", target="WORKSTATION-LG", ticket_kind="transfer"
+        tmp_path, target_kind="exact", target="HOST-B", ticket_kind="transfer"
     )
     with pytest.raises(rc.ClaimDeniedError, match="outside"):
-        rc.claim_contract(path, host="ASUS-GEI", actor="codex", now="2026-08-22T09:00:00Z")
+        rc.claim_contract(path, host="HOST-A", actor="codex", now="2026-08-22T09:00:00Z")
     claimed = rc.claim_contract(
-        path, host="WORKSTATION-LG", actor="codex", now="2026-08-22T09:00:00Z"
+        path, host="HOST-B", actor="codex", now="2026-08-22T09:00:00Z"
     )
-    rc.record_receipt(claimed, host="WORKSTATION-LG", receipt=receipt(
-        "WORKSTATION-LG", "sig-one"
+    rc.record_receipt(claimed, host="HOST-B", receipt=receipt(
+        "HOST-B", "sig-one"
     ), now="2026-08-22T09:30:00Z")
-    released = rc.release_contract(claimed, host="WORKSTATION-LG")
+    released = rc.release_contract(claimed, host="HOST-B")
     with pytest.raises(rc.ClaimDeniedError, match="done"):
-        rc.claim_contract(released, host="WORKSTATION-LG", actor="again")
+        rc.claim_contract(released, host="HOST-B", actor="again")
 
 
 def test_claim_release_preserves_routing_suffix_and_rejects_double_claim(tmp_path):
     path = make_contract(tmp_path, via="claude")
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="claude@ASUS", runner="claude",
+        path, host="HOST-A", actor="claude@ASUS", runner="claude",
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
-    assert claimed.name.endswith(".to-grouped.via-claude.claim-ASUS-GEI.txt")
+    assert claimed.name.endswith(".to-grouped.via-claude.claim-HOST-A.txt")
     with pytest.raises(rc.ClaimDeniedError, match="already"):
-        rc.claim_contract(claimed, host="WORKSTATION-LG", actor="other")
-    released = rc.release_contract(claimed, host="ASUS-GEI")
+        rc.claim_contract(claimed, host="HOST-B", actor="other")
+    released = rc.release_contract(claimed, host="HOST-A")
     assert released.name.endswith(".to-grouped.via-claude.txt")
 
 
@@ -396,18 +396,18 @@ def test_systemless_via_contract_materializes_one_any_target_ledger_row(tmp_path
     assert rc.load_contract(path).ledger == ()
 
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="claude", runner="claude",
+        path, host="HOST-A", actor="claude", runner="claude",
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
     view = rc.load_contract(claimed)
-    assert [row["system"] for row in view.ledger] == ["ASUS-GEI"]
+    assert [row["system"] for row in view.ledger] == ["HOST-A"]
     assert rc.contract_errors(claimed, now="2026-08-22T09:30:00Z") == []
     rc.record_receipt(
-        claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-any"),
+        claimed, host="HOST-A", receipt=receipt("HOST-A", "sig-any"),
         now="2026-08-22T09:30:00Z",
     )
     solved = rc.complete_contract(
-        claimed, host="ASUS-GEI", solved_dir=tmp_path / "SOLVED",
+        claimed, host="HOST-A", solved_dir=tmp_path / "SOLVED",
         now="2026-08-22T09:30:00Z",
     )
     assert solved.parent.name == "SOLVED"
@@ -415,16 +415,16 @@ def test_systemless_via_contract_materializes_one_any_target_ledger_row(tmp_path
 
 def test_any_target_released_without_receipt_can_move_to_another_host(tmp_path):
     path = make_contract(tmp_path, target_kind="any", targets=[], ticket_kind="normal")
-    first = rc.claim_contract(path, host="ASUS-GEI", actor="first")
-    released = rc.release_contract(first, host="ASUS-GEI")
-    second = rc.claim_contract(released, host="WORKSTATION-LG", actor="second")
-    assert [row["system"] for row in rc.load_contract(second).ledger] == ["WORKSTATION-LG"]
+    first = rc.claim_contract(path, host="HOST-A", actor="first")
+    released = rc.release_contract(first, host="HOST-A")
+    second = rc.claim_contract(released, host="HOST-B", actor="second")
+    assert [row["system"] for row in rc.load_contract(second).ledger] == ["HOST-B"]
 
 
 def test_crash_recovery_waits_for_lease_and_preserves_signatures(tmp_path):
     path = make_contract(tmp_path)
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="worker", now="2026-08-22T09:00:00Z",
+        path, host="HOST-A", actor="worker", now="2026-08-22T09:00:00Z",
         lease_seconds=60,
     )
     with pytest.raises(rc.ClaimDeniedError, match="not expired"):
@@ -436,50 +436,50 @@ def test_crash_recovery_waits_for_lease_and_preserves_signatures(tmp_path):
 
 def test_partial_receipts_remain_open_and_only_last_target_completes(tmp_path):
     path = make_contract(tmp_path)
-    first = rc.claim_contract(path, host="ASUS-GEI", actor="claude")
-    assert rc.record_receipt(first, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-a"))
+    first = rc.claim_contract(path, host="HOST-A", actor="claude")
+    assert rc.record_receipt(first, host="HOST-A", receipt=receipt("HOST-A", "sig-a"))
     assert not rc.completion_ready(rc.load_contract(first))
     with pytest.raises(rc.ClaimDeniedError, match="not every"):
-        rc.complete_contract(first, host="ASUS-GEI", solved_dir=tmp_path / "SOLVED")
-    open_path = rc.release_contract(first, host="ASUS-GEI")
-    second = rc.claim_contract(open_path, host="WORKSTATION-LG", actor="claude")
-    rc.record_receipt(second, host="WORKSTATION-LG", receipt=receipt(
-        "WORKSTATION-LG", "sig-b"
+        rc.complete_contract(first, host="HOST-A", solved_dir=tmp_path / "SOLVED")
+    open_path = rc.release_contract(first, host="HOST-A")
+    second = rc.claim_contract(open_path, host="HOST-B", actor="claude")
+    rc.record_receipt(second, host="HOST-B", receipt=receipt(
+        "HOST-B", "sig-b"
     ))
-    solved = rc.complete_contract(second, host="WORKSTATION-LG", solved_dir=tmp_path / "SOLVED")
+    solved = rc.complete_contract(second, host="HOST-B", solved_dir=tmp_path / "SOLVED")
     assert solved.parent.name == "SOLVED"
     assert ".claim-" not in solved.name
     assert rc.completion_ready(rc.load_contract(solved))
 
     blocked_path = make_contract(tmp_path / "blocked")
-    blocked_claim = rc.claim_contract(blocked_path, host="ASUS-GEI", actor="claude")
+    blocked_claim = rc.claim_contract(blocked_path, host="HOST-A", actor="claude")
     rc.record_receipt(
-        blocked_claim, host="ASUS-GEI",
-        receipt=receipt("ASUS-GEI", "sig-blocked", status="blocked"),
+        blocked_claim, host="HOST-A",
+        receipt=receipt("HOST-A", "sig-blocked", status="blocked"),
     )
-    circulating = rc.release_contract(blocked_claim, host="ASUS-GEI")
-    next_target = rc.claim_contract(circulating, host="WORKSTATION-LG", actor="claude")
+    circulating = rc.release_contract(blocked_claim, host="HOST-A")
+    next_target = rc.claim_contract(circulating, host="HOST-B", actor="claude")
     assert rc.load_contract(next_target).ledger[0]["status"] == "blocked"
 
 
 def test_receipt_retry_is_idempotent_but_signature_collision_fails_closed(tmp_path):
     path = make_contract(tmp_path)
-    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="claude")
-    payload = receipt("ASUS-GEI", "sig-a")
-    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload)
-    assert not rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload)
+    claimed = rc.claim_contract(path, host="HOST-A", actor="claude")
+    payload = receipt("HOST-A", "sig-a")
+    assert rc.record_receipt(claimed, host="HOST-A", receipt=payload)
+    assert not rc.record_receipt(claimed, host="HOST-A", receipt=payload)
     altered = dict(payload, evidence="receipt://different")
     with pytest.raises(rc.ReceiptConflictError, match="signature"):
-        rc.record_receipt(claimed, host="ASUS-GEI", receipt=altered)
+        rc.record_receipt(claimed, host="HOST-A", receipt=altered)
 
 
 def test_transport_state_cannot_become_domain_done(tmp_path):
     path = make_contract(tmp_path)
-    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="claude")
+    claimed = rc.claim_contract(path, host="HOST-A", actor="claude")
     with pytest.raises(rc.ReceiptConflictError, match="transport state"):
         rc.record_receipt(
-            claimed, host="ASUS-GEI",
-            receipt=receipt("ASUS-GEI", "sig-delivered", status="delivered"),
+            claimed, host="HOST-A",
+            receipt=receipt("HOST-A", "sig-delivered", status="delivered"),
         )
 
 
@@ -492,7 +492,7 @@ def test_binding_ttl_default_override_and_never():
 def test_expired_binding_is_removed_only_before_next_successful_claim(tmp_path):
     path = make_contract(tmp_path, via="claude", binding_ttl=1)
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="codex-after-expiry", runner="codex",
+        path, host="HOST-A", actor="codex-after-expiry", runner="codex",
         resolver=resolver, now="2026-08-24T00:00:00Z",
     )
     view = rc.load_contract(claimed)
@@ -515,14 +515,14 @@ def test_expired_binding_is_removed_only_before_next_successful_claim(tmp_path):
 def test_binding_expiry_during_active_claim_does_not_change_that_claim(tmp_path):
     path = make_contract(tmp_path, via="claude", binding_ttl=1)
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="claude", runner="claude",
+        path, host="HOST-A", actor="claude", runner="claude",
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
-    assert ".via-claude.claim-ASUS-GEI" in claimed.name
+    assert ".via-claude.claim-HOST-A" in claimed.name
     assert rc.contract_errors(claimed, now="2026-08-24T00:00:00Z") == []
-    released = rc.release_contract(claimed, host="ASUS-GEI", now="2026-08-24T00:00:00Z")
+    released = rc.release_contract(claimed, host="HOST-A", now="2026-08-24T00:00:00Z")
     next_claim = rc.claim_contract(
-        released, host="WORKSTATION-LG", actor="codex", runner="codex",
+        released, host="HOST-B", actor="codex", runner="codex",
         resolver=resolver, now="2026-08-24T00:00:01Z",
     )
     assert ".via-" not in next_claim.name
@@ -532,35 +532,35 @@ def test_required_binding_fails_closed_and_preferred_fallback_is_evidenced(tmp_p
     required = make_contract(tmp_path / "required", via="claude")
     with pytest.raises(rc.ClaimDeniedError):
         rc.claim_contract(
-            required, host="ASUS-GEI", actor="codex", runner="codex",
+            required, host="HOST-A", actor="codex", runner="codex",
             resolver=resolver, now="2026-08-22T09:00:00Z",
         )
     preferred = make_contract(
         tmp_path / "preferred", via="claude", binding_mode="preferred"
     )
     claimed = rc.claim_contract(
-        preferred, host="ASUS-GEI", actor="codex", runner="codex",
+        preferred, host="HOST-A", actor="codex", runner="codex",
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
-    payload = receipt("ASUS-GEI", "sig-fallback", runner="codex")
+    payload = receipt("HOST-A", "sig-fallback", runner="codex")
     with pytest.raises(rc.ReceiptConflictError, match="fallback requires"):
-        rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+        rc.record_receipt(claimed, host="HOST-A", receipt=payload,
                           now="2026-08-22T09:30:00Z")
     payload["fallback_reason"] = "preferred runner unavailable"
-    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+    assert rc.record_receipt(claimed, host="HOST-A", receipt=payload,
                              now="2026-08-22T09:30:00Z")
 
     exact = make_contract(tmp_path / "exact", via="openai-gpt-5.6-sol")
     exact_claim = rc.claim_contract(
-        exact, host="ASUS-GEI", actor="codex", runner="codex",
+        exact, host="HOST-A", actor="codex", runner="codex",
         resolver=resolver, now="2026-08-22T09:00:00Z",
     )
-    wrong_model = receipt("ASUS-GEI", "sig-exact", runner="codex")
+    wrong_model = receipt("HOST-A", "sig-exact", runner="codex")
     with pytest.raises(rc.ReceiptConflictError, match="exact model"):
-        rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model,
+        rc.record_receipt(exact_claim, host="HOST-A", receipt=wrong_model,
                           now="2026-08-22T09:30:00Z")
     wrong_model["actual_model"] = "gpt-5.6-sol"
-    assert rc.record_receipt(exact_claim, host="ASUS-GEI", receipt=wrong_model,
+    assert rc.record_receipt(exact_claim, host="HOST-A", receipt=wrong_model,
                              now="2026-08-22T09:30:00Z")
 
 
@@ -572,8 +572,8 @@ def test_registry_outage_stays_unresolved_then_recovers_without_substitution(tmp
     path = ticket_writer.create_routed_ticket(
         "Unresolved", "Wait for registry.", tickets_dir=tmp_path,
         registry_snapshot=REGISTRY, ticket_kind="transfer", target_kind="exact",
-        target="WORKSTATION-LG", via="claude-opus-5",
-        primary_ticket="T-20260822-100000000", original_owner="ASUS-GEI",
+        target="HOST-B", via="claude-opus-5",
+        primary_ticket="T-20260822-100000000", original_owner="HOST-A",
         receipt_to="T-20260822-100000000", resolver=outage,
         today="2026-08-22", rng=FixedRandom(),
     )
@@ -583,7 +583,7 @@ def test_registry_outage_stays_unresolved_then_recovers_without_substitution(tmp
     assert "provider detail" not in json.dumps(view.resolution)
     with pytest.raises(rc.ClaimDeniedError):
         rc.claim_contract(
-            path, host="WORKSTATION-LG", actor="claude", runner="claude",
+            path, host="HOST-B", actor="claude", runner="claude",
             resolver=outage, now="2026-08-22T09:00:00Z",
         )
 
@@ -622,8 +622,8 @@ def test_required_binding_ships_unbound_without_confirmed_availability(tmp_path)
     verified_queue(tmp_path)
     kwargs = dict(
         tickets_dir=tmp_path, registry_snapshot=REGISTRY, ticket_kind="transfer",
-        target_kind="exact", target="ASUS-GEI", via="gemini-pro",
-        primary_ticket="T-20260902-100000000", original_owner="ASUS-GEI",
+        target_kind="exact", target="HOST-A", via="gemini-pro",
+        primary_ticket="T-20260902-100000000", original_owner="HOST-A",
         receipt_to="T-20260902-100000000", resolver=unconfirmed,
         today="2026-09-02", rng=FixedRandom(),
     )
@@ -643,16 +643,16 @@ def test_required_binding_ships_unbound_without_confirmed_availability(tmp_path)
 
 def test_execution_matrix_is_per_target_and_runner_completion_is_not_global(tmp_path):
     matrix = {
-        "ASUS-GEI": {"selector": "claude", "variant": "windows-local"},
-        "WORKSTATION-LG": {"selector": "agy", "variant": "workstation-local"},
+        "HOST-A": {"selector": "claude", "variant": "windows-local"},
+        "HOST-B": {"selector": "agy", "variant": "workstation-local"},
     }
     path = make_contract(tmp_path, via="mixed", execution_matrix=matrix)
     view = rc.load_contract(path)
     assert set(view.execution_matrix) == set(view.target_systems)
     first = rc.claim_contract(
-        path, host="ASUS-GEI", actor="claude", runner="claude", resolver=resolver
+        path, host="HOST-A", actor="claude", runner="claude", resolver=resolver
     )
-    rc.record_receipt(first, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-matrix"))
+    rc.record_receipt(first, host="HOST-A", receipt=receipt("HOST-A", "sig-matrix"))
     assert not rc.completion_ready(rc.load_contract(first))
 
 
@@ -756,15 +756,15 @@ def test_real_creation_time_drives_binding_expiry_when_today_is_not_injected(tmp
 def test_v2_release_helper_and_legacy_multi_host_release_stay_distinct(tmp_path):
     verified_queue(tmp_path)
     verified_queue(tmp_path / "v2")
-    legacy = tmp_path / "ACTIONABLE" / "T-20260731-123456789.LAPTOP-WORKSTATION-LG.txt"
+    legacy = tmp_path / "ACTIONABLE" / "T-20260731-123456789.LAPTOP-HOST-B.txt"
     legacy.parent.mkdir()
     legacy.write_text("legacy", encoding="utf-8")
-    assert ticket_mover.claim_suffix(legacy.name) == "LAPTOP-WORKSTATION-LG"
+    assert ticket_mover.claim_suffix(legacy.name) == "LAPTOP-HOST-B"
     assert ticket_mover.release_claims(tmp_path, host="LAPTOP") == []
     assert legacy.exists()
 
     routed = make_contract(tmp_path / "v2")
-    claimed = rc.claim_contract(routed, host="ASUS-GEI", actor="worker")
+    claimed = rc.claim_contract(routed, host="HOST-A", actor="worker")
     released = ticket_mover.release_claim(claimed)
     assert ".to-grouped" in released.name and ".claim-" not in released.name
 
@@ -837,23 +837,23 @@ def test_expired_claim_lease_blocks_every_write_but_not_the_release(tmp_path):
     was still running, so a session killed hours earlier (token abort, crash)
     could still book half a completion.
     """
-    path = make_contract(tmp_path, target_kind="exact", target="ASUS-GEI",
+    path = make_contract(tmp_path, target_kind="exact", target="HOST-A",
                          ticket_kind="transfer")
-    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="worker",
+    claimed = rc.claim_contract(path, host="HOST-A", actor="worker",
                                 now="2026-08-22T09:00:00Z", lease_seconds=60)
-    payload = receipt("ASUS-GEI", "sig-late")
+    payload = receipt("HOST-A", "sig-late")
 
     # Inside the lease both writes are allowed ...
-    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+    assert rc.record_receipt(claimed, host="HOST-A", receipt=payload,
                              now="2026-08-22T09:00:30Z")
 
     # ... and the very instant it expires, neither is.
     with pytest.raises(rc.ClaimDeniedError, match="lease expired"):
-        rc.record_receipt(claimed, host="ASUS-GEI",
-                          receipt=receipt("ASUS-GEI", "sig-later"),
+        rc.record_receipt(claimed, host="HOST-A",
+                          receipt=receipt("HOST-A", "sig-later"),
                           now="2026-08-22T09:01:00Z")
     with pytest.raises(rc.ClaimDeniedError, match="lease expired"):
-        rc.complete_contract(claimed, host="ASUS-GEI",
+        rc.complete_contract(claimed, host="HOST-A",
                              solved_dir=tmp_path / "SOLVED",
                              now="2026-08-22T09:01:00Z")
 
@@ -866,10 +866,10 @@ def test_expired_claim_lease_blocks_every_write_but_not_the_release(tmp_path):
     # Releasing stays ungated on purpose -- an expired holder must be able to
     # hand the claim back; recover_expired_claim goes through release_contract.
     fresh = make_contract(tmp_path / "release", target_kind="exact",
-                          target="ASUS-GEI", ticket_kind="transfer")
-    stale = rc.claim_contract(fresh, host="ASUS-GEI", actor="worker",
+                          target="HOST-A", ticket_kind="transfer")
+    stale = rc.claim_contract(fresh, host="HOST-A", actor="worker",
                               now="2026-08-22T10:00:00Z", lease_seconds=60)
-    assert rc.release_contract(stale, host="ASUS-GEI",
+    assert rc.release_contract(stale, host="HOST-A",
                                now="2026-08-25T00:00:00Z")
 
 
@@ -880,11 +880,11 @@ def test_claim_without_a_readable_lease_is_refused_not_waved_through(tmp_path):
     measured against the live queue on 2026-09-13 there was no
     claimed-without-lease contract in the whole bestand.
     """
-    path = make_contract(tmp_path, target_kind="exact", target="ASUS-GEI",
+    path = make_contract(tmp_path, target_kind="exact", target="HOST-A",
                          ticket_kind="transfer")
-    claimed = rc.claim_contract(path, host="ASUS-GEI", actor="worker",
+    claimed = rc.claim_contract(path, host="HOST-A", actor="worker",
                                 now="2026-08-22T09:00:00Z", lease_seconds=60)
-    payload = receipt("ASUS-GEI", "sig-handmade")
+    payload = receipt("HOST-A", "sig-handmade")
 
     for forged, expected in (("", "no lease"), ("not-a-timestamp", "unreadable")):
         text = claimed.read_text(encoding="utf-8")
@@ -893,10 +893,10 @@ def test_claim_without_a_readable_lease_is_refused_not_waved_through(tmp_path):
             encoding="utf-8",
         )
         with pytest.raises(rc.ClaimDeniedError, match=expected):
-            rc.record_receipt(claimed, host="ASUS-GEI", receipt=payload,
+            rc.record_receipt(claimed, host="HOST-A", receipt=payload,
                               now="2026-08-22T09:00:30Z")
         with pytest.raises(rc.ClaimDeniedError, match=expected):
-            rc.complete_contract(claimed, host="ASUS-GEI",
+            rc.complete_contract(claimed, host="HOST-A",
                                  solved_dir=tmp_path / "SOLVED",
                                  now="2026-08-22T09:00:30Z")
 
@@ -909,11 +909,11 @@ def test_contract_metadata_no_longer_takes_an_id_it_never_used(tmp_path):
     lande in den Metadaten. Sie tat es nicht. Derselbe Zuschnitt wie ein Feld,
     das niemand liest (T-20260830-938608207), nur eine Ebene hoeher in der API.
     """
-    snapshot = rc.resolve_targets("exact", target="ASUS-GEI", registry_snapshot=REGISTRY)
+    snapshot = rc.resolve_targets("exact", target="HOST-A", registry_snapshot=REGISTRY)
     metadata = rc.contract_metadata(
         ticket_kind="transfer", target_snapshot=snapshot,
         primary_ticket="T-20260913-100000001",
-        original_owner="ASUS-GEI", receipt_to="T-20260913-100000001",
+        original_owner="HOST-A", receipt_to="T-20260913-100000001",
         created_at="2026-09-13T00:00:00Z",
     )
     assert metadata["TARGET_KIND"] == "exact"
@@ -923,7 +923,7 @@ def test_contract_metadata_no_longer_takes_an_id_it_never_used(tmp_path):
     # abzulegen waere ein dritter Ort fuer eine Wahrheit.
     assert not any("T-20260913-100000002" in str(value) for value in metadata.values())
     assert rc.canonical_contract_name("T-20260913-100000002", metadata).startswith(
-        "T-20260913-100000002.to-ASUS-GEI")
+        "T-20260913-100000002.to-HOST-A")
 
 
 def test_passing_the_removed_id_fails_loudly_not_silently():
@@ -934,9 +934,9 @@ def test_passing_the_removed_id_fails_loudly_not_silently():
             ticket_id="T-20260913-100000001",  # type: ignore[call-arg]
             ticket_kind="transfer",
             target_snapshot=rc.resolve_targets(
-                "exact", target="ASUS-GEI", registry_snapshot=REGISTRY),
+                "exact", target="HOST-A", registry_snapshot=REGISTRY),
             primary_ticket="T-20260913-100000001",
-            original_owner="ASUS-GEI", receipt_to="T-20260913-100000001",
+            original_owner="HOST-A", receipt_to="T-20260913-100000001",
         )
 
 
@@ -945,17 +945,17 @@ def test_passing_the_removed_id_fails_loudly_not_silently():
 #     deliberately refuses for v2 tickets. ---
 
 def _make_workstation_self_slot(root: Path) -> None:
-    """Minimal self-slot so verify_claim_host accepts WORKSTATION-LG."""
+    """Minimal self-slot so verify_claim_host accepts HOST-B."""
     snapshots = root / "_config-state" / "snapshots"
     snapshots.mkdir(parents=True)
     (snapshots / "workstation.json").write_text(
-        json.dumps({"host": "WORKSTATION-LG", "slot": "workstation"}),
+        json.dumps({"host": "HOST-B", "slot": "workstation"}),
         encoding="utf-8",
     )
     slot = root / "workstation"
     slot.mkdir()
     (slot / "repos.json").write_text(
-        json.dumps({"host": "WORKSTATION-LG", "slot": "workstation"}),
+        json.dumps({"host": "HOST-B", "slot": "workstation"}),
         encoding="utf-8",
     )
 
@@ -964,7 +964,7 @@ def _actionable_v2_ticket(tmp_path: Path) -> Path:
     """An unbound exact-target routing-v2 ticket sitting in ACTIONABLE."""
     path = make_contract(
         tmp_path, ticket_kind="transfer", target_kind="exact",
-        target="WORKSTATION-LG", via=None, binding_mode="required",
+        target="HOST-B", via=None, binding_mode="required",
     )
     actionable = tmp_path / "ACTIONABLE"
     actionable.mkdir(exist_ok=True)
@@ -978,18 +978,18 @@ def test_claim_contract_dry_run_previews_without_mutation(tmp_path):
     before = path.read_text(encoding="utf-8")
 
     preview = rc.claim_contract(
-        path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+        path, host="HOST-B", actor="ws-actionable@HOST-B",
         dry_run=True, now="2026-08-22T09:00:00Z",
     )
 
-    assert preview.name.endswith(".to-WORKSTATION-LG.claim-WORKSTATION-LG.txt")
+    assert preview.name.endswith(".to-HOST-B.claim-HOST-B.txt")
     assert path.exists(), "dry run must not rename the ticket"
     assert path.read_text(encoding="utf-8") == before
     assert not list(path.parent.glob("*.claim-*")), "dry run must not create a claim file"
 
     # A real claim after the preview still works and mutates exactly once.
     claimed = rc.claim_contract(
-        path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+        path, host="HOST-B", actor="ws-actionable@HOST-B",
         now="2026-08-22T09:00:00Z",
     )
     assert claimed.name == preview.name
@@ -998,40 +998,40 @@ def test_claim_contract_dry_run_previews_without_mutation(tmp_path):
 
 
 def test_claim_contract_current_host_claims_v2_after_verification(tmp_path, monkeypatch):
-    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
-    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "HOST-B")
+    monkeypatch.setenv("COMPUTERNAME", "HOST-B")
     _make_workstation_self_slot(tmp_path)
     path = _actionable_v2_ticket(tmp_path)
 
     claimed = ticket_mover.claim_contract_current_host(
-        path, claim_host="WORKSTATION-LG", sync_root=tmp_path,
-        actor="ws-actionable@WORKSTATION-LG",
+        path, claim_host="HOST-B", sync_root=tmp_path,
+        actor="ws-actionable@HOST-B",
     )
 
-    assert claimed.name.endswith(".to-WORKSTATION-LG.claim-WORKSTATION-LG.txt")
+    assert claimed.name.endswith(".to-HOST-B.claim-HOST-B.txt")
     assert claimed.exists()
     assert not path.exists()
 
 
 def test_claim_contract_current_host_dry_run_leaves_ticket_unclaimed(tmp_path, monkeypatch):
-    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
-    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "HOST-B")
+    monkeypatch.setenv("COMPUTERNAME", "HOST-B")
     _make_workstation_self_slot(tmp_path)
     path = _actionable_v2_ticket(tmp_path)
 
     preview = ticket_mover.claim_contract_current_host(
-        path, claim_host="WORKSTATION-LG", sync_root=tmp_path,
-        actor="ws-actionable@WORKSTATION-LG", dry_run=True,
+        path, claim_host="HOST-B", sync_root=tmp_path,
+        actor="ws-actionable@HOST-B", dry_run=True,
     )
 
-    assert preview.name.endswith(".claim-WORKSTATION-LG.txt")
+    assert preview.name.endswith(".claim-HOST-B.txt")
     assert path.exists()
     assert not list(path.parent.glob("*.claim-*"))
 
 
 def test_claim_contract_current_host_refuses_legacy_ticket(tmp_path, monkeypatch):
-    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
-    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "HOST-B")
+    monkeypatch.setenv("COMPUTERNAME", "HOST-B")
     _make_workstation_self_slot(tmp_path)
     verified_queue(tmp_path)
     actionable = tmp_path / "ACTIONABLE"
@@ -1041,8 +1041,8 @@ def test_claim_contract_current_host_refuses_legacy_ticket(tmp_path, monkeypatch
 
     with pytest.raises(ticket_mover.HostIdentityError, match="claim-current-host"):
         ticket_mover.claim_contract_current_host(
-            legacy, claim_host="WORKSTATION-LG", sync_root=tmp_path,
-            actor="ws-actionable@WORKSTATION-LG",
+            legacy, claim_host="HOST-B", sync_root=tmp_path,
+            actor="ws-actionable@HOST-B",
         )
 
     assert legacy.read_text(encoding="utf-8") == "unchanged\n"
@@ -1055,14 +1055,14 @@ def test_claim_contract_dry_run_reports_final_name_for_expired_binding(tmp_path)
     path = make_contract(tmp_path, via="claude", binding_ttl=1)
 
     preview = rc.claim_contract(
-        path, host="ASUS-GEI", actor="codex-after-expiry", runner="codex",
+        path, host="HOST-A", actor="codex-after-expiry", runner="codex",
         resolver=resolver, now="2026-08-24T00:00:00Z", dry_run=True,
     )
     assert path.exists()
     assert ".via-" not in preview.name
 
     claimed = rc.claim_contract(
-        path, host="ASUS-GEI", actor="codex-after-expiry", runner="codex",
+        path, host="HOST-A", actor="codex-after-expiry", runner="codex",
         resolver=resolver, now="2026-08-24T00:00:00Z",
     )
     assert claimed.name == preview.name
@@ -1071,13 +1071,13 @@ def test_claim_contract_dry_run_reports_final_name_for_expired_binding(tmp_path)
 def test_claim_contract_dry_run_refuses_a_name_collision_like_the_real_claim(tmp_path):
     path = _actionable_v2_ticket(tmp_path)
     blocker = path.with_name(
-        path.name.replace(".txt", ".claim-WORKSTATION-LG.txt"))
+        path.name.replace(".txt", ".claim-HOST-B.txt"))
     blocker.write_text("foreign file\n", encoding="utf-8")
 
     for dry_run in (True, False):
         with pytest.raises(ticket_mover.TicketCollisionError):
             rc.claim_contract(
-                path, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+                path, host="HOST-B", actor="ws-actionable@HOST-B",
                 dry_run=dry_run, now="2026-08-22T09:00:00Z",
             )
     assert path.exists()
@@ -1094,7 +1094,7 @@ def test_claim_contract_dry_run_refuses_an_unverified_queue_like_the_real_claim(
     for dry_run in (True, False):
         with pytest.raises(ValueError, match="verified ticket queue|live ticket queue"):
             rc.claim_contract(
-                stray, host="WORKSTATION-LG", actor="ws-actionable@WORKSTATION-LG",
+                stray, host="HOST-B", actor="ws-actionable@HOST-B",
                 dry_run=dry_run, now="2026-08-22T09:00:00Z",
             )
     assert stray.exists()
@@ -1103,8 +1103,8 @@ def test_claim_contract_dry_run_refuses_an_unverified_queue_like_the_real_claim(
 @pytest.mark.parametrize("flag", ["--claim-contract-current-host", "--claim-current-host"])
 def test_claim_cli_refuses_an_unverified_queue_without_traceback(
         tmp_path, monkeypatch, capsys, flag):
-    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "WORKSTATION-LG")
-    monkeypatch.setenv("COMPUTERNAME", "WORKSTATION-LG")
+    monkeypatch.setattr(ticket_mover.socket, "gethostname", lambda: "HOST-B")
+    monkeypatch.setenv("COMPUTERNAME", "HOST-B")
     _make_workstation_self_slot(tmp_path)
     if flag == "--claim-contract-current-host":
         path = _actionable_v2_ticket(tmp_path)
@@ -1119,8 +1119,8 @@ def test_claim_cli_refuses_an_unverified_queue_without_traceback(
     path.rename(stray)
 
     code = ticket_mover._cli([
-        flag, str(stray), "--host", "WORKSTATION-LG", "--sync-root", str(tmp_path),
-        "--agent", "ws-actionable@WORKSTATION-LG",
+        flag, str(stray), "--host", "HOST-B", "--sync-root", str(tmp_path),
+        "--agent", "ws-actionable@HOST-B",
     ])
 
     assert code == 1
@@ -1129,7 +1129,7 @@ def test_claim_cli_refuses_an_unverified_queue_without_traceback(
 
 
 @pytest.mark.parametrize("other", [
-    ["--verify-claim-host", "WORKSTATION-LG"],
+    ["--verify-claim-host", "HOST-B"],
     ["--claim-current-host", "T-20260827-123456789.txt"],
     ["--freigabe-status", "T-20260827-123456789.txt"],
 ])
@@ -1138,8 +1138,8 @@ def test_claim_contract_cli_cannot_be_combined_with_another_operation(tmp_path, 
 
     with pytest.raises(SystemExit) as excinfo:
         ticket_mover._cli([
-            "--claim-contract-current-host", str(path), "--host", "WORKSTATION-LG",
-            "--sync-root", str(tmp_path), "--agent", "ws-actionable@WORKSTATION-LG",
+            "--claim-contract-current-host", str(path), "--host", "HOST-B",
+            "--sync-root", str(tmp_path), "--agent", "ws-actionable@HOST-B",
             *other,
         ])
 

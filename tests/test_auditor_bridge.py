@@ -105,7 +105,7 @@ def test_due_check_true_when_domain_not_yet_reported(tmp_path, monkeypatch):
         if args[0] == "next-domain":
             return {"domain": "ai-bundles"}
         if args[0] == "reports":
-            return {"reports": ["20260817 · ai-bundles · ASUS-GEI · fable-5 · self"]}
+            return {"reports": ["20260817 · ai-bundles · HOST-A · fable-5 · self"]}
         return {}
 
     monkeypatch.setattr(auditor_bridge, "_run_json", fake_run_json)
@@ -125,7 +125,7 @@ def test_due_check_false_when_domain_already_reported_this_window(tmp_path, monk
         if args[0] == "next-domain":
             return {"domain": "ai-bundles"}
         if args[0] == "reports":
-            return {"reports": ["20260824 · ai-bundles · ASUS-GEI · fable-5 · self"]}
+            return {"reports": ["20260824 · ai-bundles · HOST-A · fable-5 · self"]}
         return {}
 
     monkeypatch.setattr(auditor_bridge, "_run_json", fake_run_json)
@@ -319,7 +319,7 @@ def readback_line(
 ) -> str:
     referenced_id = referenced_id or finding_id
     return (
-        f"{measured_date or date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"{measured_date or date.today().isoformat()} | reviewer@HOST-A | "
         f"Readback {referenced_id} "
         "location=lib/auditor_bridge.py value=dedup-aware lock=clear "
         "— SHA256 deadbeef"
@@ -350,7 +350,7 @@ def test_id_link_without_readback_reports_needs_readback_and_suppresses_duplicat
     make_finding(findings_dir, finding_id, "Linked without proof")
     existing = link_ticket(
         tickets_dir, "T-20261020-111111111.txt",
-        f"Finding: {finding_id}\n2026-10-25 | reviewer@ASUS-GEI | "
+        f"Finding: {finding_id}\n2026-10-25 | reviewer@HOST-A | "
         "Status: linked — ticket path T-20261020-111111111.txt\n",
     )
 
@@ -463,7 +463,7 @@ def test_linked_ticket_status_note_is_not_a_readback(tmp_path):
     existing = link_ticket(
         tickets_dir, "T-20261024-222222222.txt",
         f"Finding: {finding_id}\n"
-        f"2026-10-25 | reviewer@ASUS-GEI | {finding_id} status=verified — "
+        f"2026-10-25 | reviewer@HOST-A | {finding_id} status=verified — "
         "ticket status is open\n",
     )
 
@@ -499,7 +499,7 @@ def test_negative_or_unconfirmed_receipt_text_is_not_current(tmp_path):
         existing = link_ticket(
             tickets_dir, f"T-20261025-{index + 1:09d}.txt",
             f"Finding: {finding_id}\n"
-            f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+            f"{date.today().isoformat()} | reviewer@HOST-A | "
             f"Finding {finding_id} status=open location={location} value={value} "
             f"— {evidence}\n",
         )
@@ -518,7 +518,7 @@ def test_unverified_value_overrides_a_hash_marker(tmp_path):
     existing = link_ticket(
         tickets_dir, "T-20261025-101010101.txt",
         f"Finding: {finding_id}\n"
-        f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"{date.today().isoformat()} | reviewer@HOST-A | "
         f"Finding {finding_id} location=lib/auditor_bridge.py value=unverified "
         "— SHA256 deadbeef\n",
     )
@@ -537,7 +537,7 @@ def test_bare_receipt_word_is_not_concrete_evidence(tmp_path):
     existing = link_ticket(
         tickets_dir, "T-20261025-111111112.txt",
         f"Finding: {finding_id}\n"
-        f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+        f"{date.today().isoformat()} | reviewer@HOST-A | "
         f"Finding {finding_id} location=lib/auditor_bridge.py value=unknown "
         "— receipt; status note only\n",
     )
@@ -563,7 +563,7 @@ def test_unknown_and_locked_values_accept_concrete_measurements(tmp_path):
         link_ticket(
             tickets_dir, f"T-20261025-{index + 11:09d}.txt",
             f"Finding: {finding_id}\n"
-            f"{date.today().isoformat()} | reviewer@ASUS-GEI | "
+            f"{date.today().isoformat()} | reviewer@HOST-A | "
             f"Finding {finding_id} location=lib/auditor_bridge.py value={value} "
             f"— {evidence}\n",
         )
@@ -598,7 +598,7 @@ def test_documented_free_text_readback_without_field_names_is_accepted(tmp_path)
     link_ticket(
         tickets_dir, "T-20261024-555555555.txt",
         f"Finding: {finding_id}\n"
-        f"{date.today().isoformat()} | reviewer@ASUS-GEI | Finding {finding_id} "
+        f"{date.today().isoformat()} | reviewer@HOST-A | Finding {finding_id} "
         "at lib/auditor_bridge.py currently reports 0 linked tickets — "
         "pytest tests/test_auditor_bridge.py -q: 35 passed; SHA256 deadbeef\n",
     )
@@ -1218,7 +1218,7 @@ def test_single_pass_index_matches_single_queries_and_scans_lifecycle_once(tmp_p
         tickets_dir,
         "BLOCKED",
         "T-20261025-100000002.txt",
-        f"Finding: {fid_needs_rb}\n2026-10-25 | reviewer@ASUS-GEI | Status: open — T-20261025-100000002.txt\n",
+        f"Finding: {fid_needs_rb}\n2026-10-25 | reviewer@HOST-A | Status: open — T-20261025-100000002.txt\n",
     )
     t_missing = _write_lifecycle_ticket(
         tickets_dir,

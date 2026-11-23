@@ -72,18 +72,18 @@ class TestFreigabeLifecycle(unittest.TestCase):
             before = path.read_bytes()
             with self.assertRaises(tf.FreigabeError) as refused:
                 tf.mark_freigabe(path, freigabe_id_value="frg_0000000000000000dead",
-                                 by="control1@ASUS-GEI")
+                                 by="control1@HOST-A")
             self.assertIn("does not match", str(refused.exception))
             self.assertEqual(path.read_bytes(), before)
 
             # (3) fehlende ID -> genauso abgelehnt (leerer String matcht nie).
             with self.assertRaises(tf.FreigabeError):
-                tf.mark_freigabe(path, freigabe_id_value="", by="control1@ASUS-GEI")
+                tf.mark_freigabe(path, freigabe_id_value="", by="control1@HOST-A")
             self.assertEqual(path.read_bytes(), before)
 
             # (1) richtige ID -> Freigabe wird vermerkt.
             granted = tf.mark_freigabe(path, freigabe_id_value=stamped,
-                                       by="control1@ASUS-GEI")
+                                       by="control1@HOST-A")
             self.assertIn(stamped, granted)
             self.assertEqual(tf.freigabe_state(path)["state"], "granted")
 
@@ -91,7 +91,7 @@ class TestFreigabeLifecycle(unittest.TestCase):
             after = path.read_bytes()
             with self.assertRaises(tf.FreigabeError) as again:
                 tf.mark_freigabe(path, freigabe_id_value=stamped,
-                                 by="control1@ASUS-GEI")
+                                 by="control1@HOST-A")
             self.assertIn("single-use", str(again.exception))
             self.assertEqual(path.read_bytes(), after)
 
@@ -102,7 +102,7 @@ class TestFreigabeLifecycle(unittest.TestCase):
             path = _ticket(Path(tmp) / "T-20260913-000000001.txt",
                            "Nur Modul A veroeffentlichen.")
             stamped = tf.stamp_freigabe_id(path)
-            tf.mark_freigabe(path, freigabe_id_value=stamped, by="control1@ASUS-GEI")
+            tf.mark_freigabe(path, freigabe_id_value=stamped, by="control1@HOST-A")
             self.assertEqual(tf.freigabe_state(path)["state"], "granted")
 
             path.write_text(
@@ -122,7 +122,7 @@ class TestFreigabeLifecycle(unittest.TestCase):
             self.assertEqual(tf.stamp_freigabe_id(path), first)
             self.assertEqual(path.read_bytes(), unchanged)
 
-            tf.mark_freigabe(path, freigabe_id_value=first, by="control1@ASUS-GEI")
+            tf.mark_freigabe(path, freigabe_id_value=first, by="control1@HOST-A")
             with self.assertRaises(tf.FreigabeError) as refused:
                 tf.stamp_freigabe_id(path)
             self.assertIn("already approved", str(refused.exception))
@@ -138,7 +138,7 @@ class TestLegacyAndPlaceholders(unittest.TestCase):
             before = path.read_bytes()
             with self.assertRaises(tf.FreigabeError) as refused:
                 tf.mark_freigabe(path, freigabe_id_value="frg_whatever",
-                                 by="control1@ASUS-GEI")
+                                 by="control1@HOST-A")
             self.assertIn("legacy stock", str(refused.exception))
             self.assertEqual(path.read_bytes(), before)
 
@@ -181,13 +181,13 @@ class TestCli(unittest.TestCase):
             stamped = tf.freigabe_state(path)["current_id"]
             self.assertEqual(ticket_mover._cli([
                 "--mark-freigabe", str(path), "--freigabe-id", "frg_wrong",
-                "--agent", "control1@ASUS-GEI"]), 1)
+                "--agent", "control1@HOST-A"]), 1)
             self.assertEqual(ticket_mover._cli([
                 "--mark-freigabe", str(path), "--freigabe-id", stamped,
-                "--agent", "control1@ASUS-GEI"]), 0)
+                "--agent", "control1@HOST-A"]), 0)
             self.assertEqual(ticket_mover._cli([
                 "--mark-freigabe", str(path), "--freigabe-id", stamped,
-                "--agent", "control1@ASUS-GEI"]), 1)
+                "--agent", "control1@HOST-A"]), 1)
 
     def test_a_freigabe_operation_cannot_be_combined_with_a_move(self):
         with QueueTemporaryDirectory() as tmp:

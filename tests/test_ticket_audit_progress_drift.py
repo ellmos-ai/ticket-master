@@ -62,7 +62,7 @@ class TestProgressDrift(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _ticket(base, "INBOX", "T-20260904-000000003",
-                    "\nDELEGIERT_AN: lock-worker@ASUS-GEI, Welle 1 fertig, Wellen 2-4 offen\n")
+                    "\nDELEGIERT_AN: lock-worker@HOST-A, Welle 1 fertig, Wellen 2-4 offen\n")
             findings = ticket_audit.progress_drift(base)
             self.assertEqual([f["kind"] for f in findings], ["delegated-done"])
 
@@ -70,7 +70,7 @@ class TestProgressDrift(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _ticket(base, "ACTIONABLE", "T-20260904-000000004",
-                    "\nDELEGIERT_AN: bach-worker@ASUS-GEI\n")
+                    "\nDELEGIERT_AN: bach-worker@HOST-A\n")
             self.assertEqual(ticket_audit.progress_drift(base), [])
 
     def test_closed_folder_is_out_of_scope(self):

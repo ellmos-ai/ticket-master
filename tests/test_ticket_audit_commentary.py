@@ -34,7 +34,7 @@ class TestCommentaryLint(unittest.TestCase):
             _write(
                 base / "ACTIONABLE" / "T-20260920-100000001.txt",
                 _HEADER
-                + "2026-09-20 | ticket-master@WORKSTATION-LG | Status geprüft — "
+                + "2026-09-20 | ticket-master@HOST-B | Status geprüft — "
                   "Beleg: git status und Readback gemessen\n"
                 + "\nLOESUNG / ERGEBNIS\n",
             )
@@ -59,7 +59,7 @@ class TestCommentaryLint(unittest.TestCase):
             _write(
                 path,
                 _HEADER
-                + "2026-09-20 | ticket-master@WORKSTATION-LG | BACH-Sperre bleibt "
+                + "2026-09-20 | ticket-master@HOST-B | BACH-Sperre bleibt "
                   "aktiv\n"
                 + "\nLOESUNG / ERGEBNIS\n",
             )
@@ -71,7 +71,7 @@ class TestCommentaryLint(unittest.TestCase):
 
             path.write_text(
                 _HEADER
-                + "2026-09-20 | ticket-master@WORKSTATION-LG | BACH-Sperre ist frei "
+                + "2026-09-20 | ticket-master@HOST-B | BACH-Sperre ist frei "
                   "— Beleg: Lock-Status gemessen und Readback bestätigt\n"
                 + "\nLOESUNG / ERGEBNIS\n",
                 encoding="utf-8",
