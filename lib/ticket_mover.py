@@ -1582,21 +1582,19 @@ def _cli(argv: list[str] | None = None) -> int:
             # Without a queue root, INBOX/UNKNOWN leases cannot be told apart: renew nothing.
             print("HYGIENE ABORTED: no resolvable queue root (--tickets-dir or config); nothing renewed")
             return 1
-        hygiene_results: list[tuple[str, str, str]] = []
         hygiene_aborted = False
-        if raw_queue_dir is not None:
-            hygiene_results = maintain_lease_cache(raw_queue_dir, host=host)
-            for ticket_id, action, message in hygiene_results:
-                if action in ("unknown", "inbox"):
-                    print(message)
-                elif action == "aborted":
-                    hygiene_aborted = True
-                    print(f"HYGIENE ABORTED: {message}")
-                else:
-                    label = "RELEASED" if action == "released" else (
-                        "REMOVED" if action == "removed" else "NOT RELEASED"
-                    )
-                    print(f"{label}: {ticket_id} -- {message}")
+        hygiene_results = maintain_lease_cache(raw_queue_dir, host=host)
+        for ticket_id, action, message in hygiene_results:
+            if action in ("unknown", "inbox"):
+                print(message)
+            elif action == "aborted":
+                hygiene_aborted = True
+                print(f"HYGIENE ABORTED: {message}")
+            else:
+                label = "RELEASED" if action == "released" else (
+                    "REMOVED" if action == "removed" else "NOT RELEASED"
+                )
+                print(f"{label}: {ticket_id} -- {message}")
         if hygiene_aborted:
             return 1
         skip_renew = {
@@ -1607,19 +1605,17 @@ def _cli(argv: list[str] | None = None) -> int:
         for ticket_id, ok, message in results:
             print(f"{'RENEWED' if ok else 'NOT RENEWED'}: {ticket_id} -- {message}")
         print(f"{sum(1 for _, ok, _ in results if ok)}/{len(results)} lease(s) renewed")
-        backfill_results = []
-        if raw_queue_dir is not None:
-            try:
-                queue_dir = require_verified_queue_root(raw_queue_dir)
-            except (ValueError, RuntimeError, OSError) as exc:
-                print(f"REFUSED: {exc}")
-                return 1
-            already_valid = {tid for tid, ok, _ in results if ok}
-            backfill_results = backfill_leases(
-                queue_dir, host=host, already_valid=already_valid
-            )
-            for ticket_id, status, detail in backfill_results:
-                print(_format_backfill_line(ticket_id, status, detail))
+        try:
+            queue_dir = require_verified_queue_root(raw_queue_dir)
+        except (ValueError, RuntimeError, OSError) as exc:
+            print(f"REFUSED: {exc}")
+            return 1
+        already_valid = {tid for tid, ok, _ in results if ok}
+        backfill_results = backfill_leases(
+            queue_dir, host=host, already_valid=already_valid
+        )
+        for ticket_id, status, detail in backfill_results:
+            print(_format_backfill_line(ticket_id, status, detail))
         recovered = {tid for tid, status, _ in backfill_results if status == "LEASED"}
         failed_renew = any(not ok and tid not in recovered for tid, ok, _ in results)
         failed_hygiene = any(action in ("error", "aborted") for _, action, _ in hygiene_results)
