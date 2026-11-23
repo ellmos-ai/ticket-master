@@ -1578,6 +1578,10 @@ def _cli(argv: list[str] | None = None) -> int:
         if not bach_lease.load_config()["enabled"]:
             print("bach_lease is not enabled; nothing to renew")
             return 0
+        if raw_queue_dir is None:
+            # Without a queue root, INBOX/UNKNOWN leases cannot be told apart: renew nothing.
+            print("HYGIENE ABORTED: no resolvable queue root (--tickets-dir or config); nothing renewed")
+            return 1
         hygiene_results: list[tuple[str, str, str]] = []
         hygiene_aborted = False
         if raw_queue_dir is not None:

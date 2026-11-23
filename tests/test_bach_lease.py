@@ -249,6 +249,16 @@ def test_cli_renew_leases(tmp_path, lead, capsys):
     assert "RENEWED" in capsys.readouterr().out
 
 
+def test_cli_renew_leases_without_queue_root_renews_nothing(tmp_path, lead, capsys, monkeypatch):
+    claim(tmp_path, make_ticket(tmp_path))
+    before = len(lead.calls)
+    monkeypatch.setattr(ticket_mover, "resolve_tickets_dir", lambda *a, **k: None)
+    assert ticket_mover._cli(["--renew-leases", "--host", "ASUS-GEI"]) == 1
+    out = capsys.readouterr().out
+    assert "HYGIENE ABORTED" in out and "RENEWED:" not in out
+    assert not any(call[1].endswith("/lease/renew") for call in lead.calls[before:])
+
+
 def test_lead_url_must_be_http():
     with pytest.raises(bach_lease.LeaseUnavailableError, match="http"):
         bach_lease.BachLeaseClient({"lead_url": "file:///etc/passwd"})
