@@ -173,8 +173,8 @@ def test_gitignore_secret_and_credential_patterns():
         ".npmrc",
         ".pypirc",
         "tickets/.ticket-master-queue",
-        "*-HOST-B.*",
-        "*-HOST-A.*",
+        "*-WORKSTATION-LG.*",
+        "*-ASUS-GEI.*",
         "*.sync-conflict-*",
         "*.conflict",
     ]:
@@ -669,12 +669,12 @@ def test_labels_yml_includes_dependabot_labels():
 
 
 def test_extended_lock_defense_in_gitignore():
-    """Verify .gitignore includes explicit HOST-C, ehthumbs, and specialized lock patterns."""
+    """Verify .gitignore includes explicit IDEAPAD-GEI, ehthumbs, and specialized lock patterns."""
     gitignore_path = REPO_ROOT / ".gitignore"
     assert gitignore_path.is_file()
     content = gitignore_path.read_text(encoding="utf-8")
     for pattern in [
-        "*-HOST-C*",
+        "*-IDEAPAD-GEI*",
         "ehthumbs.db",
         "TASKPLAN_*.md",
         "LOCK.dev.*",
