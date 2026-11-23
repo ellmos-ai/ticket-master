@@ -4,6 +4,10 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Security reporting channel
+
+- `README.md`, `README_de.md` and `THIRD_PARTY_LICENSES.txt` advertised `security@ellmos.ai` and `security@open-bricks.org`, which are not deliverable. They now point to GitHub private vulnerability reporting and describe the 48-hour response as a best-effort target, matching `SECURITY.md`. `tests/test_metadata.py` forbids the dead addresses.
+
 ### Confirmed BACH lease releases and explicit reasons (BACH #4221)
 
 - Coordinate all cache writers with a short process lock and compare the current exact capability before updating or removing it; delayed HTTP replies cannot erase a replacement lease or unrelated ticket changes.

@@ -339,7 +339,7 @@ sequenceDiagram
    - Zero-Copyleft Garantie (100% permissiver Open-Source Stack: MIT, PSF-2.0)
    - 0 Pflichtabhängigkeiten (Python-Standardbibliothek Kernlaufzeit: dependencies = [])
    - Gesetzlicher Haftungsausschluss (§ 521 BGB Gefälligkeitsrecht)
-   - Verbindliche 48-Stunden-Sicherheits-Reaktionsgarantie (security@ellmos.ai, security@open-bricks.org)
+   - 48-Stunden-Reaktionsziel nach bestem Bemühen (private Schwachstellenmeldung über GitHub)
 ========================================================================================================================
 ```
 

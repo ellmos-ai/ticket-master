@@ -45,7 +45,7 @@ The following tools are utilized exclusively for offline automated testing, code
 - Zero-Copyleft Guarantee: All runtime code and development dependencies are governed strictly by permissive, business-friendly open-source licenses (MIT, Apache-2.0, PSF-2.0). The codebase contains zero GPL, AGPL, or viral copyleft components.
 - Unprivileged User-Mode Operation (RunAsInvoker): All CLI commands, queue operations, informal intake formalization, and triage routines execute purely within unprivileged user space. No administrative rights, root elevation, sudo, or UAC prompts are ever required.
 - Statutory Liability Disclaimer: Unpaid open-source provision under § 521 BGB Gefälligkeitsrecht with liability limited to intent and gross negligence.
-- Binding Security Response SLA: Committed 48-hour response for security disclosures via security@ellmos.ai and security@open-bricks.org.
+- Security Response Target: Best-effort 48-hour acknowledgement for security disclosures via GitHub private vulnerability reporting (https://github.com/ellmos-ai/ticket-master/security/advisories/new). There is no monitored security mailbox.
 
 ## Governance & Runtime Invariants
 

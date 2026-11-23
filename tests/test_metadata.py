@@ -194,6 +194,25 @@ def test_security_policy_bilingual_sla_and_version():
     assert "5 Werktage" in content
 
 
+def test_no_undeliverable_security_contacts_20261123():
+    """Security reports must go through a channel that exists.
+
+    `ellmos.ai` and `open-bricks.org` do not resolve and `lukasgeiger.com` has no
+    mail exchanger (see ellmos-ai/ellmos-homebase-mcp#21); the supported channel
+    is GitHub private vulnerability reporting.
+    """
+    dead = (
+        "security@ellmos.ai",
+        "security@open-bricks.org",
+        "lukas@open-bricks.org",
+        "support@lukasgeiger.com",
+    )
+    for name in ("SECURITY.md", "README.md", "README_de.md", "THIRD_PARTY_LICENSES.txt"):
+        text = (REPO_ROOT / name).read_text(encoding="utf-8")
+        for address in dead:
+            assert address not in text, f"{name} still advertises {address}"
+
+
 def test_ellmos_module_manifest_validity():
     """Verify ellmos-module.v2.json exists, adheres to schema, and specifies correct boundaries."""
     manifest_path = REPO_ROOT / "ellmos-module.v2.json"
