@@ -720,7 +720,7 @@ Mit `bach_lease.enabled = true` ist die Lease-Instanz (`lib/bach_lease.py`) der 
 - **Reiner Dateibetrieb nur als Fallback (`fail_open = true`)**, wenn der Lead nicht erreichbar ist oder das Token fehlt: `ticket_mover.py` ergänzt automatisch `YYYY-MM-DD | <worker> | Claim ohne Lease (Fallback Dateibetrieb): <Grund>` in `VERLAUF` und markiert `pending_lease` im Cache. `409` (fremder Holder) ist **nie** ein Fallback und lehnt den Claim immer ab.
 - **Beim Boot Backfill ausführen** (holt fehlende/`pending_lease`-Leases in `ACTIONABLE` und `QUEUED` nach; `--renew-leases` räumt zudem inaktive Cache-Einträge auf und führt am Ende den Backfill aus):
   `python lib/ticket_mover.py --backfill-leases --host <HOST> --tickets-dir <tickets_dir>`
-  Ohne `--host` prüfen `--renew-leases` und `--backfill-leases` den Live-Host vor jeder Lease-Aktion über eine auffindbare `.SYNC`-Wurzel (`--sync-root` oder `TICKET_MASTER_SYNC_ROOT`) und brechen mit Exitcode `1` ohne Änderungen ab, falls er nicht aufgelöst werden kann.
+  Ohne `--host` prüfen `--renew-leases` und `--backfill-leases` den Live-Host vor jeder Lease-Aktion über eine auffindbare `.SYNC`-Wurzel (`--sync-root` oder `TICKET_MASTER_SYNC_ROOT`) und brechen mit Exitcode `1` ohne Änderungen ab, falls er nicht aufgelöst werden kann. Ebenso bricht `--renew-leases` mit Exitcode `1` ab und verlängert nichts, wenn keine Queue-Wurzel auffindbar ist (`--tickets-dir` oder Konfiguration), weil sich INBOX-/UNKNOWN-Leases dann nicht unterscheiden lassen.
 
 ---
 

@@ -4,6 +4,11 @@ All notable changes to ticket-master are documented here.
 
 ## [Unreleased]
 
+### Lease renewal without queue root and neutral test host names
+
+- `ticket_mover --renew-leases` without a resolvable queue root now exits `1` and renews nothing, instead of skipping the cache hygiene and renewing INBOX/UNKNOWN leases too (#72).
+- Tests and README use neutral host names (HOST-A..HOST-D); `.gitignore` conflict-copy patterns keep the real names (#73).
+
 ### Confirmed BACH lease releases and explicit reasons (BACH #4221)
 
 - Coordinate all cache writers with a short process lock and compare the current exact capability before updating or removing it; delayed HTTP replies cannot erase a replacement lease or unrelated ticket changes.
