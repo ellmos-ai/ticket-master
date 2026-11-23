@@ -32,8 +32,8 @@ def temp_queue(tmp_path: Path):
             "checked_at": "2026-11-09T12:00:00Z",
             "source": "derived from inventory seeds: test",
             "systems": {
-                "ASUS-GEI": {"hostname": "ASUS-GEI", "role": "mobile"},
-                "WORKSTATION-LG": {"hostname": "WORKSTATION-LG", "role": "primary-dev"},
+                "HOST-A": {"hostname": "HOST-A", "role": "mobile"},
+                "HOST-B": {"hostname": "HOST-B", "role": "primary-dev"},
             }
         }),
         encoding="utf-8",

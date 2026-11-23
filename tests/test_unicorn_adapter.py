@@ -20,7 +20,7 @@ from queue_helpers import verified_queue  # noqa: E402
 REGISTRY = {
     "source": "fixture://unicorn-systems",
     "checked_at": "2026-09-16T08:00:00Z",
-    "systems": {"ASUS-GEI": {"active": True, "slot": "laptop"}},
+    "systems": {"HOST-A": {"active": True, "slot": "laptop"}},
 }
 
 

@@ -45,7 +45,7 @@ def route(
         "receipt_to": ticket_id,
         "target_snapshot": {
             "kind": "grouped",
-            "systems": target_systems or ["ASUS-GEI", "WORKSTATION-LG"],
+            "systems": target_systems or ["HOST-A", "HOST-B"],
             "at": "2026-09-16T10:00:00Z",
             "source": "fixture://systems",
             "fingerprint": "systems-revision-1",
@@ -100,7 +100,7 @@ def phase0_projection() -> dict:
         },
         "target_snapshot": {
             "kind": "grouped",
-            "systems": ["ASUS-GEI", "WORKSTATION-LG"],
+            "systems": ["HOST-A", "HOST-B"],
             "at": "2026-09-16T10:00:00Z",
             "source_ref": "registry:synthetic-systems-v1",
             "fingerprint": "sha256:" + "3" * 64,
@@ -108,7 +108,7 @@ def phase0_projection() -> dict:
         "receipt_to": "T-20260916-100000003",
         "delivery": {
             "event_id": "evt-" + "0" * 32,
-            "publisher_id": "ticket-master@ASUS-GEI",
+            "publisher_id": "ticket-master@HOST-A",
             "publisher_epoch": "epoch-test-0001",
             "sequence": 10,
             "attempt": 1,
@@ -151,7 +151,7 @@ def phase0_outcome() -> dict:
         ],
         "delivery": {
             "event_id": "evt-" + "1" * 32,
-            "publisher_id": "trithon@ASUS-GEI",
+            "publisher_id": "trithon@HOST-A",
             "publisher_epoch": "epoch-test-0001",
             "sequence": 11,
             "attempt": 1,
@@ -244,7 +244,7 @@ def test_sensitive_or_unknown_source_fields_fail_closed_before_write(tmp_path: P
 
 def test_duplicate_target_systems_fail_closed(tmp_path: Path):
     store = ShadowStore(tmp_path / "shadow.sqlite3")
-    unsafe = route(target_systems=["ASUS-GEI", "ASUS-GEI"])
+    unsafe = route(target_systems=["HOST-A", "HOST-A"])
     with pytest.raises(InvalidSourceError, match="unique systems"):
         store.import_documents([document(unsafe, "memory://duplicate-systems")])
 
@@ -252,7 +252,7 @@ def test_duplicate_target_systems_fail_closed(tmp_path: Path):
 def test_phase0_projection_and_outcome_contracts_are_imported_and_bound(tmp_path: Path):
     store = ShadowStore(
         tmp_path / "shadow.sqlite3",
-        trusted_publishers={"ticket-master@ASUS-GEI", "trithon@ASUS-GEI"},
+        trusted_publishers={"ticket-master@HOST-A", "trithon@HOST-A"},
     )
     projection = document(phase0_projection(), "memory://phase0-projection")
     outcome = document(phase0_outcome(), "memory://phase0-outcome")
@@ -274,7 +274,7 @@ def test_phase0_projection_and_outcome_contracts_are_imported_and_bound(tmp_path
 def test_phase0_delivery_retry_changes_only_transport_and_remains_idempotent(tmp_path: Path):
     store = ShadowStore(
         tmp_path / "shadow.sqlite3",
-        trusted_publishers={"ticket-master@ASUS-GEI", "trithon@ASUS-GEI"},
+        trusted_publishers={"ticket-master@HOST-A", "trithon@HOST-A"},
     )
     projection_payload = phase0_projection()
     outcome_payload = phase0_outcome()
@@ -318,14 +318,14 @@ def test_delivery_checkpoint_rejects_untrusted_publisher_epoch_and_sequence(tmp_
     foreign = json.loads(json.dumps(projection_payload))
     foreign["delivery"]["publisher_id"] = "ticket-master@FOREIGN-HOST"
     foreign_store = ShadowStore(
-        tmp_path / "foreign.sqlite3", trusted_publishers={"ticket-master@ASUS-GEI"}
+        tmp_path / "foreign.sqlite3", trusted_publishers={"ticket-master@HOST-A"}
     )
     with pytest.raises(InvalidSourceError, match="untrusted delivery publisher"):
         foreign_store.import_documents([document(foreign, "memory://foreign-delivery")])
     assert foreign_store.verify()["counts"] == {"tasks": 0, "receipts": 0, "history": 0, "checkpoints": 0}
 
     store = ShadowStore(
-        tmp_path / "trusted.sqlite3", trusted_publishers={"ticket-master@ASUS-GEI"}
+        tmp_path / "trusted.sqlite3", trusted_publishers={"ticket-master@HOST-A"}
     )
     source_uri = "memory://delivery-checkpoint"
     store.import_documents([document(projection_payload, source_uri)])

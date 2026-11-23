@@ -35,30 +35,30 @@ class TestSystemsRegistry(unittest.TestCase):
         gehen, der sie spaeter ablehnt -- nicht durch eine Testkopie davon."""
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp)
-            _seed(seeds / "laptop.json", "ASUS-GEI")
-            _seed(seeds / "workstation.json", "WORKSTATION-LG", role="primary-dev")
+            _seed(seeds / "laptop.json", "HOST-A")
+            _seed(seeds / "workstation.json", "HOST-B", role="primary-dev")
 
             snapshot = systems_registry.build_snapshot(seeds, now="2026-09-12T08:00:00Z")
 
-            resolved = rc.resolve_targets("exact", target="WORKSTATION-LG",
+            resolved = rc.resolve_targets("exact", target="HOST-B",
                                           registry_snapshot=snapshot)
-            self.assertEqual(resolved["systems"], ["WORKSTATION-LG"])
-            self.assertEqual(resolved["details"]["WORKSTATION-LG"]["slot"], "workstation")
+            self.assertEqual(resolved["systems"], ["HOST-B"])
+            self.assertEqual(resolved["details"]["HOST-B"]["slot"], "workstation")
             self.assertTrue(resolved["fingerprint"].startswith("sha256:"))
 
             every = rc.resolve_targets("all", registry_snapshot=snapshot)
-            self.assertEqual(every["systems"], ["ASUS-GEI", "WORKSTATION-LG"])
+            self.assertEqual(every["systems"], ["HOST-A", "HOST-B"])
 
     def test_seed_with_utf8_bom_is_readable(self):
         """surface.json traegt ein BOM (gemessen 2026-09-12); ein plain-utf-8
         Read wirft dort, waehrend die uebrigen Seeds durchgehen."""
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp)
-            _seed(seeds / "surface.json", "SURFACE-LAPTOP", role="", bom=True)
+            _seed(seeds / "surface.json", "HOST-D", role="", bom=True)
 
             snapshot = systems_registry.build_snapshot(seeds)
 
-            self.assertIn("SURFACE-LAPTOP", snapshot["systems"])
+            self.assertIn("HOST-D", snapshot["systems"])
 
     def test_active_is_not_invented(self):
         """Die Seeds fuehren kein active-Feld. resolve_targets() liest es als
@@ -66,33 +66,33 @@ class TestSystemsRegistry(unittest.TestCase):
         Feld wuerde eine fehlende Tatsache zu einer behaupteten machen."""
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp)
-            _seed(seeds / "laptop.json", "ASUS-GEI")
+            _seed(seeds / "laptop.json", "HOST-A")
 
             snapshot = systems_registry.build_snapshot(seeds, sync_root=None)
 
-            self.assertNotIn("active", snapshot["systems"]["ASUS-GEI"])
+            self.assertNotIn("active", snapshot["systems"]["HOST-A"])
 
     def test_backup_seeds_are_ignored(self):
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp)
-            _seed(seeds / "laptop.json", "ASUS-GEI")
-            _seed(seeds / "laptop.json.bak.json", "ASUS-GEI-STALE")
+            _seed(seeds / "laptop.json", "HOST-A")
+            _seed(seeds / "laptop.json.bak.json", "HOST-A-STALE")
 
             snapshot = systems_registry.build_snapshot(seeds)
 
-            self.assertEqual(list(snapshot["systems"]), ["ASUS-GEI"])
+            self.assertEqual(list(snapshot["systems"]), ["HOST-A"])
 
     def test_seed_without_hostname_is_skipped_not_guessed(self):
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp)
-            _seed(seeds / "laptop.json", "ASUS-GEI")
+            _seed(seeds / "laptop.json", "HOST-A")
             (seeds / "broken.json").write_text(
                 json.dumps({"system": {"name": "x"}}), encoding="utf-8"
             )
 
             snapshot = systems_registry.build_snapshot(seeds)
 
-            self.assertEqual(list(snapshot["systems"]), ["ASUS-GEI"])
+            self.assertEqual(list(snapshot["systems"]), ["HOST-A"])
 
     def test_empty_or_missing_directory_fails_closed(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -105,7 +105,7 @@ class TestSystemsRegistry(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             seeds = Path(tmp) / "systems"
             seeds.mkdir()
-            _seed(seeds / "laptop.json", "ASUS-GEI")
+            _seed(seeds / "laptop.json", "HOST-A")
             out = Path(tmp) / "nested" / "systems-registry.json"
 
             systems_registry.write_snapshot(seeds, out, now="2026-09-12T08:00:00Z")
@@ -117,16 +117,16 @@ class TestSystemsRegistry(unittest.TestCase):
 
 class TestPausedSlots(unittest.TestCase):
     """T-20260912-311033160: Ohne active-Feld galt jeder Host als aktiv, also
-    nahm --target-kind all den pausierten SURFACE-LAPTOP mit und ein
+    nahm --target-kind all den pausierten HOST-D mit und ein
     Fork-Ticket haette eine SYSTEM_LEDGER-Zeile fuer einen laengerfristig
     ausser Betrieb stehenden Host bekommen."""
 
     def _sync_tree(self, base: Path) -> Path:
         seeds = base / "_inventory" / "systems"
         seeds.mkdir(parents=True)
-        _seed(seeds / "laptop.json", "ASUS-GEI")
-        _seed(seeds / "workstation.json", "WORKSTATION-LG", role="primary-dev")
-        _seed(seeds / "surface.json", "SURFACE-LAPTOP", role="")
+        _seed(seeds / "laptop.json", "HOST-A")
+        _seed(seeds / "workstation.json", "HOST-B", role="primary-dev")
+        _seed(seeds / "surface.json", "HOST-D", role="")
         return seeds
 
     def _pause(self, base: Path, slot: str) -> None:
@@ -143,8 +143,8 @@ class TestPausedSlots(unittest.TestCase):
 
             snapshot = systems_registry.build_snapshot(seeds)
 
-            self.assertIs(snapshot["systems"]["SURFACE-LAPTOP"]["active"], False)
-            self.assertNotIn("active", snapshot["systems"]["ASUS-GEI"])
+            self.assertIs(snapshot["systems"]["HOST-D"]["active"], False)
+            self.assertNotIn("active", snapshot["systems"]["HOST-A"])
 
     def test_target_kind_all_leaves_out_the_paused_host(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -155,8 +155,8 @@ class TestPausedSlots(unittest.TestCase):
             snapshot = systems_registry.build_snapshot(seeds)
             every = rc.resolve_targets("all", registry_snapshot=snapshot)
 
-            self.assertEqual(every["systems"], ["ASUS-GEI", "WORKSTATION-LG"])
-            self.assertNotIn("SURFACE-LAPTOP", every["systems"])
+            self.assertEqual(every["systems"], ["HOST-A", "HOST-B"])
+            self.assertNotIn("HOST-D", every["systems"])
 
     def test_exact_target_on_a_paused_host_is_not_silently_delivered(self):
         """Ein pausierter Host bleibt adressierbar -- aber der Aufrufer sieht
@@ -169,11 +169,11 @@ class TestPausedSlots(unittest.TestCase):
 
             snapshot = systems_registry.build_snapshot(seeds)
             exact = rc.resolve_targets(
-                "exact", target="SURFACE-LAPTOP", registry_snapshot=snapshot
+                "exact", target="HOST-D", registry_snapshot=snapshot
             )
 
-            self.assertEqual(exact["systems"], ["SURFACE-LAPTOP"])
-            self.assertIs(exact["details"]["SURFACE-LAPTOP"]["active"], False)
+            self.assertEqual(exact["systems"], ["HOST-D"])
+            self.assertIs(exact["details"]["HOST-D"]["active"], False)
 
     def test_externally_maintained_host_stays_active(self):
         """'fremdgepflegt' ist NICHT inaktiv -- mac-studio ist ein 24/7-Server
@@ -184,7 +184,7 @@ class TestPausedSlots(unittest.TestCase):
             seeds = self._sync_tree(base)
             payload = json.loads((seeds / "laptop.json").read_text(encoding="utf-8"))
             payload["system"]["hostname"] = "mac-studio"
-            payload["_gepflegt_von"] = "ASUS-GEI"
+            payload["_gepflegt_von"] = "HOST-A"
             (seeds / "mac-studio.json").write_text(
                 json.dumps(payload, ensure_ascii=False), encoding="utf-8"
             )
@@ -203,7 +203,7 @@ class TestPausedSlots(unittest.TestCase):
             base = Path(tmp)
             seeds = base / "anderswo" / "systems"
             seeds.mkdir(parents=True)
-            _seed(seeds / "surface.json", "SURFACE-LAPTOP", role="")
+            _seed(seeds / "surface.json", "HOST-D", role="")
             markers = base / "echter-sync-root"
             (markers / "surface").mkdir(parents=True)
             (markers / "surface" / "PAUSIERT.md").write_text("x", encoding="utf-8")
@@ -211,8 +211,8 @@ class TestPausedSlots(unittest.TestCase):
             abgeleitet = systems_registry.build_snapshot(seeds)
             benannt = systems_registry.build_snapshot(seeds, sync_root=markers)
 
-            self.assertNotIn("active", abgeleitet["systems"]["SURFACE-LAPTOP"])
-            self.assertIs(benannt["systems"]["SURFACE-LAPTOP"]["active"], False)
+            self.assertNotIn("active", abgeleitet["systems"]["HOST-D"])
+            self.assertIs(benannt["systems"]["HOST-D"]["active"], False)
 
 
 class TestWriterReadsSnapshot(unittest.TestCase):
@@ -231,7 +231,7 @@ class TestWriterReadsSnapshot(unittest.TestCase):
             )
             seeds = base / "systems"
             seeds.mkdir()
-            _seed(seeds / "workstation.json", "WORKSTATION-LG", role="primary-dev")
+            _seed(seeds / "workstation.json", "HOST-B", role="primary-dev")
 
             snapshot = base / "systems-registry.json"
             systems_registry.write_snapshot(seeds, snapshot)
@@ -244,7 +244,7 @@ class TestWriterReadsSnapshot(unittest.TestCase):
                 [sys.executable, str(LIB_DIR / "ticket_writer.py"),
                  "--tickets-dir", str(base), "--title", "BOM-Probe",
                  "--body", "x", "--ticket-kind", "transfer",
-                 "--target-kind", "exact", "--target", "WORKSTATION-LG",
+                 "--target-kind", "exact", "--target", "HOST-B",
                  "--primary-ticket", "T-20260912-000000001",
                  "--original-owner", "a@h", "--receipt-to", "a@h",
                  "--systems-registry", str(snapshot)],

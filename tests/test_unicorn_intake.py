@@ -21,7 +21,7 @@ REGISTRY = {
     "source": "fixture://unicorn-systems",
     "checked_at": "2026-09-16T08:00:00Z",
     "systems": {
-        "ASUS-GEI": {"active": True, "slot": "laptop"},
+        "HOST-A": {"active": True, "slot": "laptop"},
     },
 }
 

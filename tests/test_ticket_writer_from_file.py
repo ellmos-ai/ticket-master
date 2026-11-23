@@ -134,7 +134,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
                         "--tickets-dir", str(base),
                         "--ticket-kind", "transfer",
                         "--target-kind", "exact",
-                        "--target", "WORKSTATION-LG",
+                        "--target", "HOST-B",
                     ])
 
             self.assertEqual(cm.exception.code, 2)
@@ -178,7 +178,7 @@ class TestFormalizeInformalEntry(unittest.TestCase):
                         "--tickets-dir", str(base),
                         "--ticket-kind", "transfer",
                         "--target-kind", "exact",
-                        "--target", "WORKSTATION-LG",
+                        "--target", "HOST-B",
                     ])
 
             self.assertEqual(cm.exception.code, 2)

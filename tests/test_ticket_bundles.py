@@ -57,11 +57,11 @@ def _write_ticket(
 
 def test_normalize_ticket_id_strips_host_and_lifecycle_path():
     assert (
-        normalize_ticket_id("ACTIONABLE/T-20261027-369717637.ASUS-GEI.txt")
+        normalize_ticket_id("ACTIONABLE/T-20261027-369717637.HOST-A.txt")
         == "T-20261027-369717637"
     )
     assert (
-        normalize_ticket_id(Path("C:/tickets/QUEUED/T-20261025-777054661.WORKSTATION-LG.txt"))
+        normalize_ticket_id(Path("C:/tickets/QUEUED/T-20261025-777054661.HOST-B.txt"))
         == "T-20261025-777054661"
     )
 
@@ -69,20 +69,20 @@ def test_normalize_ticket_id_strips_host_and_lifecycle_path():
 def test_config_disabled_blocks_planning_and_creation_but_preserves_history_read(tmp_path):
     actionable = tmp_path / "ACTIONABLE"
     t1 = _write_ticket(
-        actionable, "T-20261027-111111111.ASUS-GEI.txt", ticket_id="T-20261027-111111111"
+        actionable, "T-20261027-111111111.HOST-A.txt", ticket_id="T-20261027-111111111"
     )
     t2 = _write_ticket(
-        actionable, "T-20261027-222222222.ASUS-GEI.txt", ticket_id="T-20261027-222222222"
+        actionable, "T-20261027-222222222.HOST-A.txt", ticket_id="T-20261027-222222222"
     )
     reg = BundlesRegistry(tmp_path / "bundles-reg.json")
 
     with pytest.raises(TicketBundleError, match="disabled"):
-        suggest_bundles([t1, t2], actor_ref="codex@ASUS-GEI", config={"bundles": {"enabled": False}})
+        suggest_bundles([t1, t2], actor_ref="codex@HOST-A", config={"bundles": {"enabled": False}})
 
     with pytest.raises(TicketBundleError, match="disabled"):
         reg.create_bundle(
             ticket_paths=[t1, t2],
-            actor_ref="codex@ASUS-GEI",
+            actor_ref="codex@HOST-A",
             rationale="Umbruch-Paket",
             source_ref="ticket-master",
             scope_key="umbruch:.umbruch",
@@ -96,13 +96,13 @@ def test_config_disabled_blocks_planning_and_creation_but_preserves_history_read
 def test_bidirectional_pointers_idempotency_and_schema_validation(tmp_path):
     actionable = tmp_path / "ACTIONABLE"
     t1 = _write_ticket(
-        actionable, "T-20261027-111111111.ASUS-GEI.txt", ticket_id="T-20261027-111111111"
+        actionable, "T-20261027-111111111.HOST-A.txt", ticket_id="T-20261027-111111111"
     )
     t2 = _write_ticket(
-        actionable, "T-20261027-222222222.WORKSTATION-LG.txt", ticket_id="T-20261027-222222222"
+        actionable, "T-20261027-222222222.HOST-B.txt", ticket_id="T-20261027-222222222"
     )
     cfg = {"bundles": {"enabled": True}}
-    suggestions = suggest_bundles([t1, t2], actor_ref="codex@ASUS-GEI", config=cfg)
+    suggestions = suggest_bundles([t1, t2], actor_ref="codex@HOST-A", config=cfg)
     assert len(suggestions) == 1
     assert suggestions[0]["ticket_ids"] == ["T-20261027-111111111", "T-20261027-222222222"]
 
@@ -110,7 +110,7 @@ def test_bidirectional_pointers_idempotency_and_schema_validation(tmp_path):
     now = datetime(2026, 10, 31, 12, 0, tzinfo=timezone.utc)
     bundle = reg.create_bundle(
         ticket_paths=[t1, t2],
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
         rationale="Gemeinsamer Umbruch-Kontext mit echten Umlauten äöüß",
         source_ref="ticket-master",
         scope_key="umbruch:.umbruch",
@@ -120,7 +120,7 @@ def test_bidirectional_pointers_idempotency_and_schema_validation(tmp_path):
     # Idempotent replay returns identical bundle without duplicating
     replay = reg.create_bundle(
         ticket_paths=[t1, t2],
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
         rationale="Gemeinsamer Umbruch-Kontext mit echten Umlauten äöüß",
         source_ref="ticket-master",
         scope_key="umbruch:.umbruch",
@@ -163,7 +163,7 @@ def test_rejects_parked_foreign_claimed_locked_and_stale_preimages(tmp_path):
         actionable,
         "T-20261027-444444444.txt",
         ticket_id="T-20261027-444444444",
-        delegated_to="other-agent@ASUS-GEI",
+        delegated_to="other-agent@HOST-A",
     )
     cfg = {"bundles": {"enabled": True}}
     reg = BundlesRegistry(tmp_path / "bundles-reg.json")
@@ -171,7 +171,7 @@ def test_rejects_parked_foreign_claimed_locked_and_stale_preimages(tmp_path):
     with pytest.raises(TicketBundleError, match="not eligible"):
         reg.create_bundle(
             ticket_paths=[t_ok, t_parked],
-            actor_ref="codex@ASUS-GEI",
+            actor_ref="codex@HOST-A",
             rationale="Darf nicht bündeln",
             source_ref="ticket-master",
             scope_key="umbruch:.umbruch",
@@ -181,7 +181,7 @@ def test_rejects_parked_foreign_claimed_locked_and_stale_preimages(tmp_path):
     with pytest.raises(TicketBundleError, match="foreign actor"):
         reg.create_bundle(
             ticket_paths=[t_ok, t_foreign],
-            actor_ref="codex@ASUS-GEI",
+            actor_ref="codex@HOST-A",
             rationale="Darf fremden Claim nicht übernehmen",
             source_ref="ticket-master",
             scope_key="umbruch:.umbruch",
@@ -194,7 +194,7 @@ def test_rejects_parked_foreign_claimed_locked_and_stale_preimages(tmp_path):
     with pytest.raises(PreimageConflictError, match="preimage mismatch"):
         reg.create_bundle(
             ticket_paths=[t_ok, t_ok2],
-            actor_ref="codex@ASUS-GEI",
+            actor_ref="codex@HOST-A",
             rationale="Preimage-Test",
             source_ref="ticket-master",
             scope_key="umbruch:.umbruch",
@@ -215,7 +215,7 @@ def test_partial_failure_and_completed_bundle_preserve_individual_ticket_status(
     reg = BundlesRegistry(tmp_path / "bundles-reg.json")
     bundle = reg.create_bundle(
         ticket_paths=[t1, t2],
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
         rationale="Teilfehler- und Abschlussprüfung",
         source_ref="ticket-master",
         scope_key="umbruch:.umbruch",
@@ -223,23 +223,23 @@ def test_partial_failure_and_completed_bundle_preserve_individual_ticket_status(
     )
     updated = reg.record_member_outcome(
         bundle["bundle_id"],
-        ticket_id="T-20261027-111111111.ASUS-GEI.txt",
+        ticket_id="T-20261027-111111111.HOST-A.txt",
         outcome="done",
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
     )
     assert updated["state"] == "executing"
     partial = reg.record_member_outcome(
         bundle["bundle_id"],
         ticket_id="T-20261027-222222222",
         outcome="failed",
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
     )
     assert partial["state"] == "partial"
     completed = reg.record_member_outcome(
         bundle["bundle_id"],
         ticket_id="T-20261027-222222222",
         outcome="done",
-        actor_ref="codex@ASUS-GEI",
+        actor_ref="codex@HOST-A",
     )
     assert completed["state"] == "completed"
     # Individual ticket files keep their own canonical STATUS (not auto-marked SOLVED)
@@ -250,7 +250,7 @@ def test_partial_failure_and_completed_bundle_preserve_individual_ticket_status(
 def test_write_ticket_bundle_pointer_refuses_unverified_queue(tmp_path):
     actionable = tmp_path / "ACTIONABLE"
     ticket = _write_ticket(
-        actionable, "T-20261027-111111111.ASUS-GEI.txt", ticket_id="T-20261027-111111111", verify_queue=False
+        actionable, "T-20261027-111111111.HOST-A.txt", ticket_id="T-20261027-111111111", verify_queue=False
     )
     meta = parse_ticket_metadata(ticket)
     with pytest.raises(ValueError, match="verified ticket queue"):

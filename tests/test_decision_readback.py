@@ -221,8 +221,8 @@ class TestReadback(unittest.TestCase):
             inside = _ticket(queue, "USER", "T-20260913-000000003.txt",
                              "Bezug D-20260731-010.")
             renamed = ticket_mover.move_ticket(
-                inside, queue / "USER", new_name="T-20260913-000000003.ASUS-GEI.txt")
-            self.assertEqual(renamed.name, "T-20260913-000000003.ASUS-GEI.txt")
+                inside, queue / "USER", new_name="T-20260913-000000003.HOST-A.txt")
+            self.assertEqual(renamed.name, "T-20260913-000000003.HOST-A.txt")
 
     def test_dry_run_never_writes_the_protocol_line(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -24,7 +24,7 @@ class TestCollectIds(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _write(base / "QUEUED" / "T-20260808-01.txt")
-            _write(base / "SOLVED" / "T-20260808-02.WORKSTATION-LG.txt")
+            _write(base / "SOLVED" / "T-20260808-02.HOST-B.txt")
             report = ticket_audit.audit(base)
             self.assertEqual(report["collisions"], {})
 
@@ -34,10 +34,10 @@ class TestCollectIds(unittest.TestCase):
         als synthetisches Fixture, nicht am echten Bestand."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            _write(base / "SOLVED" / "T-20260731-02.WORKSTATION-LG.txt", "memoryhooker-retrieval")
-            _write(base / "BLOCKED" / "T-20260731-02.WORKSTATION-LG.txt", "foreign-state-vorgang")
-            _write(base / "SOLVED" / "T-20260731-03.WORKSTATION-LG.txt", "bach-scoring-evaluation")
-            _write(base / "ACTIONABLE" / "T-20260731-03.WORKSTATION-LG.txt", "trusted-peer-setup")
+            _write(base / "SOLVED" / "T-20260731-02.HOST-B.txt", "memoryhooker-retrieval")
+            _write(base / "BLOCKED" / "T-20260731-02.HOST-B.txt", "foreign-state-vorgang")
+            _write(base / "SOLVED" / "T-20260731-03.HOST-B.txt", "bach-scoring-evaluation")
+            _write(base / "ACTIONABLE" / "T-20260731-03.HOST-B.txt", "trusted-peer-setup")
             _write(base / "QUEUED" / "T-20260808-01.txt", "unrelated, clean")
 
             report = ticket_audit.audit(base)
@@ -67,11 +67,11 @@ class TestClassifyCollision(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _write(
-                base / "SOLVED" / "T-20260830-517795746.ASUS-GEI.txt",
+                base / "SOLVED" / "T-20260830-517795746.HOST-A.txt",
                 "TITEL:         Rueckschreibung von Entscheidungen ist nicht abgesichert\n",
             )
             _write(
-                base / "PARKED" / "T-20260830-517795746.WORKSTATION-LG.txt",
+                base / "PARKED" / "T-20260830-517795746.HOST-B.txt",
                 "TITEL:         USER-Tickets speisen nicht ins Entscheidungsregister ein\n",
             )
             report = ticket_audit.audit(base)
@@ -82,11 +82,11 @@ class TestClassifyCollision(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _write(
-                base / "SOLVED" / "T-20260830-321949169.ASUS-GEI.txt",
+                base / "SOLVED" / "T-20260830-321949169.HOST-A.txt",
                 "TITEL:         Gleicher Vorgang, zwei Hosts\n",
             )
             _write(
-                base / "SOLVED" / "T-20260830-321949169.WORKSTATION-LG.txt",
+                base / "SOLVED" / "T-20260830-321949169.HOST-B.txt",
                 "TITEL:         Gleicher Vorgang, zwei Hosts\n",
             )
             report = ticket_audit.audit(base)
@@ -97,16 +97,16 @@ class TestClassifyCollision(unittest.TestCase):
 
 class TestClaimedInRoot(unittest.TestCase):
     def test_claimed_ticket_in_root_is_flagged(self):
-        """Nachbau des Zweitbefunds: T-20260801-07.WORKSTATION-LG.txt lag
+        """Nachbau des Zweitbefunds: T-20260801-07.HOST-B.txt lag
         sieben Tage unsichtbar in der Wurzel statt in einem Statusordner."""
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            _write(base / "T-20260801-07.WORKSTATION-LG.txt", "urgent user order")
+            _write(base / "T-20260801-07.HOST-B.txt", "urgent user order")
             _write(base / "T-20260808-09.txt")  # unclaimed in root: das ist der INBOX-Regelfall
             report = ticket_audit.audit(base)
             self.assertEqual(
                 report["claimed_in_root"],
-                [str(base / "T-20260801-07.WORKSTATION-LG.txt")],
+                [str(base / "T-20260801-07.HOST-B.txt")],
             )
 
     def test_unclaimed_ticket_in_root_is_not_flagged(self):
@@ -119,7 +119,7 @@ class TestClaimedInRoot(unittest.TestCase):
     def test_claimed_ticket_in_status_folder_is_not_flagged(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            _write(base / "ACTIONABLE" / "T-20260808-09.WORKSTATION-LG.txt")
+            _write(base / "ACTIONABLE" / "T-20260808-09.HOST-B.txt")
             report = ticket_audit.audit(base)
             self.assertEqual(report["claimed_in_root"], [])
 
@@ -191,7 +191,7 @@ class TestNonTicketFiles(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             nested = _write(
-                base / "USER" / "decision" / "T-20260822-123456789.ASUS-GEI.txt",
+                base / "USER" / "decision" / "T-20260822-123456789.HOST-A.txt",
                 "STATUS: USER/decision\n",
             )
             before = nested.read_bytes()
@@ -214,7 +214,7 @@ class TestNonTicketFiles(unittest.TestCase):
     def test_nested_lifecycle_detail_reports_flat_target_collision(self):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
-            filename = "T-20260822-123456789.ASUS-GEI.txt"
+            filename = "T-20260822-123456789.HOST-A.txt"
             target = _write(base / "USER" / filename, "existing flat ticket")
             nested = _write(
                 base / "USER" / "decision" / filename,
@@ -240,8 +240,8 @@ class TestCleanBestand(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             _write(base / "T-20260808-01.txt")
-            _write(base / "ACTIONABLE" / "T-20260808-02.WORKSTATION-LG.txt")
-            _write(base / "SOLVED" / "T-20260808-03.WORKSTATION-LG.txt")
+            _write(base / "ACTIONABLE" / "T-20260808-02.HOST-B.txt")
+            _write(base / "SOLVED" / "T-20260808-03.HOST-B.txt")
             report = ticket_audit.audit(base)
             self.assertEqual(report["collisions"], {})
             self.assertEqual(report["claimed_in_root"], [])

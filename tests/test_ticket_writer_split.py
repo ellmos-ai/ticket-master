@@ -26,7 +26,7 @@ class TestSplitTicket(unittest.TestCase):
             verified_queue(base)
             source_dir = base / "PARKED"
             source_dir.mkdir()
-            source = source_dir / "T-20260830-517795746.WORKSTATION-LG.txt"
+            source = source_dir / "T-20260830-517795746.HOST-B.txt"
             wortlaut = (
                 "ID:            T-20260830-517795746\n"
                 "TITEL:         USER-Tickets speisen nicht ins Entscheidungsregister ein\n"
@@ -58,7 +58,7 @@ class TestSplitTicket(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             base = Path(tmp)
             verified_queue(base)
-            source = base / "PARKED" / "T-20260830-517795746.WORKSTATION-LG.txt"
+            source = base / "PARKED" / "T-20260830-517795746.HOST-B.txt"
             source.parent.mkdir()
             source.write_text("ID: T-20260830-517795746\nTITEL: x\n", encoding="utf-8")
 

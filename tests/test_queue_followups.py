@@ -232,7 +232,7 @@ def test_move_refuses_destination_outside_verified_queue(tmp_path):
 def test_mark_delegated_and_release_claim_refuse_an_unverified_queue(tmp_path):
     shadow = tmp_path / "shadow"
     ticket = ticket_in(shadow, "QUEUED")
-    claimed = write_file(shadow / "ACTIONABLE" / "T-20261107-000000002.ASUS-GEI.txt", TICKET_TEXT)
+    claimed = write_file(shadow / "ACTIONABLE" / "T-20261107-000000002.HOST-A.txt", TICKET_TEXT)
     before = ticket.read_bytes()
 
     with pytest.raises(ValueError, match="verified ticket queue"):
@@ -246,10 +246,10 @@ def test_mark_delegated_and_release_claim_refuse_an_unverified_queue(tmp_path):
 
 def test_release_claims_refuses_an_unverified_queue(tmp_path):
     shadow = tmp_path / "shadow"
-    claimed = write_file(shadow / "ACTIONABLE" / "T-20261107-000000002.ASUS-GEI.txt", TICKET_TEXT)
+    claimed = write_file(shadow / "ACTIONABLE" / "T-20261107-000000002.HOST-A.txt", TICKET_TEXT)
 
     with pytest.raises(ValueError, match="verified ticket queue"):
-        ticket_mover.release_claims(shadow, host="ASUS-GEI")
+        ticket_mover.release_claims(shadow, host="HOST-A")
 
     assert claimed.is_file()
 

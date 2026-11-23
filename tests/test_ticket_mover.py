@@ -23,7 +23,7 @@ class TestMoveTicket(unittest.TestCase):
         eine echte Vorschau sein und darf nicht einmal den Zielordner anlegen."""
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260822-797239249.HOST-A.txt"
             source.parent.mkdir()
             original = b"DRY-RUN-SOURCE\n"
             source.write_bytes(original)
@@ -47,7 +47,7 @@ class TestMoveTicket(unittest.TestCase):
         verändert weder die Quelle noch ein bereits vorhandenes Ziel."""
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260822-797239249.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260822-797239249.HOST-A.txt"
             source.parent.mkdir()
             source_before = b"SOURCE-BEFORE\n"
             source.write_bytes(source_before)
@@ -114,10 +114,10 @@ class TestMoveTicket(unittest.TestCase):
         """A different suffix must not hide an already visible physical copy."""
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260824-422995631.HOST-A.txt"
             source.parent.mkdir()
             source.write_text("SOURCE", encoding="utf-8")
-            duplicate = base / "SOLVED" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            duplicate = base / "SOLVED" / "T-20260824-422995631.HOST-B.txt"
             duplicate.parent.mkdir()
             duplicate.write_text("OTHER HOST", encoding="utf-8")
 
@@ -137,14 +137,14 @@ class TestMoveTicket(unittest.TestCase):
             base = Path(tmp)
             source = (
                 base / "INBOX" /
-                "T-20260824-422995631_legacy.ASUS-GEI.txt"
+                "T-20260824-422995631_legacy.HOST-A.txt"
             )
             source.parent.mkdir()
             source.write_text("LEGACY", encoding="utf-8")
             duplicate = (
                 base / "USER" /
-                "T-20260824-422995631_routed.to-WORKSTATION-LG."
-                "via-claude.claim-WORKSTATION-LG.txt"
+                "T-20260824-422995631_routed.to-HOST-B."
+                "via-claude.claim-HOST-B.txt"
             )
             duplicate.parent.mkdir()
             duplicate.write_text("ROUTING V2", encoding="utf-8")
@@ -159,7 +159,7 @@ class TestMoveTicket(unittest.TestCase):
     def test_move_to_queued_succeeds_when_source_is_the_only_id_match(self):
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260824-422995631.HOST-A.txt"
             source.parent.mkdir()
             source.write_text("ONLY COPY", encoding="utf-8")
 
@@ -172,10 +172,10 @@ class TestMoveTicket(unittest.TestCase):
     def test_duplicate_id_does_not_change_non_queued_moves(self):
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260824-422995631.HOST-A.txt"
             source.parent.mkdir()
             source.write_text("SOURCE", encoding="utf-8")
-            duplicate = base / "WAITING" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            duplicate = base / "WAITING" / "T-20260824-422995631.HOST-B.txt"
             duplicate.parent.mkdir()
             duplicate.write_text("WAITING COPY", encoding="utf-8")
 
@@ -192,11 +192,11 @@ class TestMoveTicket(unittest.TestCase):
         real_open = os.open
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "ACTIONABLE" / "T-20260824-422995631.ASUS-GEI.txt"
+            source = base / "ACTIONABLE" / "T-20260824-422995631.HOST-A.txt"
             source.parent.mkdir()
             source.write_text("SOURCE", encoding="utf-8")
             target = base / "QUEUED" / source.name
-            duplicate = base / "SOLVED" / "T-20260824-422995631.WORKSTATION-LG.txt"
+            duplicate = base / "SOLVED" / "T-20260824-422995631.HOST-B.txt"
             injected = False
 
             def racing_open(path, flags, *args, **kwargs):
@@ -246,7 +246,7 @@ class TestMoveTicket(unittest.TestCase):
         Zielordner/-datei entsteht, die Quelle bleibt unangetastet."""
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "T-20260818-01.ASUS-GEI.txt"
+            source = base / "T-20260818-01.HOST-A.txt"
             source.write_text("CONTENT", encoding="utf-8")
             dest_dir = base / "SOLVED"
             # Der Bedienfehler: volle Zieldatei statt Zielordner.
@@ -265,7 +265,7 @@ class TestMoveTicket(unittest.TestCase):
         # der Guard darf legitime Ziele nicht mit-blockieren.
         with QueueTemporaryDirectory() as tmp:
             base = Path(tmp)
-            source = base / "T-20260818-02.ASUS-GEI.txt"
+            source = base / "T-20260818-02.HOST-A.txt"
             source.write_text("CONTENT", encoding="utf-8")
             dest_dir = base / "SOLVED"
             target = ticket_mover.move_ticket(source, dest_dir)

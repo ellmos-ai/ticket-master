@@ -44,14 +44,14 @@ def assert_refused(call, shadow_ticket: Path) -> None:
 
 def claimed_any_contract(tmp_path: Path) -> Path:
     path = make_contract(tmp_path / "real", target_kind="any", targets=[], ticket_kind="normal", via="claude")
-    return rc.claim_contract(path, host="ASUS-GEI", actor="claude", runner="claude", resolver=resolver, now=NOW)
+    return rc.claim_contract(path, host="HOST-A", actor="claude", runner="claude", resolver=resolver, now=NOW)
 
 
 def test_record_receipt_refuses_a_shadow_queue(tmp_path):
     shadow = shadow_of(claimed_any_contract(tmp_path), tmp_path)
 
     assert_refused(
-        lambda: rc.record_receipt(shadow, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-1"), now=LATER),
+        lambda: rc.record_receipt(shadow, host="HOST-A", receipt=receipt("HOST-A", "sig-1"), now=LATER),
         shadow,
     )
 
@@ -59,16 +59,16 @@ def test_record_receipt_refuses_a_shadow_queue(tmp_path):
 def test_release_contract_refuses_before_it_writes(tmp_path):
     shadow = shadow_of(claimed_any_contract(tmp_path), tmp_path)
 
-    assert_refused(lambda: rc.release_contract(shadow, host="ASUS-GEI", now=LATER), shadow)
+    assert_refused(lambda: rc.release_contract(shadow, host="HOST-A", now=LATER), shadow)
 
 
 def test_complete_contract_leaves_no_half_solved_ticket(tmp_path):
     claimed = claimed_any_contract(tmp_path)
-    rc.record_receipt(claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-1"), now=LATER)
+    rc.record_receipt(claimed, host="HOST-A", receipt=receipt("HOST-A", "sig-1"), now=LATER)
     shadow = shadow_of(claimed, tmp_path)
 
     assert_refused(
-        lambda: rc.complete_contract(shadow, host="ASUS-GEI", solved_dir=shadow.parent.parent / "SOLVED", now=LATER),
+        lambda: rc.complete_contract(shadow, host="HOST-A", solved_dir=shadow.parent.parent / "SOLVED", now=LATER),
         shadow,
     )
     assert "STATUS:        SOLVED" not in shadow.read_text(encoding="utf-8")
@@ -101,8 +101,8 @@ def test_status_drift_fixer_apply_refuses_a_shadow_queue(tmp_path):
 
 def test_the_same_writers_still_work_in_a_verified_queue(tmp_path):
     claimed = claimed_any_contract(tmp_path)
-    assert rc.record_receipt(claimed, host="ASUS-GEI", receipt=receipt("ASUS-GEI", "sig-1"), now=LATER)
-    solved = rc.complete_contract(claimed, host="ASUS-GEI", solved_dir=tmp_path / "real" / "SOLVED", now=LATER)
+    assert rc.record_receipt(claimed, host="HOST-A", receipt=receipt("HOST-A", "sig-1"), now=LATER)
+    solved = rc.complete_contract(claimed, host="HOST-A", solved_dir=tmp_path / "real" / "SOLVED", now=LATER)
     assert solved.parent.name == "SOLVED"
 
     root = verified_queue(tmp_path / "drift")
