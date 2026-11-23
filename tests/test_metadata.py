@@ -173,12 +173,25 @@ def test_gitignore_secret_and_credential_patterns():
         ".npmrc",
         ".pypirc",
         "tickets/.ticket-master-queue",
-        "*-HOST-B.*",
-        "*-HOST-A.*",
         "*.sync-conflict-*",
         "*.conflict",
     ]:
         assert pattern in content, f"Pattern '{pattern}' missing in .gitignore"
+    _assert_host_conflict_patterns(content)
+
+
+def _assert_host_conflict_patterns(content: str, minimum: int = 3) -> None:
+    """Host-suffixed sync-conflict guards must exist without naming real hosts in tests."""
+    section = content.split("# Multi-Host Sync", 1)
+    assert len(section) == 2, "Multi-Host Sync section missing in .gitignore"
+    body = section[1].split("\n\n", 1)[0]
+    hosts = {
+        m.group(1)
+        for m in re.finditer(r"^\*-([A-Za-z][A-Za-z0-9 -]*)\.\*$", body, re.MULTILINE)
+    }
+    assert len(hosts) >= minimum, f"expected >= {minimum} host-suffix patterns, got {sorted(hosts)}"
+    for host in hosts:
+        assert f"*-{host}*" in body, f"wildcard variant for host pattern '{host}' missing"
 
 
 def test_security_policy_bilingual_sla_and_version():
@@ -669,12 +682,11 @@ def test_labels_yml_includes_dependabot_labels():
 
 
 def test_extended_lock_defense_in_gitignore():
-    """Verify .gitignore includes explicit HOST-C, ehthumbs, and specialized lock patterns."""
+    """Verify .gitignore includes host-suffix guards, ehthumbs, and specialized lock patterns."""
     gitignore_path = REPO_ROOT / ".gitignore"
     assert gitignore_path.is_file()
     content = gitignore_path.read_text(encoding="utf-8")
     for pattern in [
-        "*-HOST-C*",
         "ehthumbs.db",
         "TASKPLAN_*.md",
         "LOCK.dev.*",
@@ -682,6 +694,7 @@ def test_extended_lock_defense_in_gitignore():
         "LOCK.bugsearch.*",
     ]:
         assert pattern in content, f"Pattern '{pattern}' missing in .gitignore"
+    _assert_host_conflict_patterns(content)
 
 
 def test_third_party_licenses_audit_recency_2026_10_09():
