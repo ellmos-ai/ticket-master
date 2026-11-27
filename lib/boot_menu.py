@@ -28,9 +28,10 @@ from pathlib import Path
 from typing import Any
 
 try:  # package import (``from lib import boot_menu``)
-    from . import auditor_bridge
+    from . import auditor_bridge, planning_bridges
 except ImportError:  # direct script/module import from ``lib`` on sys.path
     import auditor_bridge
+    import planning_bridges
 
 
 # The three TASKPLAN roles (~/CLAUDE.md "TASKPLAN -- die drei Aufgaben-Loops").
@@ -201,6 +202,7 @@ def offer(tm_config: dict[str, Any]) -> dict[str, Any]:
         "models": list_models(tm_config),
         "self_model": self_model(tm_config),
         "auditor_codeword": bridge_cfg.get("codeword"),
+        "planning_bridges": planning_bridges.boot_offer(tm_config),
         "default": {"action": "none", "reason": "Enter ohne Eingabe -> POSITION 0, nichts starten"},
     }
 

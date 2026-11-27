@@ -48,6 +48,16 @@ from messages_line import (  # noqa: E402
     validate_log_registry,
     validate_messages_config,
 )
+from planning_bridges import (  # noqa: E402
+    VALID_CALENDAR_BACKENDS,
+    apply_calendar_plan,
+    format_calendar_plan_text,
+    format_planning_status_text,
+    format_sorted_tickets_text,
+    plan_tickets_to_calendar,
+    planning_status,
+    sort_tickets_by_agenda,
+)
 
 
 class ConfigError(ValueError):
@@ -605,10 +615,39 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="ACTION",
         help="use the local Messages-Line core (never sends or auto-acknowledges)",
     )
+    mode.add_argument(
+        "--planning-status",
+        action="store_true",
+        help="show status and detected paths/backends of agenda-setting, kalender and ocean",
+    )
+    mode.add_argument(
+        "--sort-by-agenda",
+        action="store_true",
+        help="rank open tickets against the active shared agenda",
+    )
+    mode.add_argument(
+        "--plan-calendar",
+        action="store_true",
+        help="plan conflict-free calendar slots for agenda-sorted tickets (dry-run unless --apply)",
+    )
     parser.add_argument("--inventory-content", action="store_true",
                         help="include private source text in inventory JSON; store outside the watched queue")
-    parser.add_argument("--json", action="store_true",
-                        help="emit --list, --ticket-inventory or --messages-line output as JSON")
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=(
+            "emit --list, --ticket-inventory, --messages-line, --planning-status, "
+            "--sort-by-agenda or --plan-calendar output as JSON"
+        ),
+    )
+    parser.add_argument("--days", type=int, default=None,
+                        help="planning horizon in days for --plan-calendar")
+    parser.add_argument("--backend", choices=VALID_CALENDAR_BACKENDS, default=None,
+                        help="calendar backend override (auto, kalender, ocean) for --plan-calendar or --planning-status")
+    parser.add_argument("--apply", action="store_true",
+                        help="persist planned ticket slots into the calendar backend (requires --plan-calendar)")
+    parser.add_argument("--include-statuses", default=None,
+                        help="comma-separated lifecycle folders for --sort-by-agenda / --plan-calendar")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")
     parser.add_argument("--config", help="path to local JSON config")
     parser.add_argument("--messages-dir", help="explicit local Messages-Line store for create/list/read/ack")
@@ -644,12 +683,79 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
-        if args.json and not (args.list or args.ticket_inventory or args.messages_line):
-            raise ConfigError("--json is only valid with --list, --ticket-inventory or --messages-line")
+        if args.json and not (
+            args.list
+            or args.ticket_inventory
+            or args.messages_line
+            or args.planning_status
+            or args.sort_by_agenda
+            or args.plan_calendar
+        ):
+            raise ConfigError(
+                "--json is only valid with --list, --ticket-inventory, --messages-line, "
+                "--planning-status, --sort-by-agenda or --plan-calendar"
+            )
         if args.inventory_content and not args.ticket_inventory:
             raise ConfigError("--inventory-content requires --ticket-inventory")
+        if args.apply and not args.plan_calendar:
+            raise ConfigError("--apply requires --plan-calendar")
+        if args.days is not None and not args.plan_calendar:
+            raise ConfigError("--days requires --plan-calendar")
+        if args.backend is not None and not (args.plan_calendar or args.planning_status):
+            raise ConfigError("--backend requires --plan-calendar or --planning-status")
+        if args.include_statuses is not None and not (args.sort_by_agenda or args.plan_calendar):
+            raise ConfigError("--include-statuses requires --sort-by-agenda or --plan-calendar")
         if args.init_queue is not None:
             print(f"INITIALIZED: {init_queue(args.init_queue)}")
+            return 0
+        if args.planning_status:
+            cfg = load_config(args.config)
+            status_payload = planning_status(
+                cfg,
+                include_detection=True,
+                backend_override=args.backend,
+            )
+            if args.json:
+                print(json.dumps(status_payload, ensure_ascii=False, indent=2))
+            else:
+                print(format_planning_status_text(status_payload))
+            return 0
+        if args.sort_by_agenda:
+            cfg = load_config(args.config)
+            tickets_root = resolve_tickets_dir(args.config, args.tickets_dir)
+            sorted_payload = sort_tickets_by_agenda(
+                tickets_root,
+                cfg,
+                include_statuses=args.include_statuses,
+            )
+            if args.json:
+                print(json.dumps(sorted_payload, ensure_ascii=False, indent=2))
+            else:
+                print(format_sorted_tickets_text(sorted_payload))
+            return 0
+        if args.plan_calendar:
+            cfg = load_config(args.config)
+            tickets_root = resolve_tickets_dir(args.config, args.tickets_dir)
+            if args.apply:
+                plan_payload = apply_calendar_plan(
+                    tickets_root,
+                    cfg,
+                    days=args.days,
+                    backend=args.backend,
+                    include_statuses=args.include_statuses,
+                )
+            else:
+                plan_payload = plan_tickets_to_calendar(
+                    tickets_root,
+                    cfg,
+                    days=args.days,
+                    backend=args.backend,
+                    include_statuses=args.include_statuses,
+                )
+            if args.json:
+                print(json.dumps(plan_payload, ensure_ascii=False, indent=2))
+            else:
+                print(format_calendar_plan_text(plan_payload))
             return 0
         if args.messages_line:
             return run_messages_line(args)
@@ -685,7 +791,7 @@ def main(argv: list[str] | None = None) -> int:
             language=args.lang,
             skip_permissions=args.skip_permissions,
         )
-    except (ConfigError, QueueAliasError, ValueError, OSError) as exc:
+    except (ConfigError, QueueAliasError, ValueError, RuntimeError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 

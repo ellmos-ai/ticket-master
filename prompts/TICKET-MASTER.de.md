@@ -737,6 +737,35 @@ oder einer benannten Publikationsvorlage verbunden, autorisiert sie auch die
 Publikation. Version und Provenienz getrennt festhalten. Die allgemeine
 Präferenz genehmigt weder ungeprüfte Inhalte noch eine beliebige Fassung.
 
+### (c9) Agenda- und Kalender-Brücke (optional)
+
+Einmal beim Boot (bzw. im Rahmen von `session_boot.py --report` und
+`boot_menu.py --offer`) den Planungsstatus prüfen:
+
+```
+python bin/ticket_master.py --planning-status --json
+```
+
+Die Brücke (`lib/planning_bridges.py`) bindet die optionalen Skills
+`agenda-setting` (`agent-agenda.v1`) und `kalender` (lokales SQLite `events`
+sowie das `ocean`-Kalender-Backend `assistant_calendar`) eng und ohne zweiten
+Datenspeicher an:
+
+- Ist `agenda_bridge` aktiviert und installiert (`status == "ready"`), den
+  aktuellen Stand von `agenda-setting` mitladen (`agenda_active`, Gewichte,
+  Zeiträume, Frist) und offene Tickets bei `sort_on_start` oder auf Anfrage
+  agendagerecht sortieren:
+  `python bin/ticket_master.py --sort-by-agenda --json`
+  Eine deaktivierte oder abgelaufene Agenda wird nicht aktiv gewichtet
+  (`agenda_active: false`).
+- Ist `calendar_bridge` aktiviert und ein Backend bereit (`kalender` oder
+  `ocean`), zusätzlich die agendagerechte, kollisionsfreie Tages-/Kalender-
+  Aufteilung anbieten — immer zuerst als schreibfreie Vorschau (Dry-Run):
+  `python bin/ticket_master.py --plan-calendar [--days N] [--backend auto|kalender|ocean] --json`
+  Erst nach ausdrücklicher Bestätigung des Users mit `--apply` idempotent in
+  den Kalender übernehmen (`--plan-calendar --apply`). Sind Bridges `disabled`
+  oder `absent`, einmal kurz vermerken und normal fortfahren (kein Fehler).
+
 ### (d) Auf POSITION 0 gehen
 
 **POSITION 0** = inaktiver Wartezustand. Die Session ist offen; der Agent tut
@@ -1048,6 +1077,8 @@ Von diesem Prompt genutzte Schlüsselfelder:
 | `advisor` | Optionale Advisor-Modell-Konfiguration |
 | `router_command` | Optional (Phase 3): externer Multi-Modell-Router, primär vor der Score-Fallback-Formel |
 | `task_db_command` | Optional (Phase 3): „später"-Senke für `woche`/`backlog`-Tickets |
+| `agenda_bridge` | Optional: Anbindung an `agenda-setting` (`enabled`, `auto_detect`, `skill_path`, `profile_path`, `state_root`, `sort_on_start`) |
+| `calendar_bridge` | Optional: Anbindung an `kalender` / `ocean` (`enabled`, `backend`, `kalender_store`, `ocean_db_path`, Arbeitszeiten, Slot-Dauer, Tageslimit) |
 
 Zusätzlich (beide optional, siehe (c2)): `config/domains.json` (Domänen→
 Endpunkt-Map, generiert von `lib/domains_generator.py`) und
