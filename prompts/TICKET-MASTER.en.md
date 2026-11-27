@@ -728,10 +728,15 @@ introducing a parallel store:
 - When `calendar_bridge` is enabled and a backend is ready (`kalender` or
   `ocean`), offer conflict-free daily calendar slot planning — always as a
   read-only preview (dry-run) first:
-  `python bin/ticket_master.py --plan-calendar [--days N] [--backend auto|kalender|ocean] --json`
+  `python bin/ticket_master.py --plan-calendar [--days N] [--backend auto|kalender|ocean] [--ticket-calendar tickets] [--mirror-to-user] --json`
   Only persist slots idempotently via `--plan-calendar --apply` after explicit
-  user confirmation. When bridges are `disabled` or `absent`, note this once
-  and proceed normally (not an error).
+  user confirmation: on `kalender` v0.2 multi-calendar stores, planned ticket
+  slots write to the `tickets` target silo (`ticket_calendar_id`) by default
+  and can optionally be mirrored idempotently (`link_mode="mirror"`) into the
+  `user` calendar via `--mirror-to-user`, while graphical calendar sheets and
+  reports (`html`/`pdf`/`md`/`txt`/`ics`) can be rendered directly through the
+  `kalender` skill. When bridges are `disabled` or `absent`, note this once and
+  proceed normally (not an error).
 
 ### (d) Go to POSITION 0
 

@@ -129,13 +129,15 @@
     "sort_on_start": true
   },
   "calendar_bridge": {
-    "_comment": "T-20261127-937209759: optional bridge to the local 'kalender' skill SQLite store (events) and/or Ocean calendar SQLite table (assistant_calendar). Defaults to enabled=false and dry-run planning; --plan-calendar --apply writes idempotently and never modifies schema.",
+    "_comment": "T-20261127-937209759 / T-20261127-860979068: optional bridge to the local 'kalender' skill SQLite store (v0.1 events or v0.2 multi-calendar silos) and/or Ocean calendar SQLite table (assistant_calendar). Defaults to enabled=false and dry-run planning; --plan-calendar --apply writes idempotently into ticket_calendar_id (default 'tickets' on v0.2 stores, optionally mirroring into 'user' when mirror_to_user=true) and never mutates existing v0.1 schemas.",
     "enabled": false,
     "auto_detect": true,
     "skill_path": null,
     "backend": "auto",
     "kalender_store": null,
     "ocean_db_path": null,
+    "ticket_calendar_id": "tickets",
+    "mirror_to_user": false,
     "workday_start": "09:00",
     "workday_end": "17:00",
     "default_slot_minutes": 60,

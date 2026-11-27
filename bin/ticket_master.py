@@ -646,6 +646,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="calendar backend override (auto, kalender, ocean) for --plan-calendar or --planning-status")
     parser.add_argument("--apply", action="store_true",
                         help="persist planned ticket slots into the calendar backend (requires --plan-calendar)")
+    parser.add_argument("--ticket-calendar", default=None,
+                        help="target kalender v0.2 silo ID for --plan-calendar (default: config or 'tickets')")
+    parser.add_argument("--mirror-to-user", action="store_true",
+                        help="idempotently mirror planned ticket slots into the 'user' silo (requires --plan-calendar)")
     parser.add_argument("--include-statuses", default=None,
                         help="comma-separated lifecycle folders for --sort-by-agenda / --plan-calendar")
     parser.add_argument("--tickets-dir", help="override configured ticket directory")
@@ -699,6 +703,10 @@ def main(argv: list[str] | None = None) -> int:
             raise ConfigError("--inventory-content requires --ticket-inventory")
         if args.apply and not args.plan_calendar:
             raise ConfigError("--apply requires --plan-calendar")
+        if args.ticket_calendar is not None and not args.plan_calendar:
+            raise ConfigError("--ticket-calendar requires --plan-calendar")
+        if args.mirror_to_user and not args.plan_calendar:
+            raise ConfigError("--mirror-to-user requires --plan-calendar")
         if args.days is not None and not args.plan_calendar:
             raise ConfigError("--days requires --plan-calendar")
         if args.backend is not None and not (args.plan_calendar or args.planning_status):
@@ -736,6 +744,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.plan_calendar:
             cfg = load_config(args.config)
             tickets_root = resolve_tickets_dir(args.config, args.tickets_dir)
+            mirror_override = True if args.mirror_to_user else None
             if args.apply:
                 plan_payload = apply_calendar_plan(
                     tickets_root,
@@ -743,6 +752,8 @@ def main(argv: list[str] | None = None) -> int:
                     days=args.days,
                     backend=args.backend,
                     include_statuses=args.include_statuses,
+                    ticket_calendar_id=args.ticket_calendar,
+                    mirror_to_user=mirror_override,
                 )
             else:
                 plan_payload = plan_tickets_to_calendar(
@@ -751,6 +762,8 @@ def main(argv: list[str] | None = None) -> int:
                     days=args.days,
                     backend=args.backend,
                     include_statuses=args.include_statuses,
+                    ticket_calendar_id=args.ticket_calendar,
+                    mirror_to_user=mirror_override,
                 )
             if args.json:
                 print(json.dumps(plan_payload, ensure_ascii=False, indent=2))

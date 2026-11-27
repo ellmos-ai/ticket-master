@@ -761,10 +761,16 @@ Datenspeicher an:
 - Ist `calendar_bridge` aktiviert und ein Backend bereit (`kalender` oder
   `ocean`), zusätzlich die agendagerechte, kollisionsfreie Tages-/Kalender-
   Aufteilung anbieten — immer zuerst als schreibfreie Vorschau (Dry-Run):
-  `python bin/ticket_master.py --plan-calendar [--days N] [--backend auto|kalender|ocean] --json`
+  `python bin/ticket_master.py --plan-calendar [--days N] [--backend auto|kalender|ocean] [--ticket-calendar tickets] [--mirror-to-user] --json`
   Erst nach ausdrücklicher Bestätigung des Users mit `--apply` idempotent in
-  den Kalender übernehmen (`--plan-calendar --apply`). Sind Bridges `disabled`
-  oder `absent`, einmal kurz vermerken und normal fortfahren (kein Fehler).
+  den Kalender übernehmen (`--plan-calendar --apply`): Im `kalender`-v0.2-Store
+  landen geplante Ticket-Slots standardmäßig im Ziel-Silo `tickets`
+  (`ticket_calendar_id`) und lassen sich optional per `--mirror-to-user`
+  verknüpft (`link_mode="mirror"`) in den Hauptkalender `user` spiegeln,
+  während druckfertige Kalenderblätter und Berichte (`html`/`pdf`/`md`/`txt`/`ics`)
+  direkt über den `kalender`-Skill erzeugt werden können. Sind Bridges
+  `disabled` oder `absent`, einmal kurz vermerken und normal fortfahren (kein
+  Fehler).
 
 ### (d) Auf POSITION 0 gehen
 

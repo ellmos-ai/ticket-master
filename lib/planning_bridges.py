@@ -97,6 +97,8 @@ DEFAULT_CALENDAR_BRIDGE_CONFIG: dict[str, Any] = {
     "backend": "auto",
     "kalender_store": None,
     "ocean_db_path": None,
+    "ticket_calendar_id": "tickets",
+    "mirror_to_user": False,
     "workday_start": "09:00",
     "workday_end": "17:00",
     "default_slot_minutes": 60,
@@ -120,6 +122,59 @@ CREATE TABLE IF NOT EXISTS events (
     updated_at   TEXT NOT NULL
 );
 """
+
+_KALENDER_V02_SCHEMA = """
+CREATE TABLE IF NOT EXISTS calendars (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    category    TEXT NOT NULL DEFAULT 'general',
+    color       TEXT NOT NULL DEFAULT '#2563eb',
+    description TEXT NOT NULL DEFAULT '',
+    is_default  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS events (
+    id                 TEXT PRIMARY KEY,
+    title              TEXT NOT NULL,
+    date               TEXT NOT NULL,
+    time               TEXT,
+    duration_min       INTEGER,
+    location           TEXT,
+    description        TEXT,
+    recurrence         TEXT,
+    ics_uid            TEXT UNIQUE,
+    created_at         TEXT NOT NULL,
+    updated_at         TEXT NOT NULL,
+    calendar_id        TEXT NOT NULL DEFAULT 'user',
+    category           TEXT,
+    source_calendar_id TEXT,
+    source_event_id    TEXT,
+    link_mode          TEXT,
+    external_id        TEXT,
+    end_time           TEXT,
+    status             TEXT DEFAULT 'planned'
+);
+CREATE INDEX IF NOT EXISTS idx_events_date ON events(date);
+CREATE INDEX IF NOT EXISTS idx_events_calendar_date ON events(calendar_id, date);
+CREATE INDEX IF NOT EXISTS idx_events_external_id ON events(external_id);
+"""
+
+_KALENDER_V02_COLUMNS = frozenset({
+    "calendar_id",
+    "category",
+    "source_calendar_id",
+    "source_event_id",
+    "link_mode",
+    "external_id",
+    "end_time",
+    "status",
+})
+
+_KALENDER_SILO_DEFAULTS: dict[str, tuple[str, str, str, str, int]] = {
+    "user": ("Nutzerkalender", "personal", "#2563eb", "Persönlicher Hauptkalender", 1),
+    "tickets": ("Ticket-Kalender", "tasks", "#7c3aed", "Geplante Arbeitsblöcke aus ticket-master", 0),
+}
+_CALENDAR_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 
 _REQUIRED_OCEAN_READ_COLUMNS = {"id", "title", "start_datetime"}
 _REQUIRED_OCEAN_WRITE_COLUMNS = {
@@ -422,6 +477,7 @@ def _inspect_kalender_store(store_path: Path | None, source: str, skill_info: di
             }
         store_exists = store_path.is_file()
         has_events_table = False
+        kalender_schema: str | None = None
         if store_exists:
             conn = _connect_sqlite_readonly(store_path)
             try:
@@ -429,6 +485,12 @@ def _inspect_kalender_store(store_path: Path | None, source: str, skill_info: di
                     "SELECT type FROM sqlite_master WHERE name = 'events'"
                 ).fetchone()
                 has_events_table = bool(row and row[0] == "table")
+                if has_events_table:
+                    ev_cols = {
+                        str(r[1])
+                        for r in conn.execute("PRAGMA table_info(events)").fetchall()
+                    }
+                    kalender_schema = "v0.2" if (_KALENDER_V02_COLUMNS <= ev_cols) else "v0.1"
             finally:
                 conn.close()
         return {
@@ -437,6 +499,7 @@ def _inspect_kalender_store(store_path: Path | None, source: str, skill_info: di
             "store_path": str(store_path),
             "store_exists": store_exists,
             "has_events_table": has_events_table,
+            "kalender_schema": kalender_schema,
             "source": source,
             "skill": skill_info,
         }
@@ -672,6 +735,8 @@ def planning_status(
             "enabled": cal_enabled,
             "requested_backend": requested_backend,
             "selected_backend": selected,
+            "ticket_calendar_id": str(cal_cfg.get("ticket_calendar_id") or "tickets").strip().lower(),
+            "mirror_to_user": bool(cal_cfg.get("mirror_to_user", False)),
             "workday_start": cal_cfg.get("workday_start", "09:00"),
             "workday_end": cal_cfg.get("workday_end", "17:00"),
             "default_slot_minutes": cal_cfg.get("default_slot_minutes", 60),
@@ -1378,6 +1443,33 @@ def _parse_flexible_datetime(raw: str | None) -> datetime | None:
     return None
 
 
+def _resolve_ticket_calendar_id(raw: Any) -> str:
+    value = str("tickets" if raw is None else raw).strip().lower()
+    if not value or value == "all" or not _CALENDAR_ID_RE.fullmatch(value):
+        raise ValueError(
+            f"invalid ticket_calendar_id {raw!r}; expected lowercase slug (a-z0-9_-) and not 'all'"
+        )
+    return value
+
+
+def _ensure_kalender_silo(conn: sqlite3.Connection, cal_id: str, now_iso: str) -> None:
+    has_calendars = conn.execute(
+        "SELECT type FROM sqlite_master WHERE name = 'calendars'"
+    ).fetchone()
+    if not has_calendars or has_calendars[0] != "table":
+        return
+    name, category, color, description, is_default = _KALENDER_SILO_DEFAULTS.get(
+        cal_id,
+        (cal_id, "tasks", "#7c3aed", f"Ticket calendar ({cal_id})", 0),
+    )
+    conn.execute(
+        """INSERT OR IGNORE INTO calendars
+           (id, name, category, color, description, is_default, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (cal_id, name, category, color, description, is_default, now_iso),
+    )
+
+
 def _read_kalender_busy_and_existing(
     store_path: Path | None,
     start_day: date,
@@ -1399,20 +1491,80 @@ def _read_kalender_busy_and_existing(
         if not tbl or tbl[0] != "table":
             return busy, existing_tids
 
-        uid_rows = conn.execute(
-            "SELECT ics_uid FROM events WHERE ics_uid LIKE 'ticket-master-%@ticket-master'"
-        ).fetchall()
-        for row in uid_rows:
-            uid = str(row[0] or "")
+        ev_cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+        has_link_mode = "link_mode" in ev_cols
+        has_ext_id = "external_id" in ev_cols
+        has_status = "status" in ev_cols
+        has_src_ev = "source_event_id" in ev_cols
+
+        all_ids = {
+            str(r[0])
+            for r in conn.execute("SELECT id FROM events").fetchall()
+            if r[0] is not None
+        }
+
+        meta_cols = [
+            "ics_uid",
+            "link_mode" if has_link_mode else "'' AS link_mode",
+            "external_id" if has_ext_id else "'' AS external_id",
+            "status" if has_status else "'' AS status",
+        ]
+        meta_where = "ics_uid LIKE 'ticket-master-%@ticket-master'"
+        if has_ext_id:
+            meta_where = f"({meta_where} OR external_id LIKE 'ticket-master:%')"
+
+        for row in conn.execute(f"SELECT {', '.join(meta_cols)} FROM events WHERE {meta_where}").fetchall():
+            st = str(row["status"] or "").strip().lower()
+            if st in _CANCELLED_OCEAN_STATUSES:
+                continue
+            lmode = str(row["link_mode"] or "").strip().lower()
+            uid = str(row["ics_uid"] or "")
+            ext = str(row["external_id"] or "")
+            if (
+                lmode == "mirror"
+                or uid.startswith("ticket-master-mirror-")
+                or ext.startswith("ticket-master-mirror:")
+            ):
+                continue
             if uid.startswith("ticket-master-") and uid.endswith("@ticket-master"):
                 existing_tids.add(uid[len("ticket-master-"):-len("@ticket-master")])
+            if ext.startswith("ticket-master:"):
+                existing_tids.add(ext[len("ticket-master:"):])
 
+        window_cols = [
+            "id",
+            "title",
+            "date",
+            "time",
+            "duration_min",
+            "ics_uid",
+            "link_mode" if has_link_mode else "'' AS link_mode",
+            "external_id" if has_ext_id else "'' AS external_id",
+            "status" if has_status else "'' AS status",
+            "source_event_id" if has_src_ev else "'' AS source_event_id",
+        ]
         rows = conn.execute(
-            "SELECT id, title, date, time, duration_min, ics_uid "
+            f"SELECT {', '.join(window_cols)} "
             "FROM events WHERE date BETWEEN ? AND ? ORDER BY date ASC, time ASC",
             (start_day.isoformat(), end_day.isoformat()),
         ).fetchall()
         for row in rows:
+            st = str(row["status"] or "").strip().lower()
+            if st in _CANCELLED_OCEAN_STATUSES:
+                continue
+            uid_val = str(row["ics_uid"] or "")
+            ext_val = str(row["external_id"] or "")
+            lmode = str(row["link_mode"] or "").strip().lower()
+            src_ev_id = str(row["source_event_id"] or "").strip()
+            is_mirror = (
+                lmode == "mirror"
+                or uid_val.startswith("ticket-master-mirror-")
+                or ext_val.startswith("ticket-master-mirror:")
+            )
+            # If this row is a mirror of an existing primary event in the same store,
+            # skip it so neither busy_slots_detected nor daily ticket caps double-count it.
+            if is_mirror and (src_ev_id in all_ids or uid_val.startswith("ticket-master-mirror-")):
+                continue
             try:
                 ev_day = date.fromisoformat(str(row["date"]).strip())
             except ValueError:
@@ -1430,14 +1582,20 @@ def _read_kalender_busy_and_existing(
             else:
                 ev_start = datetime.combine(ev_day, workday_start_t)
                 ev_end = datetime.combine(ev_day, workday_end_t)
-            uid_val = str(row["ics_uid"] or "")
+            is_tm_primary = (
+                not is_mirror
+                and (
+                    (uid_val.startswith("ticket-master-") and uid_val.endswith("@ticket-master"))
+                    or ext_val.startswith("ticket-master:")
+                )
+            )
             busy.append({
                 "backend": "kalender",
                 "id": str(row["id"]),
                 "title": str(row["title"] or ""),
                 "start": ev_start,
                 "end": ev_end,
-                "is_ticket_master": uid_val.startswith("ticket-master-") and uid_val.endswith("@ticket-master"),
+                "is_ticket_master": is_tm_primary,
             })
     finally:
         conn.close()
@@ -1558,12 +1716,22 @@ def plan_tickets_to_calendar(
     backend: str | None = None,
     start_date: date | None = None,
     include_statuses: Iterable[str] | str | None = None,
+    ticket_calendar_id: str | None = None,
+    mirror_to_user: bool | None = None,
 ) -> dict[str, Any]:
     """Dry-run schedule of agenda-sorted tickets into conflict-free slots.
 
     Never writes to any file or SQLite database.
     """
     cal_cfg = _calendar_cfg(config)
+    effective_ticket_cal = _resolve_ticket_calendar_id(
+        ticket_calendar_id if ticket_calendar_id is not None else cal_cfg.get("ticket_calendar_id")
+    )
+    effective_mirror = (
+        bool(mirror_to_user)
+        if mirror_to_user is not None
+        else bool(cal_cfg.get("mirror_to_user", False))
+    )
     requested_backend = str(backend or cal_cfg.get("backend") or "auto").strip().lower()
     if requested_backend not in VALID_CALENDAR_BACKENDS:
         raise ValueError(
@@ -1756,6 +1924,8 @@ def plan_tickets_to_calendar(
         "backend_status": backend_status,
         "backend_reason": backend_reason,
         "target_path": target_path,
+        "ticket_calendar_id": effective_ticket_cal,
+        "mirror_to_user": effective_mirror,
         "ocean_has_event_origin": bool(ocean_info.get("has_event_origin")) if selected_backend == "ocean" else None,
         "start_date": first_day.isoformat(),
         "end_date": last_day.isoformat(),
@@ -1789,6 +1959,13 @@ def _slot_description(slot: dict[str, Any]) -> str:
     return " | ".join(parts)
 
 
+def _mint_kalender_event_id(conn: sqlite3.Connection) -> str:
+    record_id = uuid.uuid4().hex[:8]
+    while conn.execute("SELECT 1 FROM events WHERE id = ?", (record_id,)).fetchone():
+        record_id = uuid.uuid4().hex[:8]
+    return record_id
+
+
 def apply_calendar_plan(
     plan_or_tickets_dir: dict[str, Any] | str | Path,
     config: dict[str, Any] | None = None,
@@ -1797,10 +1974,27 @@ def apply_calendar_plan(
     backend: str | None = None,
     start_date: date | None = None,
     include_statuses: Iterable[str] | str | None = None,
+    ticket_calendar_id: str | None = None,
+    mirror_to_user: bool | None = None,
 ) -> dict[str, Any]:
     """Idempotently persist planned ticket slots into ``kalender`` or ``ocean``."""
+    cal_cfg = _calendar_cfg(config)
     if isinstance(plan_or_tickets_dir, dict):
         plan = copy.deepcopy(plan_or_tickets_dir)
+        effective_ticket_cal = _resolve_ticket_calendar_id(
+            ticket_calendar_id
+            if ticket_calendar_id is not None
+            else (plan.get("ticket_calendar_id") or cal_cfg.get("ticket_calendar_id"))
+        )
+        effective_mirror = (
+            bool(mirror_to_user)
+            if mirror_to_user is not None
+            else bool(
+                plan["mirror_to_user"]
+                if "mirror_to_user" in plan
+                else cal_cfg.get("mirror_to_user", False)
+            )
+        )
     else:
         plan = plan_tickets_to_calendar(
             plan_or_tickets_dir,
@@ -1809,7 +2003,11 @@ def apply_calendar_plan(
             backend=backend,
             start_date=start_date,
             include_statuses=include_statuses,
+            ticket_calendar_id=ticket_calendar_id,
+            mirror_to_user=mirror_to_user,
         )
+        effective_ticket_cal = str(plan["ticket_calendar_id"])
+        effective_mirror = bool(plan["mirror_to_user"])
 
     selected_backend = plan.get("backend")
     if selected_backend not in {"kalender", "ocean"}:
@@ -1824,6 +2022,7 @@ def apply_calendar_plan(
     now_iso = datetime.now(timezone.utc).isoformat()
     written: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = list(plan.get("skipped_existing", []))
+    mirrored: list[dict[str, Any]] = []
 
     if selected_backend == "kalender":
         if target_path.exists() and target_path.is_dir():
@@ -1832,49 +2031,218 @@ def apply_calendar_plan(
         conn = sqlite3.connect(str(target_path))
         conn.row_factory = sqlite3.Row
         try:
-            conn.executescript(_KALENDER_EVENTS_SCHEMA)
-            for slot in plan.get("planned", []):
-                ics_uid = slot.get("ics_uid") or f"ticket-master-{slot['ticket_id']}@ticket-master"
-                existing = conn.execute(
-                    "SELECT id FROM events WHERE ics_uid = ?",
-                    (ics_uid,),
-                ).fetchone()
-                if existing:
-                    skipped.append({
-                        "ticket_id": slot["ticket_id"],
-                        "title": slot["title"],
-                        "reason": "already_planned",
-                        "record_id": str(existing["id"]),
+            existing_tbl = conn.execute(
+                "SELECT type FROM sqlite_master WHERE name = 'events'"
+            ).fetchone()
+            if not existing_tbl or existing_tbl[0] != "table":
+                conn.executescript(_KALENDER_V02_SCHEMA)
+
+            ev_cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(events)").fetchall()}
+            is_v02 = _KALENDER_V02_COLUMNS <= ev_cols
+
+            if is_v02:
+                _ensure_kalender_silo(conn, effective_ticket_cal, now_iso)
+                if effective_mirror and effective_ticket_cal != "user":
+                    _ensure_kalender_silo(conn, "user", now_iso)
+
+                primary_candidates_by_tid: dict[str, dict[str, Any]] = {}
+
+                for slot in plan.get("planned", []):
+                    tid = str(slot["ticket_id"])
+                    ics_uid = slot.get("ics_uid") or f"ticket-master-{tid}@ticket-master"
+                    ext_id = slot.get("external_id") or f"ticket-master:{tid}"
+                    existing = conn.execute(
+                        """SELECT id, title, date, time, end_time, duration_min,
+                                  location, description, recurrence, calendar_id
+                           FROM events
+                           WHERE (ics_uid = ? OR external_id = ?)
+                             AND COALESCE(link_mode, '') != 'mirror'""",
+                        (ics_uid, ext_id),
+                    ).fetchone()
+                    if existing:
+                        skipped.append({
+                            "ticket_id": tid,
+                            "title": slot["title"],
+                            "reason": "already_planned",
+                            "record_id": str(existing["id"]),
+                        })
+                        primary_candidates_by_tid[tid] = dict(existing)
+                        continue
+
+                    record_id = _mint_kalender_event_id(conn)
+                    event_title = f"[{tid}] {slot['title']}"
+                    desc_text = _slot_description(slot)
+                    conn.execute(
+                        """INSERT INTO events
+                           (id, title, date, time, duration_min, location, description,
+                            recurrence, ics_uid, created_at, updated_at,
+                            calendar_id, category, source_calendar_id, source_event_id,
+                            link_mode, external_id, end_time, status)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            record_id,
+                            event_title,
+                            slot["date"],
+                            slot["start_time"],
+                            int(slot["duration_min"]),
+                            None,
+                            desc_text,
+                            None,
+                            ics_uid,
+                            now_iso,
+                            now_iso,
+                            effective_ticket_cal,
+                            "tasks",
+                            None,
+                            None,
+                            None,
+                            ext_id,
+                            slot["end_time"],
+                            "planned",
+                        ),
+                    )
+                    written.append({
+                        **slot,
+                        "record_id": record_id,
+                        "ics_uid": ics_uid,
+                        "external_id": ext_id,
+                        "calendar_id": effective_ticket_cal,
+                        "category": "tasks",
+                        "status": "planned",
                     })
-                    continue
-                record_id = uuid.uuid4().hex[:8]
-                while conn.execute("SELECT 1 FROM events WHERE id = ?", (record_id,)).fetchone():
-                    record_id = uuid.uuid4().hex[:8]
-                event_title = f"[{slot['ticket_id']}] {slot['title']}"
-                conn.execute(
-                    """INSERT INTO events
-                       (id, title, date, time, duration_min, location, description,
-                        recurrence, ics_uid, created_at, updated_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        record_id,
-                        event_title,
-                        slot["date"],
-                        slot["start_time"],
-                        int(slot["duration_min"]),
-                        None,
-                        _slot_description(slot),
-                        None,
-                        ics_uid,
-                        now_iso,
-                        now_iso,
-                    ),
-                )
-                written.append({
-                    **slot,
-                    "record_id": record_id,
-                    "ics_uid": ics_uid,
-                })
+                    primary_candidates_by_tid[tid] = {
+                        "id": record_id,
+                        "title": event_title,
+                        "date": slot["date"],
+                        "time": slot["start_time"],
+                        "end_time": slot["end_time"],
+                        "duration_min": int(slot["duration_min"]),
+                        "location": None,
+                        "description": desc_text,
+                        "recurrence": None,
+                        "calendar_id": effective_ticket_cal,
+                    }
+
+                if effective_mirror and effective_ticket_cal != "user":
+                    for sk in skipped:
+                        sk_tid = str(sk.get("ticket_id") or "").strip()
+                        if not sk_tid or sk_tid in primary_candidates_by_tid:
+                            continue
+                        sk_uid = f"ticket-master-{sk_tid}@ticket-master"
+                        sk_ext = f"ticket-master:{sk_tid}"
+                        row = conn.execute(
+                            """SELECT id, title, date, time, end_time, duration_min,
+                                      location, description, recurrence, calendar_id
+                               FROM events
+                               WHERE (ics_uid = ? OR external_id = ?)
+                                 AND COALESCE(link_mode, '') != 'mirror'""",
+                            (sk_uid, sk_ext),
+                        ).fetchone()
+                        if row is not None and str(row["calendar_id"] or "") != "user":
+                            primary_candidates_by_tid[sk_tid] = dict(row)
+
+                    for tid, prim in primary_candidates_by_tid.items():
+                        src_cal = str(prim.get("calendar_id") or effective_ticket_cal)
+                        if src_cal == "user":
+                            continue
+                        orig_id = str(prim["id"])
+                        mirror_uid = f"ticket-master-mirror-{tid}@ticket-master"
+                        mirror_ext = f"ticket-master-mirror:{tid}"
+                        existing_mirror = conn.execute(
+                            """SELECT id FROM events
+                               WHERE ics_uid = ?
+                                  OR external_id = ?
+                                  OR (
+                                      calendar_id = 'user'
+                                      AND link_mode = 'mirror'
+                                      AND source_calendar_id = ?
+                                      AND source_event_id = ?
+                                  )""",
+                            (mirror_uid, mirror_ext, src_cal, orig_id),
+                        ).fetchone()
+                        if existing_mirror is not None:
+                            continue
+                        mirror_id = _mint_kalender_event_id(conn)
+                        conn.execute(
+                            """INSERT INTO events
+                               (id, title, date, time, duration_min, location, description,
+                                recurrence, ics_uid, created_at, updated_at,
+                                calendar_id, category, source_calendar_id, source_event_id,
+                                link_mode, external_id, end_time, status)
+                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'user', 'tasks', ?, ?, 'mirror', ?, ?, 'planned')""",
+                            (
+                                mirror_id,
+                                prim["title"],
+                                prim["date"],
+                                prim["time"],
+                                prim["duration_min"],
+                                prim["location"],
+                                prim["description"],
+                                prim["recurrence"],
+                                mirror_uid,
+                                now_iso,
+                                now_iso,
+                                src_cal,
+                                orig_id,
+                                mirror_ext,
+                                prim["end_time"],
+                            ),
+                        )
+                        mirrored.append({
+                            "ticket_id": tid,
+                            "mirror_id": mirror_id,
+                            "calendar_id": "user",
+                            "source_calendar_id": src_cal,
+                            "source_event_id": orig_id,
+                            "link_mode": "mirror",
+                            "ics_uid": mirror_uid,
+                            "external_id": mirror_ext,
+                            "date": prim["date"],
+                            "start_time": prim["time"],
+                            "end_time": prim["end_time"],
+                        })
+            else:
+                # 100% backward-compatible v0.1 path (existing events table without calendar_id)
+                for slot in plan.get("planned", []):
+                    ics_uid = slot.get("ics_uid") or f"ticket-master-{slot['ticket_id']}@ticket-master"
+                    existing = conn.execute(
+                        "SELECT id FROM events WHERE ics_uid = ?",
+                        (ics_uid,),
+                    ).fetchone()
+                    if existing:
+                        skipped.append({
+                            "ticket_id": slot["ticket_id"],
+                            "title": slot["title"],
+                            "reason": "already_planned",
+                            "record_id": str(existing["id"]),
+                        })
+                        continue
+                    record_id = _mint_kalender_event_id(conn)
+                    event_title = f"[{slot['ticket_id']}] {slot['title']}"
+                    conn.execute(
+                        """INSERT INTO events
+                           (id, title, date, time, duration_min, location, description,
+                            recurrence, ics_uid, created_at, updated_at)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        (
+                            record_id,
+                            event_title,
+                            slot["date"],
+                            slot["start_time"],
+                            int(slot["duration_min"]),
+                            None,
+                            _slot_description(slot),
+                            None,
+                            ics_uid,
+                            now_iso,
+                            now_iso,
+                        ),
+                    )
+                    written.append({
+                        **slot,
+                        "record_id": record_id,
+                        "ics_uid": ics_uid,
+                    })
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1885,10 +2253,15 @@ def apply_calendar_plan(
             **plan,
             "dry_run": False,
             "applied": True,
+            "kalender_schema": "v0.2" if is_v02 else "v0.1",
+            "ticket_calendar_id": effective_ticket_cal,
+            "mirror_to_user": effective_mirror,
             "written_count": len(written),
             "skipped_count": len(skipped),
+            "mirrored_count": len(mirrored),
             "written": written,
             "skipped_existing": skipped,
+            "mirrored": mirrored,
         }
 
     # Ocean backend: strict fail-closed verification of existing DB + assistant_calendar
@@ -1987,11 +2360,15 @@ def apply_calendar_plan(
         **plan,
         "dry_run": False,
         "applied": True,
+        "ticket_calendar_id": effective_ticket_cal,
+        "mirror_to_user": effective_mirror,
         "ocean_has_event_origin": has_event_origin,
         "written_count": len(written),
         "skipped_count": len(skipped),
+        "mirrored_count": 0,
         "written": written,
         "skipped_existing": skipped,
+        "mirrored": [],
     }
 
 
@@ -2109,6 +2486,16 @@ def _cli(argv: list[str] | None = None) -> int:
         default=None,
         help="comma-separated lifecycle folders (default: ACTIONABLE,QUEUED)",
     )
+    parser.add_argument(
+        "--ticket-calendar",
+        default=None,
+        help="target kalender v0.2 silo ID for planned tickets (default: config or 'tickets', with --plan)",
+    )
+    parser.add_argument(
+        "--mirror-to-user",
+        action="store_true",
+        help="idempotently mirror planned ticket slots into the 'user' kalender silo (with --plan)",
+    )
     parser.add_argument("--json", action="store_true", help="emit JSON output")
     args = parser.parse_args(argv)
 
@@ -2116,6 +2503,10 @@ def _cli(argv: list[str] | None = None) -> int:
         parser.error("--apply is only valid with --plan")
     if args.days is not None and not args.plan:
         parser.error("--days is only valid with --plan")
+    if args.ticket_calendar is not None and not args.plan:
+        parser.error("--ticket-calendar is only valid with --plan")
+    if args.mirror_to_user and not args.plan:
+        parser.error("--mirror-to-user is only valid with --plan")
 
     tm_cfg = config_paths.tm_config(args.config)
     try:
@@ -2153,6 +2544,8 @@ def _cli(argv: list[str] | None = None) -> int:
                 days=args.days,
                 backend=args.backend,
                 include_statuses=args.include_statuses,
+                ticket_calendar_id=args.ticket_calendar,
+                mirror_to_user=(True if args.mirror_to_user else None),
             )
         else:
             plan_data = plan_tickets_to_calendar(
@@ -2161,6 +2554,8 @@ def _cli(argv: list[str] | None = None) -> int:
                 days=args.days,
                 backend=args.backend,
                 include_statuses=args.include_statuses,
+                ticket_calendar_id=args.ticket_calendar,
+                mirror_to_user=(True if args.mirror_to_user else None),
             )
         if args.json:
             print(json.dumps(plan_data, ensure_ascii=False, indent=2))

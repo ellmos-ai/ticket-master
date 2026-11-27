@@ -889,6 +889,305 @@ def test_planning_bridges_standalone_cli_and_ticket_master_cli(tmp_path, monkeyp
     assert "--apply requires --plan-calendar" in err
 
 
+def test_kalender_v02_silo_write_and_idempotent_mirror_to_user(tmp_path, monkeypatch):
+    """(a) v0.2 store writes to calendar_id='tickets'; (b) mirror_to_user mirrors idempotently to 'user'."""
+    fake_home = tmp_path / "home"
+    _isolate_planning_env(monkeypatch, fake_home)
+
+    kal_v02 = tmp_path / "kalender_v02" / "store.db"
+    kal_v02.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(kal_v02))
+    conn.executescript(planning_bridges._KALENDER_V02_SCHEMA)
+    conn.commit()
+    conn.close()
+
+    queue = tmp_path / "queue"
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-700000001",
+        title="Deploy multi-calendar silo bridge",
+        priority="P1",
+    )
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-700000002",
+        title="Verify user calendar mirror link",
+        priority="P2",
+    )
+
+    # Phase A: Apply into v0.2 store WITHOUT mirror_to_user first -> lands in calendar_id="tickets"
+    cfg_no_mirror = {
+        "calendar_bridge": {
+            "enabled": True,
+            "backend": "kalender",
+            "kalender_store": str(kal_v02),
+            "ticket_calendar_id": "tickets",
+            "mirror_to_user": False,
+            "include_weekends": True,
+        }
+    }
+    res_a = planning_bridges.apply_calendar_plan(
+        queue,
+        cfg_no_mirror,
+        days=4,
+        start_date=date(2026, 11, 27),
+    )
+    assert res_a["applied"] is True
+    assert res_a["kalender_schema"] == "v0.2"
+    assert res_a["ticket_calendar_id"] == "tickets"
+    assert res_a["mirror_to_user"] is False
+    assert res_a["written_count"] == 2
+    assert res_a["mirrored_count"] == 0
+    assert res_a["mirrored"] == []
+
+    conn = sqlite3.connect(str(kal_v02))
+    conn.row_factory = sqlite3.Row
+    cal_ids = {r["id"] for r in conn.execute("SELECT id FROM calendars").fetchall()}
+    assert "tickets" in cal_ids
+    ticket_rows = conn.execute(
+        "SELECT * FROM events WHERE calendar_id = 'tickets' ORDER BY time ASC"
+    ).fetchall()
+    assert len(ticket_rows) == 2
+    assert ticket_rows[0]["category"] == "tasks"
+    assert ticket_rows[0]["status"] == "planned"
+    assert ticket_rows[0]["external_id"] == "ticket-master:T-20261127-700000001"
+    assert ticket_rows[0]["end_time"] == "10:00"
+    assert ticket_rows[0]["link_mode"] is None
+    assert conn.execute("SELECT COUNT(*) FROM events WHERE calendar_id = 'user'").fetchone()[0] == 0
+    conn.close()
+
+    # Phase B: Enable mirror_to_user=True on the same store AND add a 3rd ticket ->
+    # mirrors both existing tickets AND the newly planned 3rd ticket into calendar_id="user"!
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-700000003",
+        title="Render weekly printable sheet",
+        priority="P2",
+    )
+    cfg_mirror = {
+        "calendar_bridge": {
+            **cfg_no_mirror["calendar_bridge"],
+            "mirror_to_user": True,
+            "max_tickets_per_day": 2,
+        }
+    }
+    res_b1 = planning_bridges.apply_calendar_plan(
+        queue,
+        cfg_mirror,
+        days=4,
+        start_date=date(2026, 11, 27),
+    )
+    assert res_b1["written_count"] == 1
+    assert res_b1["skipped_count"] == 2
+    assert res_b1["mirrored_count"] == 3
+    # Because max_tickets_per_day=2 and 2 primary tickets already sit on 2026-11-27,
+    # the 3rd ticket must land on 2026-11-28 (proving mirrors do not double-count daily caps either).
+    assert res_b1["written"][0]["date"] == "2026-11-28"
+
+    conn = sqlite3.connect(str(kal_v02))
+    conn.row_factory = sqlite3.Row
+    cal_ids = {r["id"] for r in conn.execute("SELECT id FROM calendars").fetchall()}
+    assert {"tickets", "user"} <= cal_ids
+    prim_by_ext = {
+        r["external_id"]: r
+        for r in conn.execute("SELECT * FROM events WHERE calendar_id = 'tickets'").fetchall()
+    }
+    user_mirrors = conn.execute(
+        "SELECT * FROM events WHERE calendar_id = 'user' ORDER BY date ASC, time ASC"
+    ).fetchall()
+    assert len(prim_by_ext) == 3
+    assert len(user_mirrors) == 3
+    for m_row in user_mirrors:
+        assert m_row["link_mode"] == "mirror"
+        assert m_row["source_calendar_id"] == "tickets"
+        assert m_row["category"] == "tasks"
+        assert m_row["status"] == "planned"
+        tid_suffix = str(m_row["external_id"])[len("ticket-master-mirror:"):]
+        orig_row = prim_by_ext[f"ticket-master:{tid_suffix}"]
+        assert m_row["source_event_id"] == orig_row["id"]
+        assert m_row["ics_uid"] == f"ticket-master-mirror-{tid_suffix}@ticket-master"
+        assert m_row["date"] == orig_row["date"]
+        assert m_row["time"] == orig_row["time"]
+        assert m_row["end_time"] == orig_row["end_time"]
+    conn.close()
+
+    # Second run with mirror_to_user=True produces ZERO duplicate rows (strict idempotency!)
+    res_b2 = planning_bridges.apply_calendar_plan(
+        queue,
+        cfg_mirror,
+        days=4,
+        start_date=date(2026, 11, 27),
+    )
+    assert res_b2["written_count"] == 0
+    assert res_b2["skipped_count"] == 3
+    assert res_b2["mirrored_count"] == 0
+
+    conn = sqlite3.connect(str(kal_v02))
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 6
+    # And planning again sees exactly 3 busy slots (not 6!)
+    dry_after = planning_bridges.plan_tickets_to_calendar(
+        queue,
+        cfg_mirror,
+        days=4,
+        start_date=date(2026, 11, 27),
+    )
+    assert dry_after["busy_slots_detected"] == 3
+    conn.close()
+
+
+def test_kalender_v01_store_backward_compatibility_with_silo_and_mirror_options(tmp_path, monkeypatch):
+    """(c) Existing v0.1 store (without calendar_id) stays 100% backward-compatible without errors."""
+    fake_home = tmp_path / "home"
+    _isolate_planning_env(monkeypatch, fake_home)
+
+    kal_v01 = tmp_path / "legacy_v01" / "store.db"
+    kal_v01.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(kal_v01))
+    conn.executescript(planning_bridges._KALENDER_EVENTS_SCHEMA)
+    conn.commit()
+    conn.close()
+
+    queue = tmp_path / "queue"
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-800000001",
+        title="Legacy v0.1 store compatibility check",
+        priority="high",
+    )
+
+    cfg = {
+        "calendar_bridge": {
+            "enabled": True,
+            "backend": "kalender",
+            "kalender_store": str(kal_v01),
+            "ticket_calendar_id": "tickets",
+            "mirror_to_user": True,
+            "include_weekends": True,
+        }
+    }
+    res = planning_bridges.apply_calendar_plan(
+        queue,
+        cfg,
+        days=2,
+        start_date=date(2026, 11, 27),
+    )
+    assert res["applied"] is True
+    assert res["kalender_schema"] == "v0.1"
+    assert res["written_count"] == 1
+    assert res["mirrored_count"] == 0
+    assert res["mirrored"] == []
+
+    conn = sqlite3.connect(str(kal_v01))
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(events)").fetchall()]
+    assert "calendar_id" not in cols
+    assert conn.execute("SELECT COUNT(*) FROM events").fetchone()[0] == 1
+    assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'calendars'").fetchone() is None
+    conn.close()
+
+
+def test_cli_flags_ticket_calendar_and_mirror_to_user(tmp_path, monkeypatch, capsys):
+    """(d) CLI flags --ticket-calendar and --mirror-to-user work in planning_bridges.py & ticket_master.py."""
+    fake_home = tmp_path / "home"
+    _isolate_planning_env(monkeypatch, fake_home)
+
+    kal_store = tmp_path / "silo_cli.db"
+    queue = tmp_path / "queue_cli"
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-900000001",
+        title="CLI custom silo and mirror test",
+        priority="high",
+    )
+    cfg_path = tmp_path / "cli.config.json"
+    cfg_path.write_text(
+        json.dumps({
+            "tickets_dir": str(queue),
+            "calendar_bridge": {
+                "enabled": True,
+                "backend": "kalender",
+                "kalender_store": str(kal_store),
+                "include_weekends": True,
+            },
+        }),
+        encoding="utf-8",
+    )
+
+    # 1. Standalone planning_bridges._cli dry-run with --ticket-calendar and --mirror-to-user
+    assert planning_bridges._cli([
+        "--plan",
+        "--days", "3",
+        "--backend", "kalender",
+        "--ticket-calendar", "sprint_ops",
+        "--mirror-to-user",
+        "--config", str(cfg_path),
+        "--json",
+    ]) == 0
+    dry_out = json.loads(capsys.readouterr().out)
+    assert dry_out["ticket_calendar_id"] == "sprint_ops"
+    assert dry_out["mirror_to_user"] is True
+    assert not kal_store.exists()
+
+    # 2. Main ticket_master.py CLI --plan-calendar --apply --ticket-calendar sprint_ops --mirror-to-user
+    tm_cli = _load_tm_cli()
+
+    def run_tm(argv: list[str]) -> tuple[int, str, str]:
+        out_buf = io.StringIO()
+        err_buf = io.StringIO()
+        with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
+            rc = tm_cli.main(argv)
+        return rc, out_buf.getvalue(), err_buf.getvalue()
+
+    rc, out, err = run_tm([
+        "--plan-calendar",
+        "--apply",
+        "--days", "3",
+        "--backend", "kalender",
+        "--ticket-calendar", "sprint_ops",
+        "--mirror-to-user",
+        "--config", str(cfg_path),
+        "--json",
+    ])
+    assert rc == 0, err
+    applied = json.loads(out)
+    assert applied["applied"] is True
+    assert applied["kalender_schema"] == "v0.2"
+    assert applied["ticket_calendar_id"] == "sprint_ops"
+    assert applied["mirror_to_user"] is True
+    assert applied["written_count"] == 1
+    assert applied["mirrored_count"] == 1
+
+    conn = sqlite3.connect(str(kal_store))
+    conn.row_factory = sqlite3.Row
+    sprint_row = conn.execute("SELECT * FROM events WHERE calendar_id = 'sprint_ops'").fetchone()
+    mirror_row = conn.execute("SELECT * FROM events WHERE calendar_id = 'user'").fetchone()
+    assert sprint_row is not None
+    assert mirror_row is not None
+    assert mirror_row["link_mode"] == "mirror"
+    assert mirror_row["source_calendar_id"] == "sprint_ops"
+    assert mirror_row["source_event_id"] == sprint_row["id"]
+    conn.close()
+
+    # Guard checks when --ticket-calendar or --mirror-to-user are used without --plan-calendar
+    rc_bad1, _, err_bad1 = run_tm(["--list", "--mirror-to-user", "--config", str(cfg_path)])
+    assert rc_bad1 == 2
+    assert "--mirror-to-user requires --plan-calendar" in err_bad1
+
+    rc_bad2, _, err_bad2 = run_tm(["--list", "--ticket-calendar", "tickets", "--config", str(cfg_path)])
+    assert rc_bad2 == 2
+    assert "--ticket-calendar requires --plan-calendar" in err_bad2
+
+    rc_bad3, _, err_bad3 = run_tm([
+        "--plan-calendar", "--ticket-calendar", "all", "--config", str(cfg_path)
+    ])
+    assert rc_bad3 == 2
+    assert "invalid ticket_calendar_id" in err_bad3
+
+
 def test_public_privacy_cleanliness_of_planning_bridge_files():
     """Verify new module and config example contain zero absolute user paths or private LAN IPs."""
     from test_smoke import FORBIDDEN_PATTERNS
