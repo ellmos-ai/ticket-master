@@ -118,5 +118,29 @@
   "sparmodus_state_path": null,
   "token_budget_path": null,
   "thresholds_path": null,
-  "_comment_sparmodus_paths": "Optional overrides for auditor_bridge.spar_gate(). Left null, defaults to the Claude Code hook state files under ~/.claude/state/ and ~/.claude/hooks/token_budget_config.json (see ~/CLAUDE.md 'sparmodus'/'notaus')."
+  "_comment_sparmodus_paths": "Optional overrides for auditor_bridge.spar_gate(). Left null, defaults to the Claude Code hook state files under ~/.claude/state/ and ~/.claude/hooks/token_budget_config.json (see ~/CLAUDE.md 'sparmodus'/'notaus').",
+  "agenda_bridge": {
+    "_comment": "T-20261127-937209759: optional bridge to the shared 'agenda-setting' skill (lib/planning_bridges.py). Defaults to enabled=false for public installs. When enabled, reads canonical agent-agenda.v1 state (profile_path -> AGENT_AGENDA_PROFILE -> ~/.config/agent-agenda/profile.json -> state_root/agenda.json) without creating a second agenda store; disabled or expired agendas never weight tickets.",
+    "enabled": false,
+    "auto_detect": true,
+    "skill_path": null,
+    "profile_path": null,
+    "state_root": null,
+    "sort_on_start": true
+  },
+  "calendar_bridge": {
+    "_comment": "T-20261127-937209759: optional bridge to the local 'kalender' skill SQLite store (events) and/or Ocean calendar SQLite table (assistant_calendar). Defaults to enabled=false and dry-run planning; --plan-calendar --apply writes idempotently and never modifies schema.",
+    "enabled": false,
+    "auto_detect": true,
+    "skill_path": null,
+    "backend": "auto",
+    "kalender_store": null,
+    "ocean_db_path": null,
+    "workday_start": "09:00",
+    "workday_end": "17:00",
+    "default_slot_minutes": 60,
+    "max_tickets_per_day": 3,
+    "planning_horizon_days": 14,
+    "include_weekends": false
+  }
 }

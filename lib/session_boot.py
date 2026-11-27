@@ -23,10 +23,11 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from . import auditor_bridge, config_paths, session_profile, ticket_writer
+    from . import auditor_bridge, config_paths, planning_bridges, session_profile, ticket_writer
 except ImportError:
     import auditor_bridge
     import config_paths
+    import planning_bridges
     import session_profile
     import ticket_writer
 
@@ -307,7 +308,8 @@ def report(config: dict[str, Any] | None = None) -> dict[str, Any]:
                           "max_high": settings["companion"]["max_high"],
                           "dispatch": "agent checks live slots/authority, claims once, dispatches and records acceptance"},
             "umbruch": {"enabled": settings["umbruch"]["enabled"],
-                        "rule": "Concrete version-linked user approval may replace model reviews; publication requires explicit publication-linked approval."}}
+                        "rule": "Concrete version-linked user approval may replace model reviews; publication requires explicit publication-linked approval."},
+            "planning_bridges": planning_bridges.planning_status(config)}
 
 
 def _capacity_root() -> Path:
