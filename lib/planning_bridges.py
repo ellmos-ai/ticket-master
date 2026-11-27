@@ -21,6 +21,7 @@ import argparse
 import calendar
 import copy
 import json
+import math
 import os
 import re
 import sqlite3
@@ -199,18 +200,107 @@ _TICKET_NAME_RE = re.compile(
 _ID_LINE_RE = re.compile(r"^ID:\s*(T-\d{8}-\d+)", re.IGNORECASE)
 _HEADER_RE = re.compile(r"^([A-Z_ÄÖÜ]{2,32}):\s*(.*)$")
 _TOKEN_RE = re.compile(r"[A-Za-z0-9äöüÄÖÜß][A-Za-z0-9äöüÄÖÜß_-]{1,}")
+_AGENDA_ID_TOKEN_RE = re.compile(r"\b(A[1-9][0-9]{0,2})\b", re.IGNORECASE)
+_TITLE_BARE_PREFIX_CODE_RE = re.compile(r"^\s*A[1-9][0-9]{0,2}\s*:")
+_TITLE_EXPLICIT_AGENDA_RE = re.compile(
+    r"(?:\bAgenda\s+(A[1-9][0-9]{0,2})\b|\(([^)]*\bA[1-9][0-9]{0,2}\b[^)]*)\))",
+    re.IGNORECASE,
+)
+_ACRONYM_2_RE = re.compile(
+    r"(?<![A-Za-z0-9äöüÄÖÜß])([A-Z][A-Z0-9])(?![A-Za-z0-9äöüÄÖÜß])"
+)
+_EMBEDDED_WIN_PATH_RE = re.compile(r"[A-Za-z0-9_.~-]+(?:\\[A-Za-z0-9_.-]+)+")
+_EMBEDDED_ROOT_PATH_RE = re.compile(
+    r"(?:[A-Za-z]:[\\/]|~[\\/]|/(?:home|users|var|opt|srv|etc|usr|tmp|mnt|volumes|library)[\\/])[^\s,;)\"']*",
+    re.IGNORECASE,
+)
+_DOC_LEAF_NAMES = frozenset({
+    "readme", "readme.md", "claude", "claude.md", "agents", "agents.md",
+    "gemini", "gemini.md", "state", "state.md", "todo", "todo.md",
+    "start", "start.md", "plan", "plan.md", "gesamtplan", "gesamtplan.md",
+    "aktueller-plan", "aktueller-plan.md", "index", "index.md", "main",
+})
+_TWO_CHAR_STOPWORDS = frozenset({
+    "AB", "AI", "AM", "AN", "AS", "AT", "BE", "BY", "DA", "DE", "DO", "DU",
+    "EN", "ER", "ES", "ET", "FR", "GO", "ID", "IF", "IM", "IN", "IS",
+    "IT", "JA", "JE", "NO", "OB", "OD", "OF", "OK", "ON", "OR", "SO",
+    "TO", "UM", "UP", "US", "VS", "WO", "ZU",
+})
+_AGENDA_XREF_CLAUSE_RE = re.compile(
+    r"(?:\b[A-Za-z0-9äöüÄÖÜß_-]+\s+ist\s+(?:bereits\s+)?A[1-9]\d{0,2}\b"
+    r"|\bverknüpft\s+mit\s+[^.;)]*)",
+    re.IGNORECASE,
+)
 
 _STOPWORDS = frozenset({
-    "aber", "alle", "als", "also", "auch", "auf", "aus", "bei", "beim", "bis",
-    "bitte", "das", "dass", "dem", "den", "der", "des", "die", "dies", "diese",
-    "dieser", "dieses", "durch", "ein", "eine", "einem", "einen", "einer",
-    "eines", "erst", "fuer", "für", "gegen", "haben", "hat", "hier", "ich",
-    "ihr", "ihre", "immer", "ist", "jede", "jeder", "jetzt", "kann", "kein",
-    "keine", "mit", "muss", "nach", "neue", "neuer", "neues", "nicht", "noch",
-    "nur", "oder", "ohne", "sein", "seine", "sich", "sie", "sind", "soll",
-    "ueber", "über", "und", "uns", "unser", "unter", "vom", "von", "vor",
-    "wann", "warum", "was", "weil", "wenn", "wer", "werden", "wie", "wir",
-    "wird", "wurde", "zum", "zur",
+    "aber", "alle", "allem", "allen", "aller", "alles", "als", "also", "auch",
+    "auf", "aus", "bei", "beim", "bereits", "bis", "bitte", "bzw", "dabei",
+    "dafuer", "dafür", "damit", "danach", "dann", "darf", "das", "dass", "dazu",
+    "dem", "den", "denn", "der", "des", "dessen", "die", "dies", "diese",
+    "diesem", "diesen", "dieser", "dieses", "dort", "drei", "durch", "echte",
+    "echten", "echter", "echtes", "eigene", "eigenem", "eigenen", "eigener",
+    "eigenes", "ein", "eine", "einem", "einen", "einer", "eines", "einmal",
+    "erst", "erste", "ersten", "erster", "etwa", "evtl", "falls", "fehlt",
+    "fehlen", "fehlende", "fehlenden", "fuer", "für", "ganz", "gegen",
+    "gegebener", "gemeinsam", "gemeinsame", "gemeinsamen", "gemeinsamer", "ggf",
+    "gibt", "haben", "hat", "hier", "hohe", "hoher", "ich", "ihr", "ihre",
+    "immer", "inkl", "insbesondere", "ist", "jede", "jedem", "jeden", "jeder",
+    "jedes", "jetzt", "kann", "kein", "keine", "keinem", "keinen", "keiner",
+    "koennen", "können", "mehr", "mit", "moeglich", "möglich", "moeglichst",
+    "möglichst", "muss", "muessen", "müssen", "nach", "neue", "neuem", "neuen",
+    "neuer", "neues", "nicht", "noch", "nur", "oder", "ohne", "sein", "seine",
+    "seinem", "seinen", "seiner", "seit", "selbst", "sich", "sie", "sind",
+    "sobald", "sodass", "sofort", "soll", "sollen", "sondern", "sonst",
+    "soweit", "sowie", "statt", "ueber", "über", "und", "uns", "unser",
+    "unsere", "unter", "usw", "vgl", "viel", "viele", "vielen", "vom", "von",
+    "vor", "vorher", "wann", "war", "warum", "was", "wegen", "weil", "weiter",
+    "weitere", "weiterem", "weiteren", "weiterer", "weiteres", "welche",
+    "welcher", "welches", "wenn", "wer", "werden", "wie", "wieder", "wir",
+    "wird", "wurde", "wurden", "zwei", "zwischen", "zum", "zur",
+    # Calendar / horizon words (already scored via timeframe / _urgency_bonus)
+    "januar", "februar", "maerz", "märz", "april", "mai", "juni", "juli",
+    "august", "september", "oktober", "november", "dezember", "quartal",
+    "halbjahr", "haelfte", "hälfte", "jahr", "jahre", "jahren", "jaehrlich",
+    "jährlich", "jaehrliche", "jährliche", "monat", "monate", "monaten",
+    "monatlich", "monatliche", "monatlichen", "woche", "wochen", "woechentlich",
+    "wöchentlich", "woechentliche", "wöchentliche", "taeglich", "täglich",
+    "taegliche", "tägliche", "heute", "heutigen", "bald", "spaeter", "später",
+    "aktuell", "aktuelle", "aktuellen", "aktueller", "zeit", "zeitraum",
+    # Generic workflow / meta-process verbs & nouns
+    "abgeschlossen", "abschliessen", "abschließen", "aktualisieren",
+    "aktualisiert", "aktualisierung", "anlegen", "aufbauen",
+    "aufgabe", "aufgaben", "aufnehmen", "ausbauen", "ausmachen", "ausrichten",
+    "bedarf", "befund", "belegen", "belegt", "bereich", "bereiche", "bereichen",
+    "besprechen", "bestaetigt", "bestätigt", "bestaetigten", "bestätigten",
+    "bleiben", "bleibt", "dieselbe", "dieselben", "direkt", "direkte", "direkten",
+    "durchfuehren", "durchführen", "einrichten", "einfuehren", "einführen",
+    "entscheid", "entscheiden", "entscheidung", "entscheidungen", "erhalten",
+    "ergebnis", "ergebnisse", "ergebnissen", "erhoehen", "erhöhen", "erstellen",
+    "fertig", "fertigbauen", "fertigstellen", "folgearbeit", "folgeschritt",
+    "fortsetzung", "frische", "frischen", "funktion", "funktionen",
+    "funktioniert", "getrennt", "getrennte", "getrennten", "jeweiligen",
+    "jeweils", "klaeren", "klären", "kleine", "kleinen", "konkretisierung",
+    "laeuft", "läuft", "laufen", "laufend", "laufende", "laufenden", "liefern",
+    "liegen", "liegt", "machen", "macht", "nie", "niemals", "noetig", "nötig",
+    "nutzen", "nutzt", "nutzer", "nutzerauftrag", "nutzerentscheid",
+    "nutzerentscheidung", "nutzerfrage", "offen", "offene", "offenen",
+    "persoenlich", "persönlich", "persoenliche", "persönliche", "plan",
+    "plaene", "pläne", "planen", "planung", "prioritaet", "priorität",
+    "priorisiert", "priorisieren", "produktiv", "projekt", "projekte",
+    "projekten", "pruefen", "prüfen", "regelmaessig", "regelmäßig",
+    "regelmaessige", "regelmäßige", "rest", "reste", "restaufgaben", "schritt",
+    "schritte", "schrittweise", "sitzung", "sitzungen", "stand", "start",
+    "starten", "stellen", "tatsaechlich", "tatsächlich", "tatsaechliche",
+    "tatsächliche", "teil", "teile", "trennen", "trennung", "umfasst",
+    "umsetzen", "umsetzung", "umstellen", "verbindlich", "verbessern",
+    "verknuepft", "verknüpft", "vollstaendig", "vollständig", "voranbringen",
+    "vorbereiten", "wichtig", "wichtige", "wichtigen", "wichtiger", "wichtiges",
+    "wichtigste", "wichtigsten", "ziel", "ziele", "zusaetzlich", "zusätzlich",
+    # Path / OS boilerplate
+    "appdata", "cloudstorage", "home", "local", "onedrive", "program",
+    "roaming", "topics", "user", "users", "workstation", "laptop", "ideapad",
+    "surface",
+    # English stopwords & generic ticket words
     "about", "after", "all", "also", "and", "any", "are", "been", "before",
     "between", "both", "but", "can", "could", "does", "each", "for", "from",
     "has", "have", "into", "its", "just", "more", "most", "must", "new",
@@ -220,7 +310,25 @@ _STOPWORDS = frozenset({
     "very", "via", "was", "were", "what", "when", "where", "which", "while",
     "who", "will", "with", "within", "without", "would", "your",
     "ticket", "tickets", "task", "tasks", "issue", "problem", "project",
-    "projekt", "software", "pending", "open", "offen",
+    "software", "pending", "open", "session",
+})
+
+# Low-specificity context tokens (AI runners, generic code nouns) that may add a
+# small tie-breaker (+1) ONLY when a strong topical/explicit match already exists.
+_WEAK_CONTEXT_TOKENS = frozenset({
+    "claude", "codex", "gemini", "antigravity", "kimi", "desktop",
+    "modul", "module", "modular", "modulrepo", "system", "systeme",
+    "app", "apps", "web", "repo", "repos", "tool", "tools", "werkzeuge",
+    "skill", "skills", "agent", "agenten", "bericht", "berichte", "report",
+    "reports", "release", "releases", "install", "installation", "archiv",
+    "archivieren", "privat", "private", "privaten", "oeffentlich",
+    "oeffentliche", "oeffentlichen", "public", "pipeline", "pipelines",
+    "control", "core", "chat", "master", "policy", "produkt", "produkte", "registry",
+    "live", "sicher", "sichern", "abnahme", "design", "analyse",
+    "entwicklung", "feature", "visuell", "visuelle", "struktur", "architektur",
+    "check", "checks", "test", "tests", "testen", "fix", "update",
+    "status", "config", "daten", "datei", "dateien", "ordner", "pfad",
+    "liste", "fehler", "version",
 })
 
 
@@ -1050,17 +1158,115 @@ def load_agenda(
 # Ticket parsing & Agenda-driven sorting
 # ---------------------------------------------------------------------------
 
+def _fold_umlauts(value: str) -> str:
+    return (
+        value.replace("ä", "ae")
+        .replace("ö", "oe")
+        .replace("ü", "ue")
+        .replace("ß", "ss")
+    )
+
+
+def _path_leaf_words(raw_path: str) -> str:
+    cleaned = raw_path.strip().strip("\"'()[]{}").rstrip("\\/")
+    if not cleaned:
+        return ""
+    parts = [p.lstrip(".") for p in re.split(r"[\\/]+", cleaned) if p.lstrip(".")]
+    if not parts:
+        return ""
+    leaf = parts[-1]
+    leaf_lower = leaf.lower()
+    stem = Path(leaf).stem
+    if leaf_lower in _DOC_LEAF_NAMES or stem.lower() in _DOC_LEAF_NAMES:
+        if len(parts) >= 2:
+            return parts[-2]
+        return ""
+    return stem or leaf
+
+
+def _scrub_paths_to_leaf(text: str) -> str:
+    scrubbed = _EMBEDDED_ROOT_PATH_RE.sub(lambda m: f" {_path_leaf_words(m.group(0))} ", text)
+    scrubbed = _EMBEDDED_WIN_PATH_RE.sub(lambda m: f" {_path_leaf_words(m.group(0))} ", scrubbed)
+    scrubbed = re.sub(r"\bopen[\s_-]+ocean\b", "openocean", scrubbed, flags=re.IGNORECASE)
+    scrubbed = re.sub(r"\bwindows[\s_-]+store\b", "windowsstore windows store", scrubbed, flags=re.IGNORECASE)
+    return scrubbed
+
+
+def _add_clean_token(part: str, out: set[str]) -> None:
+    if len(part) < 3 or part.isdigit():
+        return
+    if re.fullmatch(r"t-\d+", part) or re.fullmatch(r"a[1-9]\d{0,2}", part):
+        return
+    folded = _fold_umlauts(part)
+    if part in _STOPWORDS or folded in _STOPWORDS:
+        return
+    out.add(folded)
+
+
 def _tokenize(text: str) -> set[str]:
+    if not text:
+        return set()
+    scrubbed = _scrub_paths_to_leaf(text)
     tokens: set[str] = set()
-    for raw_match in _TOKEN_RE.findall(text.lower()):
+    for acro in _ACRONYM_2_RE.findall(scrubbed):
+        if acro not in _TWO_CHAR_STOPWORDS and not re.fullmatch(r"A[1-9]", acro):
+            tokens.add(acro.lower())
+    for raw_match in _TOKEN_RE.findall(scrubbed.lower()):
         cleaned = raw_match.strip("_-")
-        if len(cleaned) >= 3 and cleaned not in _STOPWORDS:
-            tokens.add(cleaned)
+        _add_clean_token(cleaned, tokens)
         if "-" in cleaned or "_" in cleaned:
             for part in re.split(r"[-_]+", cleaned):
-                if len(part) >= 3 and part not in _STOPWORDS:
-                    tokens.add(part)
+                _add_clean_token(part, tokens)
     return tokens
+
+
+def _extract_agenda_ids(raw: str) -> list[str]:
+    seen: list[str] = []
+    for match in _AGENDA_ID_TOKEN_RE.findall(raw or ""):
+        aid = match.upper()
+        if aid not in seen:
+            seen.append(aid)
+    return seen
+
+
+def _extract_title_agenda_hints(title: str) -> tuple[set[str], set[str]]:
+    """Return ``(unconditional_ids, corroborated_only_ids)`` from a ticket title.
+
+    ``Agenda A15`` is unconditional; parenthesized ``(A15, A7; ...)`` requires at
+    least one corroborating topical/category signal so manifest/audit codes like
+    ``A7: Konfliktkopien ...`` are never mistaken for Agenda item ``A7``.
+    """
+    unconditional: set[str] = set()
+    corroborated: set[str] = set()
+    if not title or _TITLE_BARE_PREFIX_CODE_RE.match(title):
+        # Even if a title starts with "A7: ...", still allow explicit "Agenda A15" later in title.
+        for direct in re.findall(r"\bAgenda\s+(A[1-9][0-9]{0,2})\b", title, flags=re.IGNORECASE):
+            unconditional.add(direct.upper())
+        return unconditional, corroborated
+    for direct, paren_group in _TITLE_EXPLICIT_AGENDA_RE.findall(title):
+        if direct:
+            unconditional.add(direct.upper())
+        elif paren_group:
+            for aid in _extract_agenda_ids(paren_group):
+                corroborated.add(aid)
+    return unconditional, corroborated - unconditional
+
+
+def _compound_prefix_hits(item_tokens: set[str], cand_tokens: set[str]) -> set[str]:
+    """Match German/English compound prefixes (e.g. ``umschuldung`` <-> ``umschuldungsplan``)."""
+    hits: set[str] = set()
+    long_item = [t for t in item_tokens if len(t) >= 6 and t not in _WEAK_CONTEXT_TOKENS]
+    long_cand = [t for t in cand_tokens if len(t) >= 6 and t not in _WEAK_CONTEXT_TOKENS]
+    if not long_item or not long_cand:
+        return hits
+    for it_tok in long_item:
+        for c_tok in long_cand:
+            if it_tok == c_tok:
+                continue
+            shorter, longer = (it_tok, c_tok) if len(it_tok) <= len(c_tok) else (c_tok, it_tok)
+            if len(shorter) >= 6 and longer.startswith(shorter) and (len(shorter) / len(longer)) >= 0.52:
+                hits.add(shorter)
+    return hits
 
 
 def _priority_info(raw_priority: str, raw_urgency: str) -> tuple[int, str]:
@@ -1172,10 +1378,33 @@ def _read_open_tickets_for_planning(
             raw_priority = headers.get("PRIORITAET") or headers.get("PRIORITY") or "medium"
             raw_urgency = headers.get("URGENCY") or headers.get("DRINGLICHKEIT") or ""
             prio_rank, prio_level = _priority_info(raw_priority, raw_urgency)
-            project_dir = headers.get("PROJECT_DIR") or headers.get("PROJEKT") or ""
+            project_dir = (
+                headers.get("PROJECT_DIR")
+                or headers.get("PROJEKTORDNER")
+                or headers.get("PROJEKT")
+                or ""
+            )
+            if project_dir.startswith("<"):
+                project_dir = ""
             pipeline = headers.get("PIPELINE") or ""
+            if pipeline.startswith("<"):
+                pipeline = ""
             domain = headers.get("DOMAIN") or headers.get("DOMAENE") or ""
+            if domain.startswith("<"):
+                domain = ""
             endpoint = headers.get("ENDPOINT") or headers.get("ENDPUNKT") or ""
+            if endpoint.startswith("<"):
+                endpoint = ""
+            raw_agenda = (
+                headers.get("AGENDA")
+                or headers.get("AGENDA_ID")
+                or headers.get("AGENDA_IDS")
+                or ""
+            )
+            explicit_agenda_ids = (
+                [] if raw_agenda.startswith("<") else _extract_agenda_ids(raw_agenda)
+            )
+            title_uncond_ids, title_corrob_ids = _extract_title_agenda_hints(title)
 
             try:
                 rel_path = entry.relative_to(base).as_posix()
@@ -1195,10 +1424,15 @@ def _read_open_tickets_for_planning(
                 "project_dir": project_dir,
                 "domain": domain,
                 "endpoint": endpoint,
+                "agenda_ids": explicit_agenda_ids,
                 "path": rel_path,
+                "_explicit_agenda_ids": set(explicit_agenda_ids),
+                "_title_uncond_agenda_ids": title_uncond_ids,
+                "_title_corrob_agenda_ids": title_corrob_ids,
                 "_header_tokens": _tokenize(
-                    " ".join([title, project_dir, pipeline, domain, endpoint])
+                    " ".join([title, _path_leaf_words(project_dir), endpoint])
                 ),
+                "_meta_tokens": _tokenize(f"{domain} {pipeline}"),
                 "_body_tokens": _tokenize(" ".join(body_lines[:40])),
             })
     return tickets
@@ -1241,51 +1475,163 @@ def _urgency_bonus(due_date: date | None, ref_date: date, *, is_open_ended: bool
     return base
 
 
+def _agenda_item_tokens(item: dict[str, Any]) -> set[str]:
+    clean_text = _AGENDA_XREF_CLAUSE_RE.sub(" ", item["text"])
+    plan_leaves = " ".join(
+        _path_leaf_words(str(p.get("path", "")))
+        for p in item.get("plans", [])
+        if isinstance(p, dict)
+    )
+    return _tokenize(f"{clean_text} {plan_leaves}")
+
+
 def _match_ticket_to_agenda_item(
     ticket: dict[str, Any],
     item: dict[str, Any],
-) -> tuple[int, list[str]]:
-    overlap_points = 0
-    reasons: list[str] = []
+    *,
+    item_tokens: set[str] | None = None,
+    umbrella_tokens: set[str] | None = None,
+) -> tuple[float, list[str], bool]:
+    """Score topical/explicit alignment between ``ticket`` and ``item``.
 
-    item_tokens = _tokenize(item["text"])
+    Returns ``(points, reasons, is_explicit_ref)``.
+    """
+    item_id = item["id"].upper()
+    explicit_ids: set[str] = ticket.get("_explicit_agenda_ids", set())
+    title_uncond: set[str] = ticket.get("_title_uncond_agenda_ids", set())
+    title_corrob: set[str] = ticket.get("_title_corrob_agenda_ids", set())
+
+    eff_item_tokens = item_tokens if item_tokens is not None else _agenda_item_tokens(item)
+    umb = umbrella_tokens or set()
     header_tokens: set[str] = ticket["_header_tokens"]
     body_tokens: set[str] = ticket["_body_tokens"]
 
-    # 1. Project / linked plan pointer match
+    topical_points = 0.0
+    reasons: list[str] = []
+    is_explicit = False
+
+    if item_id in explicit_ids:
+        is_explicit = True
+        topical_points += 30.0
+        reasons.append(f"explicit_agenda:{item_id}")
+    elif item_id in title_uncond:
+        is_explicit = True
+        topical_points += 20.0
+        reasons.append(f"title_agenda:{item_id}")
+
+    # 1. Project / linked plan leaf match (specific leaf only, not umbrella)
     proj_raw = ticket.get("project_dir") or ""
-    proj_leaf = Path(proj_raw.replace("\\", "/")).name.lower() if proj_raw and proj_raw != "n/a" else ""
-    if proj_leaf and len(proj_leaf) >= 3:
-        plan_paths_lower = " ".join(str(p.get("path", "")).lower() for p in item.get("plans", []))
-        if proj_leaf in item["text"].lower() or proj_leaf in plan_paths_lower:
-            overlap_points += 4
+    proj_leaf = _path_leaf_words(proj_raw).lower() if proj_raw and proj_raw.lower() != "n/a" else ""
+    proj_folded = _fold_umlauts(proj_leaf)
+    if (
+        proj_folded
+        and len(proj_folded) >= 3
+        and proj_folded not in _STOPWORDS
+        and proj_folded not in _WEAK_CONTEXT_TOKENS
+        and proj_folded not in umb
+    ):
+        plan_leaves_lower = {
+            _fold_umlauts(_path_leaf_words(str(p.get("path", ""))).lower())
+            for p in item.get("plans", [])
+            if isinstance(p, dict)
+        }
+        if proj_folded in eff_item_tokens or proj_folded in plan_leaves_lower:
+            topical_points += 5.0
             reasons.append(f"project:{proj_leaf}")
 
-    # 2. Category / domain / pipeline match
+    # 2. Category / domain / pipeline match (skip generic 'technik' category keyword noise)
     category = item.get("category")
     if category:
-        cat_tokens = _tokenize(category) | {category.lower()}
-        ticket_meta_tokens = _tokenize(
+        cat_folded = _fold_umlauts(category.lower())
+        cat_tokens = (_tokenize(category) | {cat_folded}) - _WEAK_CONTEXT_TOKENS
+        if cat_folded == "technik":
+            cat_tokens.discard("technik")
+        ticket_meta_tokens: set[str] = ticket.get("_meta_tokens") or _tokenize(
             f"{ticket.get('domain', '')} {ticket.get('pipeline', '')}"
         )
-        if cat_tokens & ticket_meta_tokens:
-            overlap_points += 3
+        if cat_tokens and (cat_tokens & ticket_meta_tokens):
+            topical_points += 3.0
             reasons.append(f"category:{category}")
-        elif cat_tokens & (header_tokens | body_tokens):
-            overlap_points += 2
+        elif cat_tokens and (cat_tokens & (header_tokens | body_tokens)):
+            topical_points += 2.0
             reasons.append(f"category_keyword:{category}")
 
-    # 3. Keyword / token overlap
-    header_shared = sorted(item_tokens & header_tokens)
-    body_shared = sorted((item_tokens & body_tokens) - set(header_shared))
-    if header_shared:
-        overlap_points += 2 * len(header_shared)
-        reasons.append(f"title_keywords:{','.join(header_shared[:5])}")
-    if body_shared:
-        overlap_points += len(body_shared)
-        reasons.append(f"body_keywords:{','.join(body_shared[:5])}")
+    # 3. Strong vs umbrella vs weak context keyword overlap (+ compound prefixes)
+    strong_item = eff_item_tokens - _WEAK_CONTEXT_TOKENS
+    weak_item = eff_item_tokens & _WEAK_CONTEXT_TOKENS
 
-    return overlap_points, reasons
+    exact_header = strong_item & header_tokens
+    stem_header = _compound_prefix_hits(strong_item - exact_header, header_tokens - exact_header)
+    all_header_strong = sorted(exact_header | stem_header)
+
+    exact_body = (strong_item & body_tokens) - exact_header - stem_header
+    stem_body = _compound_prefix_hits(
+        strong_item - exact_header - stem_header - exact_body,
+        body_tokens - header_tokens - exact_body,
+    )
+    all_body_strong = sorted(exact_body | stem_body)
+
+    distinctive_header = [t for t in all_header_strong if t not in umb]
+    umbrella_header = [t for t in all_header_strong if t in umb]
+    distinctive_body = [t for t in all_body_strong if t not in umb]
+    umbrella_body = [t for t in all_body_strong if t in umb]
+
+    # BM25-style length damping + focused-goal coverage bonus so 25-100 token
+    # encyclopedic overview items do not drown out focused 2-8 token goals.
+    distinctive_item_set = strong_item - umb
+    distinctive_item_count = max(1, len(distinctive_item_set))
+    length_norm = 1.0 if distinctive_item_count <= 10 else math.sqrt(10.0 / distinctive_item_count)
+
+    header_pts = ((3.5 * len(distinctive_header)) + (1.0 * len(umbrella_header))) * length_norm
+    body_pts = min(2.4, ((0.85 * len(distinctive_body)) + (0.25 * len(umbrella_body))) * length_norm)
+    matched_distinctive_total = len(distinctive_header) + len(distinctive_body)
+    if matched_distinctive_total > 0 and distinctive_item_set:
+        covered_item_tokens = {
+            it_tok
+            for it_tok in distinctive_item_set
+            if it_tok in header_tokens
+            or it_tok in body_tokens
+            or any(
+                (it_tok.startswith(h) or h.startswith(it_tok))
+                for h in (distinctive_header + distinctive_body)
+                if len(h) >= 6 and len(it_tok) >= 6
+            )
+        }
+        coverage_bonus = 3.0 * (len(covered_item_tokens) / max(2, distinctive_item_count))
+    else:
+        coverage_bonus = 0.0
+    topical_points += header_pts + body_pts + coverage_bonus
+
+    if all_header_strong:
+        reasons.append(f"title_keywords:{','.join((distinctive_header + umbrella_header)[:5])}")
+    if all_body_strong:
+        reasons.append(f"body_keywords:{','.join((distinctive_body + umbrella_body)[:5])}")
+
+    # Corroborated parenthesized title reference, e.g. "(A15, A7; ...)"
+    if not is_explicit and item_id in title_corrob and topical_points >= 1.0:
+        is_explicit = True
+        topical_points += 15.0
+        reasons.insert(0, f"title_agenda:{item_id}")
+
+    # Weak context tokens only break ties once a genuine topical signal exists
+    if topical_points >= 2.5:
+        weak_hits = sorted(weak_item & (header_tokens | body_tokens))
+        if weak_hits:
+            topical_points += min(0.9, 0.3 * len(weak_hits))
+            reasons.append(f"context:{','.join(weak_hits[:3])}")
+
+    # Require explicit/project/category/title evidence, OR >= 4 distinctive body keywords
+    has_distinctive_signal = bool(
+        is_explicit
+        or any(r.startswith(("project:", "category:", "category_keyword:")) for r in reasons)
+        or distinctive_header
+        or len(distinctive_body) >= 4
+        or len(umbrella_header) >= 2
+    )
+    if not has_distinctive_signal:
+        return 0.0, [], False
+
+    return topical_points, reasons, is_explicit
 
 
 def sort_tickets_by_agenda(
@@ -1311,24 +1657,55 @@ def sort_tickets_by_agenda(
     )
     open_items = agenda.get("open_items", []) if agenda_active else []
 
+    item_token_map: dict[str, set[str]] = {}
+    umbrella_tokens: set[str] = set()
+    owner_tokens: set[str] = set()
+    if open_items:
+        for item in open_items:
+            raw_owner = str(item.get("owner") or "").strip().lower()
+            if raw_owner and len(raw_owner) >= 3:
+                owner_tokens.add(_fold_umlauts(raw_owner))
+        doc_freq: dict[str, int] = {}
+        for item in open_items:
+            toks = _agenda_item_tokens(item) - owner_tokens
+            item_token_map[item["id"]] = toks
+            for tok in toks - _WEAK_CONTEXT_TOKENS:
+                doc_freq[tok] = doc_freq.get(tok, 0) + 1
+        if len(open_items) >= 6:
+            umb_threshold = max(4, int(len(open_items) * 0.14))
+            umbrella_tokens = {tok for tok, cnt in doc_freq.items() if cnt >= umb_threshold}
+
     raw_tickets = _read_open_tickets_for_planning(base, statuses)
     ranked_rows: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
 
     for ticket in raw_tickets:
         matched_item: dict[str, Any] | None = None
-        best_overlap = 0
+        best_overlap = 0.0
         best_reasons: list[str] = []
         best_due: date | None = None
         best_open_ended = False
 
         if agenda_active and open_items:
-            candidates: list[tuple[tuple[Any, ...], dict[str, Any], int, list[str], date | None, bool]] = []
+            candidates: list[
+                tuple[tuple[Any, ...], dict[str, Any], float, list[str], date | None, bool]
+            ] = []
             for item in open_items:
-                pts, item_reasons = _match_ticket_to_agenda_item(ticket, item)
-                if pts >= 2:
+                pts, item_reasons, is_explicit = _match_ticket_to_agenda_item(
+                    ticket,
+                    item,
+                    item_tokens=item_token_map.get(item["id"]),
+                    umbrella_tokens=umbrella_tokens,
+                )
+                if pts >= 2.6:
                     due_dt, is_open = _item_effective_due_date(item, agenda_deadline_date)
                     due_ord = due_dt.toordinal() if due_dt else date.max.toordinal()
-                    cand_key = (pts, item["weight"], -due_ord, -int(item["id"][1:]))
+                    cand_key = (
+                        1 if is_explicit else 0,
+                        item["weight"] if is_explicit else round(pts + (0.06 * item["weight"]), 2),
+                        round(pts, 2) if is_explicit else item["weight"],
+                        -due_ord,
+                        -int(item["id"][1:]),
+                    )
                     candidates.append((cand_key, item, pts, item_reasons, due_dt, is_open))
             if candidates:
                 candidates.sort(key=lambda c: c[0], reverse=True)
@@ -1341,7 +1718,7 @@ def sort_tickets_by_agenda(
         if matched_item is not None:
             weight = int(matched_item["weight"])
             urg_bonus = _urgency_bonus(best_due, ref_day, is_open_ended=best_open_ended)
-            specificity = float(min(best_overlap, 9))
+            specificity = float(min(round(best_overlap, 2), 9.0))
             score = 1000.0 + (weight * 10.0) + urg_bonus + prio_bonus + specificity
             reasons.append(f"agenda:{matched_item['id']}(weight={weight})")
             if matched_item.get("timeframe"):
@@ -1372,6 +1749,7 @@ def sort_tickets_by_agenda(
             "pipeline": ticket["pipeline"],
             "project_dir": ticket["project_dir"],
             "domain": ticket["domain"],
+            "agenda_ids": ticket["agenda_ids"],
             "path": ticket["path"],
             "matched_agenda_id": matched_item["id"] if matched_item else None,
             "matched_agenda_text": matched_item["text"] if matched_item else None,

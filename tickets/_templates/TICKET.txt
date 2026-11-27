@@ -30,6 +30,7 @@ ENDPOINT:      <standalone skill/module(s) the domain resolved to (a single
                standalone skill yet (<expert>)" if the domain matched but no
                standalone skill exists yet>
 URGENCY:       <sofort | heute | woche | backlog — see config/urgency.json>
+AGENDA:        <optional comma-separated agenda item IDs, e.g. A1, A12 — takes precedence in --sort-by-agenda>
 
 --------------------------------------------------------------
 ROUTING CONTRACT v2  (omit this block for legacy schema-v1 tickets)

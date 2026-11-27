@@ -723,6 +723,9 @@ introducing a parallel store:
   deadline) and rank open tickets by agenda at start (`sort_on_start`) or on
   demand:
   `python bin/ticket_master.py --sort-by-agenda --json`
+  An optional `AGENDA: A1, A12` header in a ticket takes precedence over
+  domain/keyword matching (`PROJECT_DIR`/`PROJEKTORDNER`, category, umlaut and
+  compound-prefix stems, corpus IDF without filesystem-path or meta-verb noise).
   A disabled or expired agenda is never actively weighted
   (`agenda_active: false`).
 - When `calendar_bridge` is enabled and a backend is ready (`kalender` or
