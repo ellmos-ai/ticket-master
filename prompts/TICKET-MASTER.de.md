@@ -756,6 +756,9 @@ Datenspeicher an:
   Zeiträume, Frist) und offene Tickets bei `sort_on_start` oder auf Anfrage
   agendagerecht sortieren:
   `python bin/ticket_master.py --sort-by-agenda --json`
+  Ein optionales Header-Feld `AGENDA: A1, A12` im Ticket hat beim Matching
+  Vorrang vor der domänen- und stichwortbasierten Zuordnung (`PROJEKTORDNER`,
+  Kategorie, Umlaut-/Komposita-Stämme, Korpus-IDF ohne Pfad-/Meta-Rauschen).
   Eine deaktivierte oder abgelaufene Agenda wird nicht aktiv gewichtet
   (`agenda_active: false`).
 - Ist `calendar_bridge` aktiviert und ein Backend bereit (`kalender` oder

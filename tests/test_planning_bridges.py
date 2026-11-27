@@ -1188,6 +1188,224 @@ def test_cli_flags_ticket_calendar_and_mirror_to_user(tmp_path, monkeypatch, cap
     assert "invalid ticket_calendar_id" in err_bad3
 
 
+def test_agenda_matcher_precision_headers_paths_acronyms_umlauts_and_bm25(tmp_path, monkeypatch):
+    """Verify hardened matcher eliminates path/meta/runner noise and honors AGENDA headers."""
+    fake_home = tmp_path / "home"
+    _isolate_planning_env(monkeypatch, fake_home)
+
+    state_root = tmp_path / "agenda_precision"
+    _write_agenda(
+        state_root,
+        enabled=True,
+        deadline="2027-12-31",
+        items=[
+            {
+                "id": "A1",
+                "text": (
+                    "Gemeinsame Web-GUI fertigstellen. Gestaltung an heutigen Konventionen von "
+                    "Antigravity, Codex Desktop und Claude Desktop ausrichten. Ziel: im Dezember 2026 produktiv."
+                ),
+                "weight": 100,
+                "status": "pending",
+                "timeframe": "2026-12",
+                "owner": "maintainer_alpha",
+                "category": "technik",
+                "plans": [],
+            },
+            {
+                "id": "A5",
+                "text": "RH-Forschung als wichtiges weiteres Projekt voranbringen.",
+                "weight": 80,
+                "status": "pending",
+                "timeframe": "ongoing",
+                "owner": "maintainer_alpha",
+                "category": "forschung",
+                "plans": [],
+            },
+            {
+                "id": "A7",
+                "text": "Bei Anwendungen Windows-Store-Veröffentlichungen priorisieren.",
+                "weight": 80,
+                "status": "pending",
+                "timeframe": "2026-12+",
+                "category": "technik",
+                "plans": [],
+            },
+            {
+                "id": "A13",
+                "text": "Hohe Priorität Förderplaner: Förderberichte zuverlässig generieren.",
+                "weight": 100,
+                "status": "pending",
+                "timeframe": "2026-12",
+                "owner": "maintainer_alpha",
+                "category": "technik",
+                "plans": [],
+            },
+            {
+                "id": "A15",
+                "text": "Installer funktioniert auf einem frischen System; Windows-Store-Version vorbereiten.",
+                "weight": 90,
+                "status": "pending",
+                "timeframe": "2027-01",
+                "category": "technik",
+                "plans": [],
+            },
+            {
+                "id": "A20",
+                "text": "Offene Probleme lösen (Forschungsziel; RH ist bereits A5).",
+                "weight": 70,
+                "status": "pending",
+                "timeframe": "ongoing",
+                "category": "forschung",
+                "plans": [],
+            },
+            {
+                "id": "A29",
+                "text": "Umschuldungsplan im Dezember 2026 abschließen.",
+                "weight": 95,
+                "status": "pending",
+                "timeframe": "2026-12",
+                "category": "finanzen",
+                "plans": [{"path": "D:\\Workspace\\Docs\\Umschuldung\\STATE.md", "kind": "plan"}],
+            },
+            {
+                "id": "A48",
+                "text": "Zweite Hälfte 2027: D:\\Workspace\\OneDrive\\.TOPICS\\.HARDWARE neu prüfen und entscheiden.",
+                "weight": 55,
+                "status": "pending",
+                "timeframe": "2027-H2",
+                "category": "hardware",
+                "plans": [],
+            },
+            {
+                "id": "A52",
+                "text": (
+                    "Abteilungsstruktur: IT, Recht, Marketing, Kundenservice, Kalender, Finanzen, "
+                    "Controlling, Buchhaltung, Rechnungen, Wissen, Archiv, Dokumentation, Angebote, "
+                    "Verträge, Lizenzen, Beschaffung, Qualitätssicherung, Operations, Vertrieb, "
+                    "Partnerschaften, Beratung, Schulung, Personalwesen, Einkauf, Logistik."
+                ),
+                "weight": 85,
+                "status": "pending",
+                "timeframe": "2027",
+                "category": "organisation",
+                "plans": [],
+            },
+            {
+                "id": "A99",
+                "text": "Erledigtes Altziel",
+                "weight": 100,
+                "status": "done",
+                "timeframe": "2026-11",
+                "plans": [],
+            },
+        ],
+    )
+
+    queue = tmp_path / "queue_precision"
+    # 1. Explicit AGENDA header takes precedence over done A99 and picks highest-weight open item (A15=90 over A7=80)
+    t_explicit = _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-910000001",
+        title="Packaging metadata alignment",
+        priority="medium",
+    )
+    t_explicit.write_text(
+        t_explicit.read_text(encoding="utf-8").replace(
+            "DOMAIN:        n/a\n",
+            "DOMAIN:        n/a\nAGENDA:        A99, A7, A15\n",
+        ),
+        encoding="utf-8",
+    )
+
+    # 2. German PROJEKTORDNER + ASCII umlaut slug 'foerderplaner' matches A13 ('Förderplaner')
+    t_umlaut = queue / "ACTIONABLE" / "T-20261127-910000002.txt"
+    t_umlaut.write_text(
+        "\n".join([
+            "==============================================================",
+            "TICKET",
+            "==============================================================",
+            "ID:            T-20261127-910000002",
+            "TITEL:         NER-Pipeline im Modul pruefen",
+            "STATUS:        ACTIONABLE",
+            "PRIORITAET:    hoch",
+            "PIPELINE:      .AI",
+            "PROJEKTORDNER: D:\\Workspace\\repos\\foerderplaner",
+            "--------------------------------------------------------------",
+            "PROBLEMBESCHREIBUNG",
+            "--------------------------------------------------------------",
+            "Stichprobe fuer maintainer_alpha im Dezember 2026.",
+        ]) + "\n",
+        encoding="utf-8",
+    )
+
+    # 3. 2-char uppercase acronym 'RH' matches A5 (weight 80), NOT A20 ('RH ist bereits A5') and NOT A48 (.HARDWARE path noise)
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-910000003",
+        title="RH S3 Zertifikatsroute in D:\\Workspace\\OneDrive\\.TOPICS\\zeta pruefen",
+        priority="high",
+        pipeline="mathematik",
+        body="Pruefung durch Claude Desktop und Codex im Jahr 2026 fuer maintainer_alpha.",
+    )
+
+    # 4. Compound prefix 'Umschuldung' + Angebote matches focused A29 (weight 95), NOT encyclopedic A52 (weight 85)
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-910000004",
+        title="Umschuldung: Kredite und Angebote zusammentragen",
+        priority="medium",
+        body="Vertraege, Rechnungen und Dokumentation im Archiv ablegen.",
+    )
+
+    # 5. Parenthesized title hint '(A15, A7)' corroborated by 'Windows-Store' matches A15 (weight 90)
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-910000005",
+        title="Store-Paket signieren fuer Windows-Store (A15, A7; Frage)",
+        priority="medium",
+    )
+
+    # 6. Negative control A: bare manifest code 'A7: Konfliktkopien...' with runner/path noise must stay UNMATCHED!
+    _write_ticket(
+        queue,
+        "ACTIONABLE",
+        "T-20261127-910000006",
+        title="A7: Konfliktkopien unter D:\\Workspace\\OneDrive\\.TOPICS\\alpha bereinigen",
+        priority="medium",
+        body="Claude Desktop, Codex Desktop und Antigravity haben 2026 gemeinsamen Stand geprueft.",
+    )
+
+    cfg = {"agenda_bridge": {"enabled": True, "state_root": str(state_root)}}
+    res = planning_bridges.sort_tickets_by_agenda(
+        queue,
+        cfg,
+        reference_date=date(2026, 11, 27),
+    )
+    by_id = {row["id"]: row for row in res["tickets"]}
+
+    assert by_id["T-20261127-910000001"]["matched_agenda_id"] == "A15"
+    assert any("explicit_agenda:A15" in r for r in by_id["T-20261127-910000001"]["match_reasons"])
+
+    assert by_id["T-20261127-910000002"]["matched_agenda_id"] == "A13"
+    assert any("project:foerderplaner" in r for r in by_id["T-20261127-910000002"]["match_reasons"])
+
+    assert by_id["T-20261127-910000003"]["matched_agenda_id"] == "A5"
+    assert any("rh" in r for r in by_id["T-20261127-910000003"]["match_reasons"])
+
+    assert by_id["T-20261127-910000004"]["matched_agenda_id"] == "A29"
+
+    assert by_id["T-20261127-910000005"]["matched_agenda_id"] == "A15"
+    assert any("title_agenda:A15" in r for r in by_id["T-20261127-910000005"]["match_reasons"])
+
+    assert by_id["T-20261127-910000006"]["matched_agenda_id"] is None
+    assert by_id["T-20261127-910000006"]["agenda_weight"] == 0
+
+
 def test_public_privacy_cleanliness_of_planning_bridge_files():
     """Verify new module and config example contain zero absolute user paths or private LAN IPs."""
     from test_smoke import FORBIDDEN_PATTERNS
